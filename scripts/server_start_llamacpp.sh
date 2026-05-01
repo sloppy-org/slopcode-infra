@@ -215,6 +215,19 @@ case "${MODEL_ALIAS}" in
       --top-k 40
     )
     ;;
+  mistral-medium-3.5-*)
+    # Mistral Medium 3.5: reasoning is gated by --chat-template-kwargs
+    # ('{"reasoning_effort":"high"}' for agentic coding) instead of the
+    # deepseek tag-extraction path. Mistral guidance keeps presence and
+    # repeat penalties at 0.0 / 1.0.
+    SAMPLER_ARGS+=(
+      --temp 0.7
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --chat-template-kwargs '{"reasoning_effort":"high"}'
+      --no-context-shift
+    )
+    ;;
   *)
     SAMPLER_ARGS+=(
       --temp 0.6
