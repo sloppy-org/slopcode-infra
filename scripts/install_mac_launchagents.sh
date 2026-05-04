@@ -2,7 +2,7 @@
 # Install macOS launchd user agents for the slopcode llama.cpp deployment
 # plus the whisper.cpp transcription server:
 #   com.slopcode.llamacpp        -> 35B-A3B Q4 (MoE) on 0.0.0.0:8080 with
-#                                    -np 8 -c 2097152 (256K per slot)
+#                                    -np 4 -c 2097152 (512K per slot)
 #   com.slopcode.whisper-server  -> ggml-large-v3-turbo on 0.0.0.0:8427
 #                                    OpenAI-compat at /v1/audio/transcriptions
 #
@@ -134,7 +134,7 @@ ${mmproj_xml}    <string>-c</string><string>2097152</string>
     <string>-ub</string><string>1024</string>
     <string>-ngl</string><string>99</string>
     <string>-fa</string><string>on</string>
-    <string>-np</string><string>8</string>
+    <string>-np</string><string>4</string>
     <string>--cache-type-k</string><string>q8_0</string>
     <string>--cache-type-v</string><string>q8_0</string>
     <string>--alias</string><string>qwen</string>
@@ -165,9 +165,9 @@ XML
   wait_gone "${label}" || die "failed to unload existing ${label}"
   launchctl bootstrap "gui/$(id -u)" "${plist}"
   if [[ -n "${MMPROJ_PATH}" ]]; then
-    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 8 -c 2097152, mmproj $(basename "${MMPROJ_PATH}"))"
+    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 2097152, mmproj $(basename "${MMPROJ_PATH}"))"
   else
-    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 8 -c 2097152)"
+    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 2097152)"
   fi
 }
 
