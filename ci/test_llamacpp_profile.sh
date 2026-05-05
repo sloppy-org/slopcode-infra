@@ -79,7 +79,7 @@ EOF
   local context_expected np_expected
   if [[ "${platform}" == "Darwin" ]]; then
     context_expected="-c 2097152"
-    np_expected="-np 8"
+    np_expected="-np 4"
   else
     context_expected="-c 262144"
     np_expected="-np 1"
@@ -187,7 +187,7 @@ EOF
 
   local np_expected
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    np_expected="-np 8"
+    np_expected="-np 4"
   else
     np_expected="-np 1"
   fi
@@ -456,7 +456,7 @@ EOF
   fi
   local np_value ub_value
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    np_value=8
+    np_value=4
   else
     np_value=1
   fi

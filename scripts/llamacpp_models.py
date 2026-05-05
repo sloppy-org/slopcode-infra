@@ -61,6 +61,11 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec("qwen3.5-122b-a10b-q8", "lmstudio-community/Qwen3.5-122B-A10B-GGUF", ("*Q8_0*.gguf",)),
     ModelSpec("minimax-m2.5-q4", "AesSedai/MiniMax-M2.5-GGUF", ("*Q4_K_M*.gguf",)),
     ModelSpec("minimax-m2.7-q4", "bartowski/MiniMaxAI_MiniMax-M2.7-GGUF", ("*Q4_K_M*.gguf",)),
+    ModelSpec(
+        "mistral-medium-3.5-q4",
+        "bartowski/mistralai_Mistral-Medium-3.5-128B-GGUF",
+        ("*Q4_K_M*.gguf",),
+    ),
 )
 
 MODEL_SPECS: tuple[ModelSpec, ...] = (DEFAULT_SPEC, *OPTIONAL_SPECS)

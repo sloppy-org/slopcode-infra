@@ -10,6 +10,7 @@ local/
 *.token
 *.secret
 .vibe/
+.sloptools/
 *.log
 .DS_Store
 __pycache__/

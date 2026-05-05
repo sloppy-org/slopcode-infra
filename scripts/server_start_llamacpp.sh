@@ -7,9 +7,10 @@
 #
 # Slot counts per platform:
 #   Linux/Windows: -np 1 -c 262144           (1 slot x 256K, 16 GB GPU cap)
-#   Mac:           -np 8 -c 2097152          (8 slots x 256K, M-series unified
-#                                             memory; the dropped 27B dense
-#                                             companion freed the budget)
+#   Mac:           -np 4 -c 2097152          (4 slots x 512K, M-series unified
+#                                             memory; lowered from 8 to leave
+#                                             GPU headroom on shared boxes
+#                                             where /slots latency matters)
 #
 # Env overrides:
 #   LLAMACPP_HOME         install dir (default ~/.local/llama.cpp)
@@ -143,7 +144,7 @@ NGL="${LLAMACPP_NGL:-99}"
 # companion is gone) and a single user often runs concurrent opencode + student
 # traffic through the slopgate proxy.
 if [[ "${PLATFORM}" == "mac" ]]; then
-  PARALLEL="${LLAMACPP_PARALLEL:-8}"
+  PARALLEL="${LLAMACPP_PARALLEL:-4}"
 else
   PARALLEL="${LLAMACPP_PARALLEL:-1}"
 fi
@@ -213,6 +214,19 @@ case "${MODEL_ALIAS}" in
       --temp 1.0
       --top-p 0.95
       --top-k 40
+    )
+    ;;
+  mistral-medium-3.5-*)
+    # Mistral Medium 3.5: reasoning is gated by --chat-template-kwargs
+    # ('{"reasoning_effort":"high"}' for agentic coding) instead of the
+    # deepseek tag-extraction path. Mistral guidance keeps presence and
+    # repeat penalties at 0.0 / 1.0.
+    SAMPLER_ARGS+=(
+      --temp 0.7
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --chat-template-kwargs '{"reasoning_effort":"high"}'
+      --no-context-shift
     )
     ;;
   *)
@@ -293,8 +307,14 @@ if [[ "${LLAMACPP_EXEC:-false}" == "true" ]]; then
   exec "${CMD[@]}"
 fi
 
-nohup "${CMD[@]}" >"${LOG_FILE}" 2>&1 &
+# Avoid /usr/bin/nohup on macOS: SIP strips DYLD_LIBRARY_PATH when execing
+# binaries from system-protected paths, which breaks llama-server's @rpath
+# dylib lookup. Plain `& disown` keeps DYLD_LIBRARY_PATH intact and is
+# equivalent for nohup's HUP-immunity purposes (the parent shell exits before
+# the child can be HUPed by terminal close anyway).
+("${CMD[@]}" >"${LOG_FILE}" 2>&1) &
 SERVER_PID=$!
+disown "${SERVER_PID}" 2>/dev/null || true
 echo "${SERVER_PID}" > "${PID_FILE}"
 echo "${PORT}" > "${PORT_FILE}"
 echo "- pid:     ${SERVER_PID}"
