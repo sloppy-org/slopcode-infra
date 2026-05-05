@@ -156,10 +156,9 @@ fit comfortably (~20 GiB KV + 21 GiB Q4_K_M weights + 2 GiB mmproj +
 for whisper / Qwen3-TTS / other apps). The bandwidth-saturated decode
 ceiling on M3 Ultra is around 8 concurrent streams; per-slot decode
 falls from ~77 t/s (single user, measured) to ~55-65 t/s only when 5+
-slots are actually busy at the same time. Slopgate's `--overbook-factor 1.5`
-on top advertises 12 logical slots, deep enough to absorb burst admissions
-without ever overshooting the physical 1-request-per-slot llama-server
-invariant.
+slots are actually busy at the same time. Slopgate is the v1.2.1
+transparent-proxy line — it does not overbook; admission is strict
+1-request-per-physical-slot, KV-headroom-filtered.
 
 On Linux/Windows partial MoE offload replaces the old blanket `--cpu-moe`.
 Benchmark on RTX 5060 Ti 16 GB with Qwen3.6-35B-A3B Q4_K_M at c=262144:
@@ -274,9 +273,11 @@ endpoint as `127.0.0.1:18085`, which the slopgate-agent's
 `SLOPGATE_LEADER_MANAGEMENT_ADDR` points at. Net effect: no llama.cpp port
 on TUG LAN at all; chat content rides ChaCha20-Poly1305-encrypted UDP
 between every node. The slopgate balancer (`:8080` proxy, `:8085`
-management, `:8086` dashboard) deliberately stays open on LAN/WG/loopback
-because it exposes only metadata (agent counts, slot counts, addresses) —
-no request bodies, no prompts, no chat history.
+management) deliberately stays open on LAN/WG/loopback because it exposes
+only metadata (agent counts, slot counts, addresses) — no request bodies,
+no prompts, no chat history. The default build does not include the
+optional `web_dashboard` Cargo feature, so there is no separate dashboard
+port; the management port serves status JSON only.
 
 **Web UI off.** Every llama-server invocation includes `--no-webui` to
 disable the bundled chat UI. The web UI persists conversation history in

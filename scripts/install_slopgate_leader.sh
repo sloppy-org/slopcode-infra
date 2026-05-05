@@ -49,37 +49,37 @@ set -o allexport
 source "${ENV_FILE}"
 set +o allexport
 
+canonicalize_path() {
+  python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$1"
+}
+
 resolve_slopgate_bin() {
+  local candidate=""
   if [[ -n "${SLOPGATE_BIN}" && -x "${SLOPGATE_BIN}" ]]; then
-    echo "${SLOPGATE_BIN}"
-    return
+    candidate="${SLOPGATE_BIN}"
+  elif [[ -x "${SLOPGATE_BUILD_DIR}/target/release/slopgate" ]]; then
+    candidate="${SLOPGATE_BUILD_DIR}/target/release/slopgate"
+  elif have slopgate; then
+    candidate="$(command -v slopgate)"
   fi
-  if have slopgate; then
-    command -v slopgate
-    return
-  fi
-  if [[ -x "${SLOPGATE_BUILD_DIR}/target/release/slopgate" ]]; then
-    echo "${SLOPGATE_BUILD_DIR}/target/release/slopgate"
-    return
-  fi
-  die "slopgate binary not found.
+  if [[ -z "${candidate}" ]]; then
+    die "slopgate binary not found.
 build it first:
   cd ${SLOPGATE_BUILD_DIR} && cargo build --release
 or pass SLOPGATE_BIN=/path/to/slopgate"
+  fi
+  canonicalize_path "${candidate}"
 }
 
 if [[ "${DRY_RUN}" != "true" ]]; then
   SLOPGATE_BIN="$(resolve_slopgate_bin)"
   mkdir -p "${LOCAL_BIN_DIR}"
-  ln -sf "${SLOPGATE_BIN}" "${LOCAL_BIN_DIR}/slopgate"
+  if [[ "${SLOPGATE_BIN}" != "${LOCAL_BIN_DIR}/slopgate" ]]; then
+    ln -sf "${SLOPGATE_BIN}" "${LOCAL_BIN_DIR}/slopgate"
+  fi
   EXEC_BIN="${LOCAL_BIN_DIR}/slopgate"
 else
   EXEC_BIN="${SLOPGATE_BIN:-${LOCAL_BIN_DIR}/slopgate}"
-fi
-
-DASHBOARD_FLAG=""
-if [[ "${SLOPGATE_DASHBOARD_ENABLE:-false}" == "true" ]]; then
-  DASHBOARD_FLAG="--management-dashboard-enable"
 fi
 
 case "${PLATFORM}" in
@@ -101,14 +101,7 @@ Type=simple
 EnvironmentFile=${ENV_FILE}
 ExecStart=${EXEC_BIN} balancer \\
   --management-addr \${SLOPGATE_MANAGEMENT_ADDR} \\
-  --reverseproxy-addr \${SLOPGATE_REVERSEPROXY_ADDR} \\
-  --overbook-factor \${SLOPGATE_OVERBOOK_FACTOR} \\
-  --agent-stale-after \${SLOPGATE_AGENT_STALE_AFTER} \\
-  --agent-evict-after \${SLOPGATE_AGENT_EVICT_AFTER} \\
-  --default-t-out \${SLOPGATE_DEFAULT_T_OUT} \\
-  --session-lru-capacity \${SLOPGATE_SESSION_LRU_CAPACITY} \\
-  --session-ttl \${SLOPGATE_SESSION_TTL}${DASHBOARD_FLAG:+ \\
-  $DASHBOARD_FLAG}
+  --reverseproxy-addr \${SLOPGATE_REVERSEPROXY_ADDR}
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:${RUN_DIR}/slopgate-balancer.log
@@ -118,11 +111,6 @@ StandardError=inherit
 WantedBy=default.target
 UNIT
     } > "${BALANCER_UNIT}"
-
-    AGENT_AUDIO_LINE=""
-    if [[ -n "${SLOPGATE_LOCAL_AUDIO_LLAMACPP_ADDR:-}" ]]; then
-      AGENT_AUDIO_LINE="  --audio-llamacpp-addr \${SLOPGATE_LOCAL_AUDIO_LLAMACPP_ADDR} \\"$'\n'
-    fi
 
     {
       cat <<UNIT
@@ -139,7 +127,7 @@ ExecStart=${EXEC_BIN} agent \\
   --local-llamacpp-addr \${SLOPGATE_LOCAL_LLAMACPP_ADDR} \\
   --max-context \${SLOPGATE_LOCAL_MAX_CONTEXT} \\
   --model-alias \${SLOPGATE_LOCAL_MODEL_ALIAS} \\
-${AGENT_AUDIO_LINE}  --name \${SLOPGATE_LOCAL_AGENT_NAME}
+  --name \${SLOPGATE_LOCAL_AGENT_NAME}
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:${RUN_DIR}/slopgate-agent.log
@@ -182,11 +170,6 @@ UNIT
     BALANCER_PLIST="${AGENTS_DIR}/${BALANCER_LABEL}.plist"
     AGENT_PLIST="${AGENTS_DIR}/${AGENT_LABEL}.plist"
 
-    BALANCER_DASHBOARD_XML=""
-    if [[ -n "${DASHBOARD_FLAG}" ]]; then
-      BALANCER_DASHBOARD_XML="    <string>${DASHBOARD_FLAG}</string>"$'\n'
-    fi
-
     cat > "${BALANCER_PLIST}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -202,23 +185,12 @@ UNIT
     <string>balancer</string>
     <string>--management-addr</string><string>${SLOPGATE_MANAGEMENT_ADDR}</string>
     <string>--reverseproxy-addr</string><string>${SLOPGATE_REVERSEPROXY_ADDR}</string>
-    <string>--overbook-factor</string><string>${SLOPGATE_OVERBOOK_FACTOR}</string>
-    <string>--agent-stale-after</string><string>${SLOPGATE_AGENT_STALE_AFTER}</string>
-    <string>--agent-evict-after</string><string>${SLOPGATE_AGENT_EVICT_AFTER}</string>
-    <string>--default-t-out</string><string>${SLOPGATE_DEFAULT_T_OUT}</string>
-    <string>--session-lru-capacity</string><string>${SLOPGATE_SESSION_LRU_CAPACITY}</string>
-    <string>--session-ttl</string><string>${SLOPGATE_SESSION_TTL}</string>
-${BALANCER_DASHBOARD_XML}  </array>
+  </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-balancer.log</string>
   <key>StandardErrorPath</key><string>${RUN_DIR}/slopgate-balancer.log</string>
 </dict>
 </plist>
 XML
-
-    AGENT_AUDIO_XML=""
-    if [[ -n "${SLOPGATE_LOCAL_AUDIO_LLAMACPP_ADDR:-}" ]]; then
-      AGENT_AUDIO_XML="    <string>--audio-llamacpp-addr</string><string>${SLOPGATE_LOCAL_AUDIO_LLAMACPP_ADDR}</string>"$'\n'
-    fi
 
     cat > "${AGENT_PLIST}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -238,7 +210,7 @@ XML
     <string>--local-llamacpp-addr</string><string>${SLOPGATE_LOCAL_LLAMACPP_ADDR}</string>
     <string>--max-context</string><string>${SLOPGATE_LOCAL_MAX_CONTEXT}</string>
     <string>--model-alias</string><string>${SLOPGATE_LOCAL_MODEL_ALIAS}</string>
-${AGENT_AUDIO_XML}    <string>--name</string><string>${SLOPGATE_LOCAL_AGENT_NAME}</string>
+    <string>--name</string><string>${SLOPGATE_LOCAL_AGENT_NAME}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent.log</string>
   <key>StandardErrorPath</key><string>${RUN_DIR}/slopgate-agent.log</string>

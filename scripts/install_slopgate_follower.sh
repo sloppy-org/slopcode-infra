@@ -45,29 +45,34 @@ set -o allexport
 source "${ENV_FILE}"
 set +o allexport
 
+canonicalize_path() {
+  python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$1"
+}
+
 resolve_slopgate_bin() {
+  local candidate=""
   if [[ -n "${SLOPGATE_BIN}" && -x "${SLOPGATE_BIN}" ]]; then
-    echo "${SLOPGATE_BIN}"
-    return
+    candidate="${SLOPGATE_BIN}"
+  elif [[ -x "${SLOPGATE_BUILD_DIR}/target/release/slopgate" ]]; then
+    candidate="${SLOPGATE_BUILD_DIR}/target/release/slopgate"
+  elif have slopgate; then
+    candidate="$(command -v slopgate)"
   fi
-  if have slopgate; then
-    command -v slopgate
-    return
-  fi
-  if [[ -x "${SLOPGATE_BUILD_DIR}/target/release/slopgate" ]]; then
-    echo "${SLOPGATE_BUILD_DIR}/target/release/slopgate"
-    return
-  fi
-  die "slopgate binary not found.
+  if [[ -z "${candidate}" ]]; then
+    die "slopgate binary not found.
 build it first:
   cd ${SLOPGATE_BUILD_DIR} && cargo build --release
 or pass SLOPGATE_BIN=/path/to/slopgate"
+  fi
+  canonicalize_path "${candidate}"
 }
 
 if [[ "${DRY_RUN}" != "true" ]]; then
   SLOPGATE_BIN="$(resolve_slopgate_bin)"
   mkdir -p "${LOCAL_BIN_DIR}"
-  ln -sf "${SLOPGATE_BIN}" "${LOCAL_BIN_DIR}/slopgate"
+  if [[ "${SLOPGATE_BIN}" != "${LOCAL_BIN_DIR}/slopgate" ]]; then
+    ln -sf "${SLOPGATE_BIN}" "${LOCAL_BIN_DIR}/slopgate"
+  fi
   EXEC_BIN="${LOCAL_BIN_DIR}/slopgate"
 else
   EXEC_BIN="${SLOPGATE_BIN:-${LOCAL_BIN_DIR}/slopgate}"
@@ -79,11 +84,6 @@ case "${PLATFORM}" in
     mkdir -p "${UNIT_DIR}" "${RUN_DIR}"
 
     AGENT_UNIT="${UNIT_DIR}/slopgate-agent.service"
-
-    AGENT_AUDIO_LINE=""
-    if [[ -n "${SLOPGATE_AUDIO_LLAMACPP_ADDR:-}" ]]; then
-      AGENT_AUDIO_LINE="  --audio-llamacpp-addr \${SLOPGATE_AUDIO_LLAMACPP_ADDR} \\"$'\n'
-    fi
 
     {
       cat <<UNIT
@@ -100,7 +100,7 @@ ExecStart=${EXEC_BIN} agent \\
   --local-llamacpp-addr \${SLOPGATE_LOCAL_LLAMACPP_ADDR} \\
   --max-context \${SLOPGATE_MAX_CONTEXT} \\
   --model-alias \${SLOPGATE_MODEL_ALIAS} \\
-${AGENT_AUDIO_LINE}  --name \${SLOPGATE_AGENT_NAME}
+  --name \${SLOPGATE_AGENT_NAME}
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:${RUN_DIR}/slopgate-agent.log
@@ -138,11 +138,6 @@ UNIT
     AGENT_LABEL=com.slopcode.slopgate-agent
     AGENT_PLIST="${AGENTS_DIR}/${AGENT_LABEL}.plist"
 
-    AGENT_AUDIO_XML=""
-    if [[ -n "${SLOPGATE_AUDIO_LLAMACPP_ADDR:-}" ]]; then
-      AGENT_AUDIO_XML="    <string>--audio-llamacpp-addr</string><string>${SLOPGATE_AUDIO_LLAMACPP_ADDR}</string>"$'\n'
-    fi
-
     cat > "${AGENT_PLIST}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -161,7 +156,7 @@ UNIT
     <string>--local-llamacpp-addr</string><string>${SLOPGATE_LOCAL_LLAMACPP_ADDR}</string>
     <string>--max-context</string><string>${SLOPGATE_MAX_CONTEXT}</string>
     <string>--model-alias</string><string>${SLOPGATE_MODEL_ALIAS}</string>
-${AGENT_AUDIO_XML}    <string>--name</string><string>${SLOPGATE_AGENT_NAME}</string>
+    <string>--name</string><string>${SLOPGATE_AGENT_NAME}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent.log</string>
   <key>StandardErrorPath</key><string>${RUN_DIR}/slopgate-agent.log</string>
