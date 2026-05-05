@@ -376,6 +376,15 @@ runtime, no offline npm cache. Pi installs through the system `npm` via
 install it (`pacman -S nodejs npm`, `brew install node`,
 `winget install OpenJS.NodeJS`) and exits.
 
+If a one-off USB install is built anyway (resurrected `build_bundle.sh` /
+`usb_format.sh` from history, or anything similar), it is opencode + the
+GGUF model only. **Pi is never part of a USB install.** Bundling Pi forces
+a Node.js LTS + offline npm cache onto the stick (~400 MB Node + ~400 MB
+npm cache per OS) for a single in-house tool that the colleagues we hand
+sticks to do not use. The USB path is "plug in, run install.bat, get
+opencode + qwen, done"; Pi stays a developer-only convenience installed
+from this repo against a system `npm`.
+
 Whisper.cpp clones into `~/code/whisper.cpp` (so the user can hack on it
 alongside the rest of `~/code`). The legacy `~/.local/whisper.cpp` install
 remains supported — `server_start_whisper.sh` and the launchd / systemd
