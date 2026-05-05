@@ -1,9 +1,9 @@
 # slopcode-infra
 
 Single-path local coding stack: **llama.cpp + Qwen3.6 35B A3B (Q4_K_M) +
-OpenCode + Pi**, plus on-demand whisper.cpp and voxtype install scripts. Every
-component lives in the user profile and runs as a user-level service. No
-root, no admin.
+OpenCode**, plus optional Pi, whisper.cpp, and voxtype install scripts.
+Every component lives in the user profile and runs as a user-level service.
+No root, no admin.
 
 License: [MIT](LICENSE)
 
@@ -17,7 +17,7 @@ License: [MIT](LICENSE)
 
 - **Model**: `bartowski/Qwen_Qwen3.6-35B-A3B-GGUF` at `Q4_K_M` (~20 GB), served as `qwen`.
 - **Runtime**: `llama-server` (upstream release, Q8_0 KV, 128 K context, `-fa on`, `--jinja`).
-- **Harnesses**: `opencode` and Pi, title generation disabled for OpenCode, local llama.cpp provider, telemetry disabled, `reasoning: true`, server-enforced thinking budget (`4096` by default).
+- **Harnesses**: `opencode` by default; optional Pi through system `npm`; title generation disabled for OpenCode, local llama.cpp provider, telemetry disabled, `reasoning: true`, server-enforced thinking budget (`4096` by default).
 
 Nothing else is downloaded automatically. Optional aliases live in
 `scripts/llamacpp_models.py` for manual prefetch only, including the FortBench
@@ -25,11 +25,10 @@ MiniMax benchmark profiles.
 
 ## Install from this repo
 
-Every script below runs as the unprivileged user and assumes a working
-`node`/`npm` (for Pi), `git`, `cmake`, `ninja`, and `curl`. There is no USB
-bundling step and no bundled Node.js — install the system package
-(`pacman -S nodejs npm`, `brew install node`, `winget install OpenJS.NodeJS`)
-once and re-use it.
+Every script below runs as the unprivileged user and assumes `git`,
+`cmake`, `ninja`, and `curl`. Pi is optional and uses the system
+`node`/`npm`; install those through the OS package manager before running
+`scripts/pi_install.sh`.
 
 ```
 scripts/setup_llamacpp.sh                     # fetch latest upstream release for this OS
@@ -38,7 +37,7 @@ scripts/server_start_llamacpp.sh              # foreground run, smoke test
 scripts/install_linux_systemd.sh              # systemd --user unit (Linux)
 scripts/install_mac_launchagents.sh           # launchd user agents (macOS)
 scripts/opencode_install.sh                   # curl|bash the opencode CLI
-scripts/pi_install.sh                         # npm install Pi Coding Agent + local config
+scripts/pi_install.sh                         # optional: npm install Pi Coding Agent + local config
 scripts/opencode_set_llamacpp.sh              # write ~/.config/opencode/opencode.json
 opencode                                      # go
 ```

@@ -17,11 +17,8 @@
 # ~/.config/environment.d/99-opencode-privacy.conf so systemd-user-spawned
 # TUIs inherit the same env.
 #
-# Windows handling lives inline in the bundle install.bat template; it
-# uses `setx` against HKCU\\Environment, no admin required.
-#
-# This script is intentionally self-contained (no _common.sh dependency)
-# so it can ship inside the USB bundles as ./opencode_privacy.sh.
+# Windows installers should write the same values via HKCU environment
+# variables because there is no shell rc file.
 set -euo pipefail
 
 MARK_BEGIN='# >>> slopcode-infra opencode privacy >>>'

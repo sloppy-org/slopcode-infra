@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # Install Pi Coding Agent cleanly through npm and configure it for llama.cpp.
 #
-# Developer-only convenience. NOT for USB-stick installs: USB sticks ship
-# opencode + the GGUF only, Pi is never bundled (would force a Node.js LTS
-# + offline npm cache onto the stick for an in-house tool the recipients
-# do not use). See CLAUDE.md > Distribution model.
+# Developer-only convenience. Pi is installed through the system npm only;
+# do not bundle Node, Pi packages, or offline npm caches.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

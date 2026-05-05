@@ -63,7 +63,7 @@ makes no outbound call beyond the configured LLM endpoint:
 and extends `disabled_providers` with `opencode`, `llmgateway`, `github-copilot`,
 `copilot` alongside the already-excluded cloud providers.
 
-All of this is idempotent: re-running `install.sh` / `install.bat` rewrites
+All of this is idempotent: re-running the install/config scripts rewrites
 in place. No admin or sudo required. Upstream still has open feature requests
 for a first-class air-gapped mode (ggml-org/opencode issues #16117 / #18492),
 so if a future release introduces a new phone-home path this list has to be
@@ -90,7 +90,7 @@ scripts/
                                 (sources ~/.config/slopgate/leader.env)
   install_slopgate_follower.sh  install slopgate agent only (sources
                                 ~/.config/slopgate/follower.env)
-  opencode_install.sh           curl|bash (online) or OPENCODE_OFFLINE_ARCHIVE (USB)
+  opencode_install.sh           curl|bash (online) or OPENCODE_OFFLINE_ARCHIVE
   opencode_set_llamacpp.sh      write ~/.config/opencode/opencode.json. SLOPGATE_LEADER
                                 points baseURL at the proxy + emits
                                 X-Slopgate-Session header for sticky routing.
@@ -360,30 +360,20 @@ the bundled llama.cpp web UI on a network-reachable interface (always
 launch with `--no-webui`), the slopgate balancer's `--slots-endpoint-
 enable` flag (it leaks per-slot prompt content), TCP/HTTP MCP daemons for
 helpy or sloptools (they're stdio-only on purpose so no co-tenant can
-reach them), USB-stick bundles or any flavor of bundled-Node /
-offline-npm-cache distribution (assume system `npm` and a checkout of
-this repo on every target — see `scripts/pi_install.sh`), or anything
+reach them), bundled Node/Pi/offline-npm-cache distribution (assume system
+`npm` and a checkout of this repo on every target — see
+`scripts/pi_install.sh`), or anything
 that auto-downloads another model family beyond the small manual alias
 list in `scripts/llamacpp_models.py`. If one of those becomes useful
 again, add it deliberately and update this file.
 
 ## Distribution model
 
-Repo-only. Install scripts run from a checkout of this repo on the target
-machine; there is no USB-stick bundle, no exFAT formatter, no bundled Node
-runtime, no offline npm cache. Pi installs through the system `npm` via
-`scripts/pi_install.sh`; if Node is missing the script tells the user to
-install it (`pacman -S nodejs npm`, `brew install node`,
-`winget install OpenJS.NodeJS`) and exits.
-
-If a one-off USB install is built anyway (resurrected `build_bundle.sh` /
-`usb_format.sh` from history, or anything similar), it is opencode + the
-GGUF model only. **Pi is never part of a USB install.** Bundling Pi forces
-a Node.js LTS + offline npm cache onto the stick (~400 MB Node + ~400 MB
-npm cache per OS) for a single in-house tool that the colleagues we hand
-sticks to do not use. The USB path is "plug in, run install.bat, get
-opencode + qwen, done"; Pi stays a developer-only convenience installed
-from this repo against a system `npm`.
+Repo-first. Install scripts run from a checkout of this repo on the target
+machine. Pi is a developer-only convenience installed through the system
+`npm` via `scripts/pi_install.sh`; if Node is missing the script tells the
+user to install it from the OS package manager and exits. Do not add bundled
+Node, bundled Pi packages, or offline npm caches to any distribution path.
 
 Whisper.cpp clones into `~/code/whisper.cpp` (so the user can hack on it
 alongside the rest of `~/code`). The legacy `~/.local/whisper.cpp` install

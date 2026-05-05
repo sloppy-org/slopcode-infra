@@ -49,8 +49,8 @@ if [[ "${DRY_RUN}" != "true" ]]; then
     fi
   done
 
-  # Refuse to install alongside a root-owned unit of the same name or the
-  # bundle's legacy unit — removing root units is out of scope for an
+  # Refuse to install alongside a root-owned unit of the same name; removing
+  # root units is out of scope for an
   # unprivileged installer and would silently fight this one over port 8080.
   root_units="$(systemctl list-unit-files --full --no-pager 2>/dev/null \
     | awk '/^(slopcode-llamacpp|devstral-llamacpp|qwenstack-llamacpp)\.service /{print $1}')"

@@ -2,9 +2,8 @@
 # Install OpenCode CLI.
 #
 # Online default: `curl https://opencode.ai/install | bash`.
-# Offline: point OPENCODE_OFFLINE_ARCHIVE at a local opencode tarball/zip
-# previously fetched into a USB bundle; the script unpacks it into
-# ~/.opencode instead of hitting the network.
+# Offline: point OPENCODE_OFFLINE_ARCHIVE at a local opencode tarball/zip;
+# the script unpacks it into ~/.opencode instead of hitting the network.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,7 +34,7 @@ if [[ -n "${OPENCODE_OFFLINE_ARCHIVE:-}" ]]; then
 else
   case "${PLATFORM}" in
     mac|linux|wsl) curl -fsSL https://opencode.ai/install | bash ;;
-    windows) die "use the .bat installer inside the Windows bundle on this platform" ;;
+    windows) die "use the Windows opencode release archive on this platform" ;;
     *) die "unsupported platform: ${PLATFORM}" ;;
   esac
 fi
