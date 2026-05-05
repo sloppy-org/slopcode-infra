@@ -91,6 +91,11 @@ scripts/
   install_slopgate_follower.sh  install slopgate agent only (sources
                                 ~/.config/slopgate/follower.env)
   opencode_install.sh           curl|bash (online) or OPENCODE_OFFLINE_ARCHIVE
+  build_bundle.sh               USB bundle builder for linux-cuda, mac-m1,
+                                windows-arc. Includes llama.cpp, opencode,
+                                whisper.cpp, Qwen GGUF/mmproj, and
+                                ggml-large-v3-turbo. No Pi/Node/npm cache.
+  usb_format.sh                 exFAT USB formatter + empty bundle skeleton.
   opencode_set_llamacpp.sh      write ~/.config/opencode/opencode.json. SLOPGATE_LEADER
                                 points baseURL at the proxy + emits
                                 X-Slopgate-Session header for sticky routing.
@@ -370,11 +375,18 @@ again, add it deliberately and update this file.
 
 ## Distribution model
 
-Repo-first. Install scripts run from a checkout of this repo on the target
-machine. Pi is a developer-only convenience installed through the system
-`npm` via `scripts/pi_install.sh`; if Node is missing the script tells the
-user to install it from the OS package manager and exits. Do not add bundled
-Node, bundled Pi packages, or offline npm caches to any distribution path.
+Repo-first for our own machines; USB bundles for colleagues. The USB path is
+`scripts/build_bundle.sh all --out <mountpoint>` after formatting with
+`scripts/usb_format.sh` when needed. USB bundles include llama.cpp,
+opencode, whisper.cpp, Qwen GGUF/mmproj, and `ggml-large-v3-turbo.bin`.
+Generated services bind only localhost: llama.cpp on `127.0.0.1:8080`,
+whisper.cpp on `127.0.0.1:8427`. Opencode points only at localhost and
+sets the same privacy env/config as the repo install.
+
+Pi is a developer-only convenience installed through the system `npm` via
+`scripts/pi_install.sh`; if Node is missing the script tells the user to
+install it from the OS package manager and exits. Do not add bundled Node,
+bundled Pi packages, or offline npm caches to any distribution path.
 
 Whisper.cpp clones into `~/code/whisper.cpp` (so the user can hack on it
 alongside the rest of `~/code`). The legacy `~/.local/whisper.cpp` install

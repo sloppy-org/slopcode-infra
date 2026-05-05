@@ -66,6 +66,21 @@ the installer refuses to clobber the system unit and prints the one-time
 `sudo pacman -Rns ...` line to remove it. The new user-level unit then takes
 the same `:8427` port.
 
+## USB bundle
+
+Build a localhost-only offline bundle for colleagues:
+
+```
+scripts/build_bundle.sh all --out /mnt/usb
+```
+
+The bundle includes llama.cpp, opencode, whisper.cpp, Qwen3.6 35B A3B
+Q4_K_M, the Qwen mmproj, and `ggml-large-v3-turbo.bin`. It does not include
+Pi, Node, or an npm cache. Generated installers bind llama.cpp to
+`127.0.0.1:8080` and whisper.cpp to `127.0.0.1:8427`; opencode is configured
+only against the local llama.cpp endpoint with telemetry/share/update/model
+fetch paths disabled.
+
 ## Voxtype install (push-to-talk dictation)
 
 `peteonrails/voxtype` is the Linux-native push-to-talk dictation daemon. The
@@ -91,5 +106,5 @@ bash ci/run_tests.sh
 ```
 
 Exercises the llama.cpp launcher (dry-run), the OpenCode config generator,
-the Pi config generator, and a pure-stdlib mock-server health check. Real
-inference is out of scope for CI.
+the Pi config generator, USB script syntax/help, and a pure-stdlib
+mock-server health check. Real inference is out of scope for CI.
