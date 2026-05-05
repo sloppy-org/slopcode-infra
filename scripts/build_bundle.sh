@@ -79,17 +79,19 @@ llama_asset() {
   if [[ -n "${LLAMACPP_TAG}" ]]; then
     url="${api}/tags/${LLAMACPP_TAG}"
   else
-    url="${api}/latest"
+    url="${api}?per_page=20"
   fi
   curl "${CURL_OPTS[@]}" "${url}" | python3 -c '
 import json, re, sys
 flavor = sys.argv[1]
 data = json.load(sys.stdin)
+releases = data if isinstance(data, list) else [data]
 pat = re.compile(rf"llama-.*-bin-{re.escape(flavor)}\.(zip|tar\.gz)$")
-for asset in data["assets"]:
-    if pat.search(asset["name"]):
-        print(data["tag_name"], asset["browser_download_url"])
-        raise SystemExit(0)
+for release in releases:
+    for asset in release.get("assets", []):
+        if pat.search(asset["name"]):
+            print(release["tag_name"], asset["browser_download_url"])
+            raise SystemExit(0)
 raise SystemExit(1)
 ' "${flavor}"
 }
