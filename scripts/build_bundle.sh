@@ -153,6 +153,9 @@ copy_models() {
 write_common_unix_files() {
   local t="$1"
   install -m 755 "${SCRIPT_DIR}/opencode_privacy.sh" "${t}/opencode_privacy.sh"
+  rm -rf "${t}/meeting"
+  cp -R "${SCRIPT_DIR}/../meeting" "${t}/meeting"
+  chmod +x "${t}/meeting/"*.sh
 }
 
 write_linux() {
@@ -191,12 +194,18 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${HERE}/.." && pwd)"
 DEST="${HOME}/.local/slopcode"
-mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${HOME}/.local/bin" "${HOME}/.config/systemd/user"
+mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${DEST}/meeting" "${HOME}/.local/bin" "${HOME}/.config/systemd/user"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
 cp -R "${HERE}/whisper.cpp/." "${DEST}/whisper.cpp/"
+cp -R "${HERE}/meeting/." "${DEST}/meeting/"
 cp -n "${ROOT}/models/"*.gguf "${ROOT}/models/ggml-large-v3-turbo.bin" "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
+chmod +x "${DEST}/meeting/"*.sh
+ln -sf "${DEST}/meeting/record-meeting.sh" "${HOME}/.local/bin/record-meeting"
+ln -sf "${DEST}/meeting/meeting-transcribe.sh" "${HOME}/.local/bin/meeting-transcribe"
+ln -sf "${DEST}/meeting/meeting-notes.sh" "${HOME}/.local/bin/meeting-notes"
+ln -sf "${DEST}/meeting/meeting-process.sh" "${HOME}/.local/bin/meeting-process"
 bash "${HERE}/opencode_privacy.sh"
 
 if [[ ! -x "${DEST}/whisper.cpp/build/bin/whisper-server" ]]; then
@@ -249,7 +258,7 @@ mkdir -p "${HOME}/.config/opencode"
 cat >"${HOME}/.config/opencode/opencode.json" <<JSON
 {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4","limit":{"context":262144,"output":16384},"reasoning":true,"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 JSON
-echo "installed: opencode, llama.cpp on 127.0.0.1:8080, whisper on 127.0.0.1:8427"
+echo "installed: opencode, meeting tools, llama.cpp on 127.0.0.1:8080, whisper on 127.0.0.1:8427"
 EOF
   chmod +x "${t}/install.sh"
 }
@@ -275,12 +284,18 @@ ROOT="$(cd "${HERE}/.." && pwd)"
 DEST="${HOME}/Library/Application Support/slopcode"
 LOGS="${HOME}/Library/Logs/slopcode"
 AGENTS="${HOME}/Library/LaunchAgents"
-mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${LOGS}" "${AGENTS}" "${HOME}/.local/bin"
+mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${DEST}/meeting" "${LOGS}" "${AGENTS}" "${HOME}/.local/bin"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
 cp -R "${HERE}/whisper.cpp/." "${DEST}/whisper.cpp/"
+cp -R "${HERE}/meeting/." "${DEST}/meeting/"
 cp -n "${ROOT}/models/"*.gguf "${ROOT}/models/ggml-large-v3-turbo.bin" "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
+chmod +x "${DEST}/meeting/"*.sh
+ln -sf "${DEST}/meeting/record-meeting.sh" "${HOME}/.local/bin/record-meeting"
+ln -sf "${DEST}/meeting/meeting-transcribe.sh" "${HOME}/.local/bin/meeting-transcribe"
+ln -sf "${DEST}/meeting/meeting-notes.sh" "${HOME}/.local/bin/meeting-notes"
+ln -sf "${DEST}/meeting/meeting-process.sh" "${HOME}/.local/bin/meeting-process"
 bash "${HERE}/opencode_privacy.sh"
 
 if [[ ! -x "${DEST}/whisper.cpp/build/bin/whisper-server" ]]; then
@@ -326,7 +341,7 @@ mkdir -p "${HOME}/.config/opencode"
 cat >"${HOME}/.config/opencode/opencode.json" <<JSON
 {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4","limit":{"context":131072,"output":16384},"reasoning":true,"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 JSON
-echo "installed: opencode, llama.cpp on 127.0.0.1:8080, whisper on 127.0.0.1:8427"
+echo "installed: opencode, meeting tools, llama.cpp on 127.0.0.1:8080, whisper on 127.0.0.1:8427"
 EOF
   chmod +x "${t}/install.sh"
 }
@@ -344,6 +359,8 @@ write_windows() {
   read -r wh_tag wh_url <<<"$(github_asset ggml-org/whisper.cpp "${WHISPER_TAG}" whisper-bin-x64.zip)"
   echo "windows whisper.cpp ${wh_tag}"
   fetch_archive "${wh_url}" "${t}/whisper.cpp" whisper-server.exe
+  rm -rf "${t}/meeting"
+  cp -R "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
   cat >"${t}/install.bat" <<'EOF'
 @echo off
@@ -351,10 +368,11 @@ setlocal EnableDelayedExpansion
 set "HERE=%~dp0"
 for %%I in ("%HERE%\..") do set "ROOT=%%~fI"
 set "DEST=%USERPROFILE%\slopcode"
-mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\whisper.cpp" 2>nul
+mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\whisper.cpp" "%DEST%\meeting" "%DEST%\bin" 2>nul
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
 xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
 xcopy /E /I /Y "%HERE%\whisper.cpp" "%DEST%\whisper.cpp" >nul
+xcopy /E /I /Y "%HERE%\meeting" "%DEST%\meeting" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
 copy /Y "%ROOT%\models\ggml-large-v3-turbo.bin" "%DEST%\models\" >nul
 setx OPENCODE_DISABLE_AUTOUPDATE 1 >nul
@@ -375,11 +393,19 @@ set "WMODEL=%DEST%\models\ggml-large-v3-turbo.bin"
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper.bat" echo start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
-powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); $add='%DEST%\opencode'; if (($p -split ';') -notcontains $add) {[Environment]::SetEnvironmentVariable('Path', ($add+';'+$p), 'User')}"
+>"%DEST%\bin\record-meeting.cmd" echo @echo off
+>>"%DEST%\bin\record-meeting.cmd" echo start "" "%DEST%\meeting\record-meeting.html"
+>"%DEST%\bin\meeting-transcribe.cmd" echo @echo off
+>>"%DEST%\bin\meeting-transcribe.cmd" echo powershell -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-transcribe.ps1" %%*
+>"%DEST%\bin\meeting-notes.cmd" echo @echo off
+>>"%DEST%\bin\meeting-notes.cmd" echo powershell -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-notes.ps1" %%*
+>"%DEST%\bin\meeting-process.cmd" echo @echo off
+>>"%DEST%\bin\meeting-process.cmd" echo powershell -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-process.ps1" %%*
+powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); $adds=@('%DEST%\opencode','%DEST%\bin'); [array]::Reverse($adds); foreach($add in $adds){ if (($p -split ';') -notcontains $add) { $p=$add+';'+$p } }; [Environment]::SetEnvironmentVariable('Path', $p, 'User')"
 start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
-echo Installed localhost-only llama.cpp 8080 and whisper 8427.
-echo Open a new terminal before running opencode.
+echo Installed localhost-only llama.cpp 8080, whisper 8427, opencode, and meeting tools.
+echo Open a new terminal before running opencode or meeting-process.
 EOF
 }
 
@@ -403,6 +429,12 @@ Install:
 Runtime endpoints are localhost-only:
   llama.cpp:  http://127.0.0.1:8080/v1
   whisper:    http://127.0.0.1:8427/v1/audio/transcriptions
+
+Meeting commands installed to PATH:
+  record-meeting      browser microphone WAV recorder
+  meeting-transcribe  local whisper.cpp transcription
+  meeting-notes       local opencode note generation
+  meeting-process     transcribe, then write notes
 
 No Pi, no bundled Node, no npm cache.
 EOF

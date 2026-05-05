@@ -33,6 +33,41 @@ else
   FAILED=1
 fi
 
+echo "---- Meeting Scripts ----"
+if bash -n "${SCRIPT_DIR}/../meeting/record-meeting.sh" \
+   && bash -n "${SCRIPT_DIR}/../meeting/meeting-transcribe.sh" \
+   && bash -n "${SCRIPT_DIR}/../meeting/meeting-notes.sh" \
+   && bash -n "${SCRIPT_DIR}/../meeting/meeting-process.sh" \
+   && "${SCRIPT_DIR}/../meeting/meeting-transcribe.sh" --help >/dev/null \
+   && "${SCRIPT_DIR}/../meeting/meeting-notes.sh" --help >/dev/null; then
+  echo
+else
+  echo "FAILED: Meeting Scripts"
+  FAILED=1
+fi
+
+if command -v pwsh >/dev/null 2>&1; then
+  echo "---- Meeting PowerShell ----"
+  if MEETING_DIR="${SCRIPT_DIR}/../meeting" pwsh -NoProfile -Command '
+      $failed=0
+      foreach ($f in Get-ChildItem $env:MEETING_DIR -Filter *.ps1) {
+        $tokens=$null
+        $errs=$null
+        [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errs) > $null
+        if ($errs.Count) {
+          $failed=1
+          Write-Error "$($f.Name): $($errs | Out-String)"
+        }
+      }
+      exit $failed
+    '; then
+    echo
+  else
+    echo "FAILED: Meeting PowerShell"
+    FAILED=1
+  fi
+fi
+
 echo "========================================"
 if [[ "${FAILED}" -eq 0 ]]; then
   echo "All tests passed"

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting Recorder</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: Canvas;
+    color: CanvasText;
+  }
+  main {
+    width: min(42rem, calc(100vw - 2rem));
+  }
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 650;
+    margin: 0 0 1rem;
+  }
+  .panel {
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .controls {
+    display: flex;
+    gap: .75rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  button, a.download {
+    appearance: none;
+    border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 6px;
+    padding: .65rem .9rem;
+    background: ButtonFace;
+    color: ButtonText;
+    font: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  button:disabled, a[aria-disabled="true"] {
+    opacity: .45;
+    cursor: default;
+    pointer-events: none;
+  }
+  .status {
+    margin-top: 1rem;
+    min-height: 1.5rem;
+  }
+  .meter {
+    height: .5rem;
+    margin-top: 1rem;
+    background: color-mix(in srgb, CanvasText 12%, transparent);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .level {
+    height: 100%;
+    width: 0;
+    background: #2f7d32;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Meeting Recorder</h1>
+  <section class="panel">
+    <div class="controls">
+      <button id="start" type="button">Start</button>
+      <button id="stop" type="button" disabled>Stop</button>
+      <a id="download" class="download" href="#" aria-disabled="true">Save WAV</a>
+    </div>
+    <div class="meter" aria-hidden="true"><div id="level" class="level"></div></div>
+    <div id="status" class="status">Ready.</div>
+  </section>
+</main>
+<script>
+(() => {
+  const startButton = document.getElementById("start");
+  const stopButton = document.getElementById("stop");
+  const downloadLink = document.getElementById("download");
+  const statusLine = document.getElementById("status");
+  const levelBar = document.getElementById("level");
+
+  let audioContext = null;
+  let stream = null;
+  let source = null;
+  let processor = null;
+  let chunks = [];
+  let startedAt = null;
+  let animation = null;
+  let lastLevel = 0;
+
+  function timestamp() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  }
+
+  function encodeWav(buffers, sampleRate) {
+    const length = buffers.reduce((sum, b) => sum + b.length, 0);
+    const pcm = new Float32Array(length);
+    let offset = 0;
+    for (const b of buffers) {
+      pcm.set(b, offset);
+      offset += b.length;
+    }
+    const dataBytes = pcm.length * 2;
+    const buffer = new ArrayBuffer(44 + dataBytes);
+    const view = new DataView(buffer);
+    const writeString = (pos, s) => {
+      for (let i = 0; i < s.length; i++) view.setUint8(pos + i, s.charCodeAt(i));
+    };
+    writeString(0, "RIFF");
+    view.setUint32(4, 36 + dataBytes, true);
+    writeString(8, "WAVE");
+    writeString(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, "data");
+    view.setUint32(40, dataBytes, true);
+    let pos = 44;
+    for (let i = 0; i < pcm.length; i++) {
+      const s = Math.max(-1, Math.min(1, pcm[i]));
+      view.setInt16(pos, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      pos += 2;
+    }
+    return new Blob([view], { type: "audio/wav" });
+  }
+
+  function updateMeter() {
+    levelBar.style.width = `${Math.min(100, Math.round(lastLevel * 140))}%`;
+    if (startedAt) {
+      const seconds = Math.floor((Date.now() - startedAt) / 1000);
+      statusLine.textContent = `Recording ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+      animation = requestAnimationFrame(updateMeter);
+    }
+  }
+
+  async function startRecording() {
+    downloadLink.href = "#";
+    downloadLink.setAttribute("aria-disabled", "true");
+    chunks = [];
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
+    audioContext = new AudioContext();
+    source = audioContext.createMediaStreamSource(stream);
+    processor = audioContext.createScriptProcessor(4096, 1, 1);
+    processor.onaudioprocess = event => {
+      const input = event.inputBuffer.getChannelData(0);
+      const copy = new Float32Array(input.length);
+      let sum = 0;
+      for (let i = 0; i < input.length; i++) {
+        copy[i] = input[i];
+        sum += input[i] * input[i];
+      }
+      lastLevel = Math.sqrt(sum / input.length);
+      chunks.push(copy);
+    };
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+    startedAt = Date.now();
+    startButton.disabled = true;
+    stopButton.disabled = false;
+    updateMeter();
+  }
+
+  async function stopRecording() {
+    stopButton.disabled = true;
+    startedAt = null;
+    if (animation) cancelAnimationFrame(animation);
+    if (processor) processor.disconnect();
+    if (source) source.disconnect();
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    const sampleRate = audioContext.sampleRate;
+    if (audioContext) await audioContext.close();
+    const blob = encodeWav(chunks, sampleRate);
+    const url = URL.createObjectURL(blob);
+    downloadLink.href = url;
+    downloadLink.download = `meeting-${timestamp()}.wav`;
+    downloadLink.removeAttribute("aria-disabled");
+    statusLine.textContent = `Ready to save ${downloadLink.download}`;
+    startButton.disabled = false;
+    levelBar.style.width = "0";
+  }
+
+  startButton.addEventListener("click", () => startRecording().catch(err => {
+    statusLine.textContent = err.message || String(err);
+    startButton.disabled = false;
+    stopButton.disabled = true;
+  }));
+  stopButton.addEventListener("click", () => stopRecording().catch(err => {
+    statusLine.textContent = err.message || String(err);
+  }));
+})();
+</script>
+</body>
+</html>
