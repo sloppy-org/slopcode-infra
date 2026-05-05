@@ -8,7 +8,7 @@ source "${SCRIPT_DIR}/meeting-common.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  meeting-transcribe [options] <audio.wav|audio.m4a>
+  meeting-transcribe [options] <audio.wav>
 
 Options:
   --output-root PATH   Meeting archive root. Default: Nextcloud meetings if present, else ~/Meetings
@@ -20,8 +20,7 @@ Options:
   --force              Overwrite transcript artifacts in the output folder
   --help               Show this help
 
-WAV is dependency-free. M4A is submitted as-is and only works when the local
-whisper-server has audio conversion support available.
+PCM WAV is dependency-free and is chunked before transcription.
 EOF
 }
 
@@ -57,8 +56,7 @@ meeting_require python3
 
 case "${audio,,}" in
   *.wav) mime="audio/wav" ;;
-  *.m4a) mime="audio/mp4" ;;
-  *) meeting_die "unsupported audio type. Use WAV, or M4A when whisper-server conversion is available." ;;
+  *) meeting_die "unsupported audio type. Use PCM WAV." ;;
 esac
 
 base_url="${base_url%/}"
@@ -107,9 +105,8 @@ transcribe_chunk() {
   return 1
 }
 
-if [[ "${mime}" == "audio/wav" ]]; then
-  manifest="${tmp_dir}/chunks.tsv"
-  python3 - "${audio}" "${tmp_dir}/chunks" "${chunk_seconds}" >"${manifest}" <<'PY'
+manifest="${tmp_dir}/chunks.tsv"
+python3 - "${audio}" "${tmp_dir}/chunks" "${chunk_seconds}" >"${manifest}" <<'PY'
 import math
 import pathlib
 import sys
@@ -140,22 +137,22 @@ with wave.open(str(src), "rb") as wav:
             out.writeframes(data)
         print(f"{chunk}\t{start / rate:.6f}\t{count / rate:.6f}\t{duration:.6f}")
 PY
-  n_chunks="$(wc -l <"${manifest}" | tr -d ' ')"
-  if [[ "${n_chunks}" -gt 1 ]]; then
-    printf 'Audio is long; splitting into %s WAV chunks of %ss\n' "${n_chunks}" "${chunk_seconds}" >&2
-  fi
-  result_dir="${tmp_dir}/results"
-  mkdir -p "${result_dir}"
-  idx=0
-  while IFS=$'\t' read -r chunk_file offset _duration _total; do
-    chunk_json="${result_dir}/chunk_$(printf '%04d' "${idx}").json"
-    printf 'Transcribing chunk %d/%d\n' "$((idx + 1))" "${n_chunks}" >&2
-    transcribe_chunk "${chunk_file}" "audio/wav" "${chunk_json}" \
-      || meeting_die "transcription failed for chunk $((idx + 1))"
-    printf '%s\t%s\n' "${chunk_json}" "${offset}" >>"${tmp_dir}/results.tsv"
-    idx=$((idx + 1))
-  done <"${manifest}"
-  python3 - "${tmp_dir}/results.tsv" "${json_out}" <<'PY'
+n_chunks="$(wc -l <"${manifest}" | tr -d ' ')"
+if [[ "${n_chunks}" -gt 1 ]]; then
+  printf 'Audio is long; splitting into %s WAV chunks of %ss\n' "${n_chunks}" "${chunk_seconds}" >&2
+fi
+result_dir="${tmp_dir}/results"
+mkdir -p "${result_dir}"
+idx=0
+while IFS=$'\t' read -r chunk_file offset _duration _total; do
+  chunk_json="${result_dir}/chunk_$(printf '%04d' "${idx}").json"
+  printf 'Transcribing chunk %d/%d\n' "$((idx + 1))" "${n_chunks}" >&2
+  transcribe_chunk "${chunk_file}" "audio/wav" "${chunk_json}" \
+    || meeting_die "transcription failed for chunk $((idx + 1))"
+  printf '%s\t%s\n' "${chunk_json}" "${offset}" >>"${tmp_dir}/results.tsv"
+  idx=$((idx + 1))
+done <"${manifest}"
+python3 - "${tmp_dir}/results.tsv" "${json_out}" <<'PY'
 import json
 import sys
 
@@ -186,10 +183,6 @@ with open(sys.argv[2], "w", encoding="utf-8") as f:
     json.dump(merged, f, ensure_ascii=False, indent=2)
     f.write("\n")
 PY
-else
-  transcribe_chunk "${audio}" "${mime}" "${json_out}" \
-    || meeting_die "transcription failed. For M4A, retry with a WAV file if ffmpeg is not installed for whisper-server."
-fi
 meeting_json_text "${json_out}" "${txt_out}"
 
 detected_language="$(meeting_json_field "${json_out}" language || true)"

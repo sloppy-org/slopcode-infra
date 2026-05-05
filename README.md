@@ -80,8 +80,7 @@ meeting-process meeting.wav                   # transcribe, then generate notes
 documents can be attached with `--context-file PATH` or `--context-dir PATH`;
 the transcript remains authoritative. PCM WAV works without extra codecs and
 is split into 5-minute chunks before transcription, matching the Nextcloud
-meeting workflow's large-recording behavior. M4A is submitted as-is and only
-works when the local whisper-server has conversion support available.
+meeting workflow's large-recording behavior.
 
 ## USB bundle
 

@@ -47,6 +47,9 @@ done
 mkdir -p "${OUT}/models"
 
 CURL_OPTS=(-fsSL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5)
+if [[ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]]; then
+  CURL_OPTS+=(-H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN:-}}")
+fi
 
 github_asset() {
   local repo="$1" tag="$2" suffix="$3"

@@ -169,10 +169,8 @@ $audioItem = Get-Item -LiteralPath $Audio
 $ext = $audioItem.Extension.ToLowerInvariant()
 if ($ext -eq ".wav") {
   $mime = "audio/wav"
-} elseif ($ext -eq ".m4a") {
-  $mime = "audio/mp4"
 } else {
-  throw "unsupported audio type. Use WAV, or M4A when whisper-server conversion is available."
+  throw "unsupported audio type. Use PCM WAV."
 }
 
 $BaseUrl = $BaseUrl.TrimEnd("/")
@@ -206,28 +204,24 @@ $partial = "$jsonOut.partial"
 $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
 try {
-  if ($mime -eq "audio/wav") {
-    $info = Get-PcmWavInfo $audioItem.FullName
-    $bytesPerChunk = [int64]([Math]::Floor(($ChunkSeconds * $info.ByteRate) / $info.BlockAlign) * $info.BlockAlign)
-    if ($bytesPerChunk -le 0) { throw "chunk seconds must be positive" }
-    $nChunks = [int][Math]::Ceiling($info.DataSize / [double]$bytesPerChunk)
-    $rows = @()
-    for ($i = 0; $i -lt $nChunks; $i++) {
-      $offset = [int64]($i * $bytesPerChunk)
-      $count = [int64][Math]::Min($bytesPerChunk, $info.DataSize - $offset)
-      $chunk = Join-Path $tmpDir ("chunk_{0:0000}.wav" -f $i)
-      $chunkJson = Join-Path $tmpDir ("chunk_{0:0000}.json" -f $i)
-      Write-WavChunk $audioItem.FullName $chunk $info $offset $count
-      [Console]::Error.WriteLine(("Transcribing chunk {0}/{1}" -f ($i + 1), $nChunks))
-      Invoke-Transcribe $chunk "audio/wav" $chunkJson
-      $rows += [pscustomobject]@{ Json = $chunkJson; Offset = [double]$offset / [double]$info.ByteRate }
-    }
-    Merge-Transcripts $rows $jsonOut
-  } else {
-    Invoke-Transcribe $audioItem.FullName $mime $jsonOut
+  $info = Get-PcmWavInfo $audioItem.FullName
+  $bytesPerChunk = [int64]([Math]::Floor(($ChunkSeconds * $info.ByteRate) / $info.BlockAlign) * $info.BlockAlign)
+  if ($bytesPerChunk -le 0) { throw "chunk seconds must be positive" }
+  $nChunks = [int][Math]::Ceiling($info.DataSize / [double]$bytesPerChunk)
+  $rows = @()
+  for ($i = 0; $i -lt $nChunks; $i++) {
+    $offset = [int64]($i * $bytesPerChunk)
+    $count = [int64][Math]::Min($bytesPerChunk, $info.DataSize - $offset)
+    $chunk = Join-Path $tmpDir ("chunk_{0:0000}.wav" -f $i)
+    $chunkJson = Join-Path $tmpDir ("chunk_{0:0000}.json" -f $i)
+    Write-WavChunk $audioItem.FullName $chunk $info $offset $count
+    [Console]::Error.WriteLine(("Transcribing chunk {0}/{1}" -f ($i + 1), $nChunks))
+    Invoke-Transcribe $chunk "audio/wav" $chunkJson
+    $rows += [pscustomobject]@{ Json = $chunkJson; Offset = [double]$offset / [double]$info.ByteRate }
   }
+  Merge-Transcripts $rows $jsonOut
 } catch {
-  throw "transcription failed. For M4A, retry with a WAV file if ffmpeg is not installed for whisper-server."
+  throw "transcription failed. Use PCM WAV."
 } finally {
   Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -LiteralPath $tmpDir
 }
