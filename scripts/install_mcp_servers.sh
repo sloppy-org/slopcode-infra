@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wire the local sloppy-org MCP servers (helpy, sloptools) into every coding
+# Wire the local sloppy-org MCP servers into every coding
 # agent installed on this box (claude, codex, opencode, qwen-code).
 #
 # Pure stdio: no listening port, no unix socket, no daemon. The agent spawns
@@ -18,6 +18,7 @@ source "${SCRIPT_DIR}/_common.sh"
 
 HELPY_BIN="${HELPY_BIN:-$(command -v helpy 2>/dev/null || echo "")}"
 SLOPTOOLS_BIN="${SLOPTOOLS_BIN:-$(command -v sloptools 2>/dev/null || echo "")}"
+SHOPPY_BIN="${SHOPPY_BIN:-$(command -v shoppy 2>/dev/null || echo "")}"
 SLOPTOOLS_DATA_DIR="${SLOPTOOLS_DATA_DIR:-${HOME}/.local/share/sloppy}"
 SLOPTOOLS_PROJECT_DIR="${SLOPTOOLS_PROJECT_DIR:-${HOME}}"
 QWEN_SETTINGS_PATH="${QWEN_SETTINGS_PATH:-${HOME}/.qwen/settings.json}"
@@ -111,6 +112,12 @@ if [[ -n "${SLOPTOOLS_BIN}" && -x "${SLOPTOOLS_BIN}" ]]; then
     "--data-dir" "${SLOPTOOLS_DATA_DIR}"
 else
   warn "sloptools binary not found on PATH; skipping sloptools MCP install"
+fi
+
+if [[ -n "${SHOPPY_BIN}" && -x "${SHOPPY_BIN}" ]]; then
+  register_all "shoppy" "${SHOPPY_BIN}" "mcp-stdio"
+else
+  warn "shoppy binary not found on PATH; skipping shoppy MCP install"
 fi
 
 echo ""
