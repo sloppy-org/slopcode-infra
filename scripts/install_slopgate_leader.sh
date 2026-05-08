@@ -101,6 +101,7 @@ Type=simple
 EnvironmentFile=${ENV_FILE}
 ExecStart=${EXEC_BIN} balancer \\
   --management-addr \${SLOPGATE_MANAGEMENT_ADDR} \\
+  --management-dashboard-enable \\
   --reverseproxy-addr \${SLOPGATE_REVERSEPROXY_ADDR}
 Restart=on-failure
 RestartSec=5
@@ -184,6 +185,7 @@ UNIT
     <string>${EXEC_BIN}</string>
     <string>balancer</string>
     <string>--management-addr</string><string>${SLOPGATE_MANAGEMENT_ADDR}</string>
+    <string>--management-dashboard-enable</string>
     <string>--reverseproxy-addr</string><string>${SLOPGATE_REVERSEPROXY_ADDR}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-balancer.log</string>

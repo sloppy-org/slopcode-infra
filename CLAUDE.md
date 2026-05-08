@@ -271,18 +271,20 @@ root (Linux + admin-shared Mac) use [`wireproxy`](https://github.com/pufferffish
 as an unprivileged userspace WG client: the static Go binary lives in
 `~/.local/bin/wireproxy`, config in `~/.config/wireproxy/slopgate.conf`,
 service via systemd-user (Linux) or `~/Library/LaunchAgents/io.slopcode.
-wireproxy.plist` (macOS). wireproxy's `[TCPServerTunnel]` accepts inbound
-WG traffic on `<wg-addr>:8080` and forwards to the local llama-server on
-loopback. wireproxy's `[TCPClientTunnel]` exposes the leader's management
-endpoint as `127.0.0.1:18085`, which the slopgate-agent's
+wireproxy.plist` (macOS). wireproxy's `[TCPServerTunnel]` blocks expose two
+local ports on the WG IP: port `8080` forwards to the local llama-server,
+and port `22` forwards to the host's sshd so other peers can reach it as
+`ssh <wg-addr>` directly over the mesh — no TUG VPN required for any
+intra-cluster ssh. wireproxy's `[TCPClientTunnel]` exposes the leader's
+management endpoint as `127.0.0.1:18085`, which the slopgate-agent's
 `SLOPGATE_LEADER_MANAGEMENT_ADDR` points at. Net effect: no llama.cpp port
 on TUG LAN at all; chat content rides ChaCha20-Poly1305-encrypted UDP
 between every node. The slopgate balancer (`:8080` proxy, `:8085`
-management) deliberately stays open on LAN/WG/loopback because it exposes
-only metadata (agent counts, slot counts, addresses) — no request bodies,
-no prompts, no chat history. The default build does not include the
-optional `web_dashboard` Cargo feature, so there is no separate dashboard
-port; the management port serves status JSON only.
+management and dashboard) deliberately stays open on LAN/WG/loopback because
+it exposes only metadata (agent counts, slot counts, addresses) — no request
+bodies, no prompts, no chat history. Leader installs always pass
+`--management-dashboard-enable`, so `http://<leader>:8085/` serves the
+dashboard and `/api/v1/agents` serves the same status data as JSON.
 
 **Web UI off.** Every llama-server invocation includes `--no-webui` to
 disable the bundled chat UI. The web UI persists conversation history in
