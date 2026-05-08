@@ -37,6 +37,10 @@ resources_for() {
     qwen36-27b:full)         echo "--cpus-per-task=32 --mem=256G --time=48:00:00" ;;
     qwen35-9b:smoke)         echo "--cpus-per-task=32 --mem=256G --time=02:00:00" ;;
     qwen35-9b:full)          echo "--cpus-per-task=32 --mem=256G --time=24:00:00" ;;
+    qwen35-4b:smoke)         echo "--cpus-per-task=16 --mem=128G --time=01:00:00" ;;
+    qwen35-4b:full)          echo "--cpus-per-task=16 --mem=128G --time=16:00:00" ;;
+    qwen35-2b:smoke)         echo "--cpus-per-task=16 --mem=128G --time=01:00:00" ;;
+    qwen35-2b:full)          echo "--cpus-per-task=16 --mem=128G --time=12:00:00" ;;
     *) echo "unknown model/mode: $1 $2" >&2; return 2 ;;
   esac
 }
