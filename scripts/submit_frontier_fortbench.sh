@@ -25,6 +25,8 @@ resources_for() {
     gemma4-31b:full)         echo "--cpus-per-task=32 --mem=256G --time=48:00:00" ;;
     gemma4-26b:smoke)        echo "--cpus-per-task=32 --mem=256G --time=04:00:00" ;;
     gemma4-26b:full)         echo "--cpus-per-task=32 --mem=256G --time=48:00:00" ;;
+    gpt-oss-120b:smoke)      echo "--cpus-per-task=32 --mem=256G --time=04:00:00" ;;
+    gpt-oss-120b:full)       echo "--cpus-per-task=32 --mem=256G --time=48:00:00" ;;
     qwen35-122b:smoke)       echo "--cpus-per-task=32 --mem=256G --time=04:00:00" ;;
     qwen35-122b:full)        echo "--cpus-per-task=32 --mem=256G --time=72:00:00" ;;
     qwen35-397b:smoke)       echo "--cpus-per-task=64 --mem=900G --time=12:00:00" ;;

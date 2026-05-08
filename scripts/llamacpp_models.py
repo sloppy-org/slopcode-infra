@@ -112,6 +112,11 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         "unsloth/Qwen3.5-397B-A17B-GGUF",
         ("UD-Q4_K_M/*.gguf", "*UD-Q4_K_M*.gguf"),
     ),
+    ModelSpec(
+        "gpt-oss-120b-q4km",
+        "bartowski/openai_gpt-oss-120b-GGUF",
+        ("*Q4_K_M*.gguf",),
+    ),
 )
 
 MODEL_SPECS: tuple[ModelSpec, ...] = (DEFAULT_SPEC, *OPTIONAL_SPECS)

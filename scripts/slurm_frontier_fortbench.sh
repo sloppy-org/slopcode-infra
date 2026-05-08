@@ -6,8 +6,8 @@ set -euo pipefail
 MODEL_KEY="${1:-}"
 MODE="${2:-smoke}"
 case "${MODEL_KEY}" in
-  minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b) ;;
-  *) echo "usage: $0 {minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b} [smoke|full]" >&2; exit 2 ;;
+  minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b) ;;
+  *) echo "usage: $0 {minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b} [smoke|full]" >&2; exit 2 ;;
 esac
 case "${MODE}" in
   smoke|full) ;;
@@ -89,6 +89,18 @@ case "${MODEL_KEY}" in
     export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4106}"
     export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-0}"
     SUITE_BASE="qwen3.5-122b-a10b-ud-q4"
+    ;;
+  gpt-oss-120b)
+    # OpenAI GPT-OSS-120B Q4_K_M (~63 GiB) — 117B total / 5.1B active MoE, fits fully on GPU
+    RUN_SLUG="gpt-oss-120b-q4km-128k"
+    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-gpt-oss-120b-q4km}"
+    export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-gpt-oss-120b}"
+    export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-gpt-oss-120b}"
+    export LLAMACPP_PORT="${LLAMACPP_PORT:-8098}"
+    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-gpt-oss-120b-cuda-sm120}"
+    export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4108}"
+    export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-0}"
+    SUITE_BASE="gpt-oss-120b"
     ;;
   qwen35-397b)
     # Qwen3.5-397B-A17B UD-Q4_K_M (~244 GiB) — exceeds GPU VRAM, MoE experts offloaded to CPU
