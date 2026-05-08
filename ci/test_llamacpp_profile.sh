@@ -26,8 +26,8 @@ PY
 test_server_start_dry_run() {
   echo "TEST: llama.cpp launcher dry-run profile"
   local home_dir="${TMPDIR}/home"
-  local model_path="${TMPDIR}/Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf"
-  local mmproj_path="${TMPDIR}/mmproj-Qwen_Qwen3.6-35B-A3B-bf16.gguf"
+  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+  local mmproj_path="${TMPDIR}/mmproj-BF16.gguf"
   mkdir -p "${home_dir}/.local/llama.cpp"
   cat > "${home_dir}/.local/llama.cpp/llama-server" <<'EOF'
 #!/usr/bin/env bash
@@ -98,7 +98,7 @@ EOF
         "${output}" == *"--port ${port}"* && \
         "${output}" == *"${np_expected}"* && \
         "${output}" == *"-ub 1024"* && \
-        "${output}" == *"Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf"* && \
+        "${output}" == *"Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"* && \
         "${moe_ok}" == "1" && \
         "${threads_ok}" == "1" ]]; then
     echo "PASS: launcher emits the blessed profile for $(uname -s) (${np_expected}, ${context_expected})"
@@ -112,7 +112,7 @@ EOF
 test_server_start_thread_override() {
   echo "TEST: launcher honors LLAMACPP_THREADS override"
   local home_dir="${TMPDIR}/home-threads"
-  local model_path="${TMPDIR}/Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf"
+  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
   local mmproj_path="${TMPDIR}/mmproj-threads.gguf"
   mkdir -p "${home_dir}/.local/llama.cpp"
   cat > "${home_dir}/.local/llama.cpp/llama-server" <<'EOF'
@@ -222,6 +222,7 @@ test_opencode_config() {
   grep -q '"permission": "allow"' "${config_path}" || common_ok=0
   grep -q '"output": 16384' "${config_path}" || common_ok=0
   grep -q '"reasoning": true' "${config_path}" || common_ok=0
+  grep -q '"interleaved": {"field": "reasoning_content"}' "${config_path}" || common_ok=0
   grep -q '"attachment": true' "${config_path}" || common_ok=0
   grep -q '"modalities": {"input": \["text", "image"\], "output": \["text"\]}' "${config_path}" || common_ok=0
   grep -q "\"thinking_budget\": ${reasoning_budget}" "${config_path}" || common_ok=0
@@ -418,7 +419,7 @@ EOF
 test_server_exec_mode() {
   echo "TEST: LLAMACPP_EXEC=true replaces the shell with llama-server"
   local home_dir="${TMPDIR}/home-exec"
-  local model_path="${TMPDIR}/Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf"
+  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
   local mmproj_path="${TMPDIR}/mmproj-exec.gguf"
   local stamp="${TMPDIR}/exec-args"
   mkdir -p "${home_dir}/.local/llama.cpp"
@@ -485,7 +486,7 @@ test_server_legacy_cpu_moe_fallback() {
     return 0
   fi
   local home_dir="${TMPDIR}/home-legacymoe"
-  local model_path="${TMPDIR}/Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf"
+  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
   local mmproj_path="${TMPDIR}/mmproj-legacymoe.gguf"
   mkdir -p "${home_dir}/.local/llama.cpp"
   cat > "${home_dir}/.local/llama.cpp/llama-server" <<'EOF'
@@ -522,7 +523,7 @@ EOF
 test_server_start_loopback_slopgate() {
   echo "TEST: launcher binds loopback when LLAMACPP_BIND_LOOPBACK=true or slopgate unit present"
   local home_dir="${TMPDIR}/home-loopback"
-  local model_path="${TMPDIR}/Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf"
+  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
   local mmproj_path="${TMPDIR}/mmproj-loopback.gguf"
   mkdir -p "${home_dir}/.local/llama.cpp"
   cat > "${home_dir}/.local/llama.cpp/llama-server" <<'EOF'

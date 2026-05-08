@@ -136,10 +136,7 @@ while : ; do
     tail -n 40 "${LOG_FILE}" >&2 || true
     die "whisper-server exited before becoming ready"
   fi
-  # whisper-server has no /v1/models route; probe the inference path with an
-  # empty POST. Anything other than connection-refused means the listener is up.
-  if curl -fsS -m 2 -X POST "http://${probe_host}:${PORT}${INFERENCE_PATH}" >/dev/null 2>&1 \
-     || curl -sS  -m 2 -X POST "http://${probe_host}:${PORT}${INFERENCE_PATH}" -o /dev/null -w '%{http_code}\n' 2>/dev/null | grep -qE '^[0-9]+$'; then
+  if curl -fsS -m 2 "http://${probe_host}:${PORT}/" >/dev/null 2>&1; then
     break
   fi
   [[ $(date +%s) -ge ${deadline} ]] && die "timed out waiting for whisper-server"

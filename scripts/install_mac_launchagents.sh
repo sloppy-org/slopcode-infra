@@ -264,6 +264,6 @@ wait_ready() {
 }
 wait_ready "${LLAMACPP_PORT_BIND}"
 if [[ "${SKIP_WHISPER:-false}" != "true" ]]; then
-  wait_ready 8427 /v1/audio/transcriptions
+  wait_ready 8427 /
 fi
 echo "deployment live"

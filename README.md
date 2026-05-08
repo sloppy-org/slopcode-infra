@@ -1,6 +1,6 @@
 # slopcode-infra
 
-Single-path local coding stack: **llama.cpp + Qwen3.6 35B A3B (Q4_K_M) +
+Single-path local coding stack: **llama.cpp + Qwen3.6 35B A3B (UD-Q4_K_M) +
 OpenCode**, whisper.cpp, meeting tools, and voxtype install scripts.
 Every component lives in the user profile and runs as a user-level service.
 No root, no admin.
@@ -15,7 +15,7 @@ License: [MIT](LICENSE)
 | Intel Arc box    | Windows | Intel Arc    | 32 GB shared   | Vulkan  | on      |
 | Apple M1         | macOS   | M1           | 32 GB unified  | Metal   | off     |
 
-- **Model**: `bartowski/Qwen_Qwen3.6-35B-A3B-GGUF` at `Q4_K_M` (~20 GB), served as `qwen`.
+- **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_M` (~22 GB), served as `qwen`.
 - **Runtime**: `llama-server` (upstream release, Q8_0 KV, 128 K context, `-fa on`, `--jinja`).
 - **Harnesses**: `opencode` by default; title generation disabled for OpenCode, local llama.cpp provider, telemetry disabled, `reasoning: true`, server-enforced thinking budget (`4096` by default).
 
@@ -91,7 +91,7 @@ scripts/build_bundle.sh all --out /mnt/usb
 ```
 
 The bundle includes llama.cpp, opencode, whisper.cpp, Qwen3.6 35B A3B
-Q4_K_M, the Qwen mmproj, and `ggml-large-v3-turbo.bin`. It does not include
+UD-Q4_K_M, the Qwen mmproj, and `ggml-large-v3-turbo.bin`. It does not include
 Pi, Node, or an npm cache. Generated installers bind llama.cpp to
 `127.0.0.1:8080` and whisper.cpp to `127.0.0.1:8427`; opencode is configured
 only against the local llama.cpp endpoint with telemetry/share/update/model

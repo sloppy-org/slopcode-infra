@@ -141,9 +141,11 @@ install_cuda_source() {
   local build="${tmpdir}/build"
   local install="${tmpdir}/install"
 
-  echo "cloning ggml-org/llama.cpp @ ${TAG}..."
-  git clone --depth 1 --branch "${TAG}" \
+  echo "cloning ggml-org/llama.cpp @ ${LLAMACPP_REF}..."
+  git clone --depth 1 --branch "${LLAMACPP_REF}" \
     https://github.com/ggml-org/llama.cpp.git "${src}" 2>&1 | tail -2
+  local head_sha
+  head_sha="$(git -C "${src}" rev-parse HEAD)"
 
   export CUDACXX="${CUDACXX:-$(command -v nvcc)}"
   echo "configuring (GGML_CUDA=ON, native arch)..."
@@ -183,7 +185,7 @@ install_cuda_source() {
   find "${libdir}" -maxdepth 1 \( -name 'lib*.so' -o -name 'lib*.so.*' \) \
     -exec cp -P {} "${LLAMACPP_HOME}/" \;
 
-  printf '%s+cuda\n' "${TAG}" > "${LLAMACPP_HOME}/VERSION"
+  printf '%s+cuda (%s)\n' "${LLAMACPP_REF}" "${head_sha:0:12}" > "${LLAMACPP_HOME}/VERSION"
 }
 
 install_mac_source() {
@@ -250,6 +252,19 @@ esac
 server="${LLAMACPP_HOME}/llama-server"
 [[ "${PLATFORM}" == "windows" ]] && server="${LLAMACPP_HOME}/llama-server.exe"
 chmod +x "${server}" 2>/dev/null || true
+
+if [[ "${PLATFORM}" != "windows" ]]; then
+  mkdir -p "${HOME}/.local/bin"
+  cat > "${HOME}/.local/bin/llama-server" <<WRAP
+#!/usr/bin/env bash
+set -euo pipefail
+root="\${LLAMACPP_HOME:-${LLAMACPP_HOME}}"
+export LD_LIBRARY_PATH="\${root}\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+export DYLD_LIBRARY_PATH="\${root}\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
+exec "\${root}/llama-server" "\$@"
+WRAP
+  chmod +x "${HOME}/.local/bin/llama-server"
+fi
 
 echo "installed llama.cpp $(cat "${LLAMACPP_HOME}/VERSION") at ${LLAMACPP_HOME}"
 if [[ -x "${server}" ]]; then

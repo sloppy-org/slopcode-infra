@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Configure Pi Coding Agent to use the local llama.cpp OpenAI-compatible API.
 #
-# Every platform serves a single Qwen3.6-35B-A3B Q4_K_M instance:
+# Every platform serves a single Qwen3.6-35B-A3B UD-Q4_K_M instance:
 #   * llamacpp -> 127.0.0.1:8080 (qwen, MoE, image input)
 set -euo pipefail
 

@@ -2,7 +2,7 @@
 """Manage the single blessed llama.cpp model for this repo.
 
 One alias, one repo, one quantization:
-    qwen3.6-35b-a3b-q4 -> bartowski/Qwen_Qwen3.6-35B-A3B-GGUF (Q4_K_M)
+    qwen3.6-35b-a3b-q4 -> unsloth/Qwen3.6-35B-A3B-GGUF (UD-Q4_K_M)
 
 Optional extra aliases live in OPTIONAL_ALIASES below. They are never
 downloaded automatically; `prefetch` only touches the default.
@@ -43,13 +43,19 @@ class ModelSpec:
 
 DEFAULT_SPEC = ModelSpec(
     alias="qwen3.6-35b-a3b-q4",
-    repo_id="bartowski/Qwen_Qwen3.6-35B-A3B-GGUF",
-    include=("*Q4_K_M*.gguf",),
-    mmproj_include=("mmproj-*f16.gguf", "mmproj-*F16.gguf"),
+    repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
+    include=("*UD-Q4_K_M*.gguf",),
+    mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     default=True,
 )
 
 OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
+    ModelSpec(
+        alias="qwen3.6-35b-a3b-bartowski-q4",
+        repo_id="bartowski/Qwen_Qwen3.6-35B-A3B-GGUF",
+        include=("*Q4_K_M*.gguf",),
+        mmproj_include=("mmproj-*f16.gguf", "mmproj-*F16.gguf"),
+    ),
     ModelSpec(
         alias="qwen3.6-27b-q4",
         repo_id="bartowski/Qwen_Qwen3.6-27B-GGUF",

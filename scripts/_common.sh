@@ -125,10 +125,9 @@ default_compute_threads() {
 }
 
 default_reasoning_budget() {
-  # llama.cpp removed the numeric --reasoning-budget cap in late 2026; only
-  # -1 (unrestricted) and 0 (disable thinking) are accepted now. Default to
-  # unrestricted; set LLAMACPP_REASONING_BUDGET=0 to disable thinking entirely.
-  echo "-1"
+  # Cap hidden reasoning so Qwen does not burn the whole turn in long agent
+  # loops. Set LLAMACPP_REASONING_BUDGET=-1 to make thinking unrestricted.
+  echo "4096"
 }
 
 resolve_llamacpp_server_bin() {

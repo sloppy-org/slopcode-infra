@@ -20,6 +20,7 @@
 #                       Pin to a tag (e.g. WHISPER_REF=v1.8.4) for reproducibility.
 #   WHISPER_MODEL       model basename (default ggml-large-v3-turbo.bin)
 #   WHISPER_MODEL_URL   override download URL
+#   WHISPER_CMAKE_EXTRA extra flags appended to cmake configure
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -86,7 +87,8 @@ esac
 
 if [[ ! -x build/bin/whisper-server ]] || [[ "${PREV_HEAD}" != "${NEW_HEAD}" ]] || [[ "${WHISPER_REBUILD:-false}" == "true" ]]; then
   echo "configuring whisper.cpp"
-  cmake "${CMAKE_ARGS[@]}"
+  # shellcheck disable=SC2086
+  cmake "${CMAKE_ARGS[@]}" ${WHISPER_CMAKE_EXTRA:-}
   echo "building whisper.cpp @ ${NEW_HEAD:0:12} ($(detect_physical_cores) cores)"
   cmake --build build --config Release -j"$(detect_physical_cores)"
   mkdir -p build

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Configure OpenCode for the local llama.cpp deployment.
 #
-# Every platform now serves a single Qwen3.6-35B-A3B Q4_K_M instance with the
+# Every platform now serves a single Qwen3.6-35B-A3B UD-Q4_K_M instance with the
 # blessed Qwen "precise coding + thinking" sampler (temp 0.6, top_p 0.95,
 # top_k 20, min_p 0, presence 0, repeat_penalty 1.0) at 256K per-slot context.
 # Linux/Windows run -c 262144 -np 1; macOS runs -c 1048576 -np 4 since the
@@ -65,6 +65,7 @@ model_block() {
           "name": "${name}",
           "limit": {"context": ${CONTEXT_SIZE}, "output": ${OUTPUT_LIMIT}},
           "reasoning": true,
+          "interleaved": {"field": "reasoning_content"},
           "attachment": true,
           "tool_call": true,
           "modalities": {"input": ["text", "image"], "output": ["text"]},

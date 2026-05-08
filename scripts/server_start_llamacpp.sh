@@ -42,7 +42,7 @@
 #   LLAMACPP_THREADS_HTTP HTTP listener threads (default: 4 on CPU-MoE hosts; Mac: unset)
 #   LLAMACPP_REASONING_BUDGET
 #                         hidden-reasoning token cap (default: 4096;
-#                         -1 restores unrestricted)
+#                         -1 restores unrestricted, 0 disables thinking)
 #   LLAMACPP_DRY_RUN      true to print the command and exit
 #   LLAMACPP_EXEC         true to exec llama-server in the foreground (for
 #                         systemd/launchd ExecStart); skips nohup, pid files,
@@ -131,7 +131,7 @@ fi
 BATCH="${LLAMACPP_BATCH:-2048}"
 # -ub sizes the GPU compute buffer. On a 16 GB RTX 5060 Ti with --n-cpu-moe 30
 # and c=262144, -ub 1024 lands at ~11.0 GB VRAM (prefill 647 t/s, decode 39.7
-# t/s on Qwen3.6-35B-A3B Q4_K_M). Going to -ub 2048 pushes compute buffer up
+# t/s on Qwen3.6-35B-A3B UD-Q4_K_M). Going to -ub 2048 pushes compute buffer up
 # ~1.5 GB for +28% prefill with no decode gain — left as an override for
 # lightly-loaded hosts.
 UBATCH="${LLAMACPP_UBATCH:-1024}"
@@ -154,7 +154,7 @@ fi
 # puts expert layers 0..34 on CPU and 35..39 on GPU. At c=262144 -ub 1024
 # llama holds ~8.7 GB VRAM; with whisper + TTS at synth peak the full stack
 # lands at ~14.6 GB / 16 GB, leaving ~1.3 GB headroom. Bench on RTX 5060 Ti
-# (Qwen3.6-35B-A3B Q4_K_M) measured 1.9x prefill and 1.12x decode vs the old
+# (Qwen3.6-35B-A3B UD-Q4_K_M) measured 1.9x prefill and 1.12x decode vs the old
 # all-CPU-moe baseline — slightly slower than the earlier --n-cpu-moe 30
 # default but leaves room for TTS to load without OOM. See commit history.
 # Mac keeps everything in unified memory; no split. Setting LLAMACPP_CPU_MOE=

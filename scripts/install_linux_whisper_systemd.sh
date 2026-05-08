@@ -138,14 +138,11 @@ fi
 
 probe_host="${WHISPER_HOST}"
 [[ "${probe_host}" == "0.0.0.0" ]] && probe_host="127.0.0.1"
-echo "waiting for ${probe_host}:${WHISPER_PORT}/v1/audio/transcriptions (timeout 120s)..."
+echo "waiting for ${probe_host}:${WHISPER_PORT}/ (timeout 120s)..."
 deadline=$(( $(date +%s) + 120 ))
 while : ; do
-  # whisper-server has no /v1/models route; an empty POST proves the
-  # listener is up. Any HTTP response (even 4xx) counts as ready.
-  code="$(curl -sS -m 2 -X POST "http://${probe_host}:${WHISPER_PORT}/v1/audio/transcriptions" -o /dev/null -w '%{http_code}' 2>/dev/null || true)"
-  if [[ -n "${code}" && "${code}" != "000" ]]; then
-    echo "service: http://${probe_host}:${WHISPER_PORT}/v1/audio/transcriptions (HTTP ${code}, listener up)"
+  if curl -fsS -m 2 "http://${probe_host}:${WHISPER_PORT}/" >/dev/null 2>&1; then
+    echo "service: http://${probe_host}:${WHISPER_PORT}/"
     break
   fi
   if [[ $(date +%s) -ge ${deadline} ]]; then

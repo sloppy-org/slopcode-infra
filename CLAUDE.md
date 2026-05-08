@@ -7,7 +7,7 @@ Guidance for Claude Code working inside this repository.
 One blessed local coding stack, nothing else:
 
 - **Runtime**: `llama-server` from the latest upstream ggml-org/llama.cpp release.
-- **Model**: `bartowski/Qwen_Qwen3.6-35B-A3B-GGUF` at `Q4_K_M` — alias
+- **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_M` — alias
   `qwen3.6-35b-a3b-q4`. The same model on every platform.
 - **Harness**: `opencode` CLI, title generation disabled, reasoning on.
 - **Optional load balancer**: `sloppy-org/slopgate` (fork of distantmagic/
@@ -156,7 +156,7 @@ Why eight slots on the Mac and not four: Qwen3.6-35B-A3B is a hybrid
 architecture (10/40 layers carry full-attention KV, the other 30 are Gated
 DeltaNet linear-attention with a constant ~250 MiB recurrent state). At
 q8_0 KV that puts each 256K slot at ~2.5 GiB of cache. Eight slots
-fit comfortably (~20 GiB KV + 21 GiB Q4_K_M weights + 2 GiB mmproj +
+fit comfortably (~20 GiB KV + 22 GiB UD-Q4_K_M weights + 2 GiB mmproj +
 ~3 GiB compute = ~46 GiB out of 256 GiB unified memory, leaving ~180 GiB
 for whisper / Qwen3-TTS / other apps). The bandwidth-saturated decode
 ceiling on M3 Ultra is around 8 concurrent streams; per-slot decode
@@ -166,7 +166,7 @@ transparent-proxy line — it does not overbook; admission is strict
 1-request-per-physical-slot, KV-headroom-filtered.
 
 On Linux/Windows partial MoE offload replaces the old blanket `--cpu-moe`.
-Benchmark on RTX 5060 Ti 16 GB with Qwen3.6-35B-A3B Q4_K_M at c=262144:
+Benchmark on RTX 5060 Ti 16 GB with Qwen3.6-35B-A3B UD-Q4_K_M at c=262144:
 
 | Config                                 | llama  | Prefill | Decode | Stack peak | Free |
 | -------------------------------------- | ------ | ------- | ------ | ---------- | ---- |
