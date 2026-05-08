@@ -72,6 +72,11 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         "bartowski/mistralai_Mistral-Medium-3.5-128B-GGUF",
         ("*Q4_K_M*.gguf",),
     ),
+    ModelSpec(
+        "mistral-medium-3.5-ud-q4",
+        "unsloth/Mistral-Medium-3.5-128B-GGUF",
+        ("UD-Q4_K_XL/*.gguf", "*UD-Q4_K_XL*.gguf"),
+    ),
 )
 
 MODEL_SPECS: tuple[ModelSpec, ...] = (DEFAULT_SPEC, *OPTIONAL_SPECS)

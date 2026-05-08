@@ -38,6 +38,8 @@
 #                         only takes effect when LLAMACPP_N_CPU_MOE is unset.
 #   LLAMACPP_UBATCH       physical batch (default 1024 on non-Mac; empty on Mac)
 #   LLAMACPP_BATCH        logical batch (default 2048)
+#   LLAMACPP_CACHE_TYPE_K KV cache quantization (default q8_0)
+#   LLAMACPP_CACHE_TYPE_V KV cache quantization (default q8_0)
 #   LLAMACPP_THREADS      compute threads (default: physical_cores - 2, min 2; Mac: unset)
 #   LLAMACPP_THREADS_HTTP HTTP listener threads (default: 4 on CPU-MoE hosts; Mac: unset)
 #   LLAMACPP_REASONING_BUDGET
@@ -136,6 +138,8 @@ BATCH="${LLAMACPP_BATCH:-2048}"
 # lightly-loaded hosts.
 UBATCH="${LLAMACPP_UBATCH:-1024}"
 NGL="${LLAMACPP_NGL:-99}"
+CACHE_TYPE_K="${LLAMACPP_CACHE_TYPE_K:-q8_0}"
+CACHE_TYPE_V="${LLAMACPP_CACHE_TYPE_V:-q8_0}"
 
 # One slot per instance on Linux/Windows by default — 16 GB GPU is the cap and
 # halving the 262144 context across two slots made opencode auto-compaction fire
@@ -252,8 +256,8 @@ CMD=(
   -ub "${UBATCH}"
   -ngl "${NGL}"
   -fa on
-  --cache-type-k q8_0
-  --cache-type-v q8_0
+  --cache-type-k "${CACHE_TYPE_K}"
+  --cache-type-v "${CACHE_TYPE_V}"
   --host "${HOST}"
   --port "${PORT}"
   --alias "${SERVED_ALIAS}"
@@ -282,7 +286,7 @@ echo "- bind:    ${HOST}:${PORT}"
 echo "- context: ${CONTEXT}"
 echo "- slots:   ${PARALLEL}"
 echo "- batch:   b=${BATCH} ub=${UBATCH}"
-echo "- KV:      q8_0 / q8_0"
+echo "- KV:      ${CACHE_TYPE_K} / ${CACHE_TYPE_V}"
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   echo "- n-cpu-moe: ${N_CPU_MOE} (first N expert layers on CPU; rest on GPU)"
 else

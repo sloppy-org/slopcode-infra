@@ -25,13 +25,13 @@
 #   LLAMACPP_BACKEND      auto | prebuilt | mac-source | cuda-source (default auto)
 #   LLAMACPP_FLAVOR       prebuilt asset override (e.g. ubuntu-vulkan-x64)
 #   LLAMACPP_CMAKE_EXTRA  extra flags appended to cmake configure (cuda-source)
+#   LLAMACPP_BUILD_JOBS   source build parallelism (default Slurm CPUs or nproc)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/_common.sh"
 
-have curl || die "curl is required"
 have python3 || die "python3 is required"
 
 PLATFORM="$(detect_platform)"
@@ -63,6 +63,7 @@ LLAMACPP_REF="${LLAMACPP_REF:-master}"
 TAG=""
 if [[ "${BACKEND}" == "prebuilt" ]]; then
   API="https://api.github.com/repos/ggml-org/llama.cpp/releases"
+  have curl || die "curl is required for prebuilt install"
   if [[ -n "${LLAMACPP_TAG:-}" ]]; then
     release_url="${API}/tags/${LLAMACPP_TAG}"
   else
@@ -163,7 +164,8 @@ install_cuda_source() {
       || { tail -40 "${tmpdir}/cmake-configure.log" >&2; die "cmake configure failed"; }
 
   echo "building (this takes a few minutes)..."
-  cmake --build "${build}" -j"$(nproc)" >"${tmpdir}/cmake-build.log" 2>&1 \
+  local build_jobs="${LLAMACPP_BUILD_JOBS:-${SLURM_CPUS_PER_TASK:-$(nproc)}}"
+  cmake --build "${build}" -j"${build_jobs}" >"${tmpdir}/cmake-build.log" 2>&1 \
     || { tail -40 "${tmpdir}/cmake-build.log" >&2; die "cmake build failed"; }
 
   echo "installing..."
@@ -184,6 +186,17 @@ install_cuda_source() {
   [[ -d "${libdir}" ]] || die "neither ${install}/lib nor ${install}/lib64 exists"
   find "${libdir}" -maxdepth 1 \( -name 'lib*.so' -o -name 'lib*.so.*' \) \
     -exec cp -P {} "${LLAMACPP_HOME}/" \;
+
+  # Some CMake installs copy versioned libraries without the SONAME symlink.
+  # Recreate those links in the flattened runtime dir so direct launches work.
+  if have readelf; then
+    local so soname
+    for so in "${LLAMACPP_HOME}"/lib*.so.*; do
+      [[ -e "${so}" ]] || continue
+      soname="$(readelf -d "${so}" 2>/dev/null | sed -n 's/.*SONAME.*\[\([^]]*\)\].*/\1/p' | head -1)"
+      [[ -n "${soname}" ]] && ln -sfn "$(basename "${so}")" "${LLAMACPP_HOME}/${soname}"
+    done
+  fi
 
   printf '%s+cuda (%s)\n' "${LLAMACPP_REF}" "${head_sha:0:12}" > "${LLAMACPP_HOME}/VERSION"
 }
@@ -259,7 +272,19 @@ if [[ "${PLATFORM}" != "windows" ]]; then
 #!/usr/bin/env bash
 set -euo pipefail
 root="\${LLAMACPP_HOME:-${LLAMACPP_HOME}}"
-export LD_LIBRARY_PATH="\${root}\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+cuda_lib=""
+if [[ -n "\${CUDA_HOME:-}" && -d "\${CUDA_HOME}/lib64" ]]; then
+  cuda_lib="\${CUDA_HOME}/lib64"
+elif [[ -d /usr/local/cuda-13.1/lib64 ]]; then
+  cuda_lib=/usr/local/cuda-13.1/lib64
+elif [[ -d /usr/local/cuda/lib64 ]]; then
+  cuda_lib=/usr/local/cuda/lib64
+fi
+if [[ -n "\${cuda_lib}" ]]; then
+  export LD_LIBRARY_PATH="\${root}:\${cuda_lib}\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+else
+  export LD_LIBRARY_PATH="\${root}\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+fi
 export DYLD_LIBRARY_PATH="\${root}\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
 exec "\${root}/llama-server" "\$@"
 WRAP
