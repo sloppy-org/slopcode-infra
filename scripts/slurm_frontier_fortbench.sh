@@ -6,8 +6,8 @@ set -euo pipefail
 MODEL_KEY="${1:-}"
 MODE="${2:-smoke}"
 case "${MODEL_KEY}" in
-  minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b) ;;
-  *) echo "usage: $0 {minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b} [smoke|full]" >&2; exit 2 ;;
+  minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b|qwen36-35b|qwen36-27b) ;;
+  *) echo "usage: $0 {minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b|qwen36-35b|qwen36-27b} [smoke|full]" >&2; exit 2 ;;
 esac
 case "${MODE}" in
   smoke|full) ;;
@@ -113,6 +113,30 @@ case "${MODEL_KEY}" in
     export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4107}"
     export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-99}"
     SUITE_BASE="qwen3.5-397b-a17b-ud-q4"
+    ;;
+  qwen36-35b)
+    # Qwen3.6-35B-A3B UD-Q4_K_M (~23 GiB) — MoE, 3B active, fits fully on GPU
+    RUN_SLUG="qwen36-35b-udq4-128k"
+    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-qwen3.6-35b-a3b-q4}"
+    export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-qwen3.6-35b-a3b}"
+    export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-qwen36-35b}"
+    export LLAMACPP_PORT="${LLAMACPP_PORT:-8099}"
+    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-qwen36-35b-cuda-sm120}"
+    export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4109}"
+    export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-0}"
+    SUITE_BASE="qwen3.6-35b-a3b-q4"
+    ;;
+  qwen36-27b)
+    # Qwen3.6-27B Q4_K_M (~16 GiB) — dense, fits fully on GPU
+    RUN_SLUG="qwen36-27b-q4-128k"
+    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-qwen3.6-27b-q4}"
+    export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-qwen3.6-27b}"
+    export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-qwen36-27b}"
+    export LLAMACPP_PORT="${LLAMACPP_PORT:-8100}"
+    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-qwen36-27b-cuda-sm120}"
+    export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4110}"
+    export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-0}"
+    SUITE_BASE="qwen3.6-27b-q4"
     ;;
 esac
 
