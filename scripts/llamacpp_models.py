@@ -102,6 +102,16 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         "unsloth/Mistral-Medium-3.5-128B-GGUF",
         ("UD-Q4_K_XL/*.gguf", "*UD-Q4_K_XL*.gguf"),
     ),
+    ModelSpec(
+        "qwen3.5-122b-a10b-ud-q4",
+        "unsloth/Qwen3.5-122B-A10B-GGUF",
+        ("UD-Q4_K_XL/*.gguf", "*UD-Q4_K_XL*.gguf"),
+    ),
+    ModelSpec(
+        "qwen3.5-397b-a17b-ud-q4",
+        "unsloth/Qwen3.5-397B-A17B-GGUF",
+        ("UD-Q4_K_M/*.gguf", "*UD-Q4_K_M*.gguf"),
+    ),
 )
 
 MODEL_SPECS: tuple[ModelSpec, ...] = (DEFAULT_SPEC, *OPTIONAL_SPECS)
