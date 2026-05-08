@@ -20,6 +20,8 @@
 #   LLAMACPP_HOME         target install dir (default ~/.local/llama.cpp)
 #   LLAMACPP_TAG          pin to a specific release tag (default: latest;
 #                         only consulted by the prebuilt backend)
+#   LLAMACPP_REPO         git repo for source builds
+#                         (default https://github.com/ggml-org/llama.cpp.git)
 #   LLAMACPP_REF          git ref for source builds (default master; can be
 #                         a tag, branch, or commit sha)
 #   LLAMACPP_BACKEND      auto | prebuilt | mac-source | cuda-source (default auto)
@@ -55,6 +57,7 @@ case "${BACKEND}" in
   *) die "unknown LLAMACPP_BACKEND: ${BACKEND}" ;;
 esac
 
+LLAMACPP_REPO="${LLAMACPP_REPO:-https://github.com/ggml-org/llama.cpp.git}"
 LLAMACPP_REF="${LLAMACPP_REF:-master}"
 
 # The release-tag resolution is only meaningful for the prebuilt backend (which
@@ -75,7 +78,10 @@ if [[ "${BACKEND}" == "prebuilt" ]]; then
   echo "tag:     ${TAG}"
 fi
 echo "backend: ${BACKEND}"
-[[ "${BACKEND}" =~ -source$ ]] && echo "ref:     ${LLAMACPP_REF}"
+if [[ "${BACKEND}" =~ -source$ ]]; then
+  echo "repo:    ${LLAMACPP_REPO}"
+  echo "ref:     ${LLAMACPP_REF}"
+fi
 
 mkdir -p "${LLAMACPP_HOME}"
 tmpdir="$(mktemp -d)"
@@ -142,9 +148,9 @@ install_cuda_source() {
   local build="${tmpdir}/build"
   local install="${tmpdir}/install"
 
-  echo "cloning ggml-org/llama.cpp @ ${LLAMACPP_REF}..."
+  echo "cloning ${LLAMACPP_REPO} @ ${LLAMACPP_REF}..."
   git clone --depth 1 --branch "${LLAMACPP_REF}" \
-    https://github.com/ggml-org/llama.cpp.git "${src}" 2>&1 | tail -2
+    "${LLAMACPP_REPO}" "${src}" 2>&1 | tail -2
   local head_sha
   head_sha="$(git -C "${src}" rev-parse HEAD)"
 
@@ -211,9 +217,9 @@ install_mac_source() {
   local build="${tmpdir}/build"
   local install="${tmpdir}/install"
 
-  echo "cloning ggml-org/llama.cpp @ ${LLAMACPP_REF}..."
+  echo "cloning ${LLAMACPP_REPO} @ ${LLAMACPP_REF}..."
   git clone --depth 1 --branch "${LLAMACPP_REF}" \
-    https://github.com/ggml-org/llama.cpp.git "${src}" 2>&1 | tail -2
+    "${LLAMACPP_REPO}" "${src}" 2>&1 | tail -2
   local head_sha
   head_sha="$(git -C "${src}" rev-parse HEAD)"
 

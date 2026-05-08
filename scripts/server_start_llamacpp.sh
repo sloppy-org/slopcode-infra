@@ -218,6 +218,38 @@ case "${MODEL_ALIAS}" in
       --temp 1.0
       --top-p 0.95
       --top-k 40
+      --no-context-shift
+    )
+    ;;
+  step-3.5-flash-*)
+    SAMPLER_ARGS+=(
+      --temp 1.0
+      --top-p 0.95
+      --top-k 20
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --no-context-shift
+    )
+    ;;
+  deepseek-v4-flash-*)
+    SAMPLER_ARGS+=(
+      --temp 1.0
+      --top-p 1.0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --no-context-shift
+    )
+    ;;
+  gemma-4-*)
+    SAMPLER_ARGS+=(
+      --temp 1.0
+      --top-p 0.95
+      --top-k 40
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --no-context-shift
     )
     ;;
   mistral-medium-3.5-*)

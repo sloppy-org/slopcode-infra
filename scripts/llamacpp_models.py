@@ -68,6 +68,31 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec("minimax-m2.5-q4", "AesSedai/MiniMax-M2.5-GGUF", ("*Q4_K_M*.gguf",)),
     ModelSpec("minimax-m2.7-q4", "bartowski/MiniMaxAI_MiniMax-M2.7-GGUF", ("*Q4_K_M*.gguf",)),
     ModelSpec(
+        "minimax-m2.7-ud-q4",
+        "unsloth/MiniMax-M2.7-GGUF",
+        ("UD-Q4_K_M/*.gguf", "*UD-Q4_K_M*.gguf"),
+    ),
+    ModelSpec(
+        "step-3.5-flash-q4ks",
+        "stepfun-ai/Step-3.5-Flash-GGUF-Q4_K_S",
+        ("step3p5_flash_Q4_K_S-*.gguf", "*Q4_K_S*.gguf"),
+    ),
+    ModelSpec(
+        "deepseek-v4-flash-fp4fp8",
+        "nsparks/DeepSeek-V4-Flash-FP4-FP8-GGUF",
+        ("DeepSeek-V4-Flash-FP4-FP8-native.gguf", "*FP4-FP8*.gguf"),
+    ),
+    ModelSpec(
+        "gemma-4-31b-it-q4",
+        "unsloth/gemma-4-31B-it-GGUF",
+        ("gemma-4-31B-it-Q4_K_M.gguf", "*Q4_K_M*.gguf"),
+    ),
+    ModelSpec(
+        "gemma-4-26b-a4b-it-ud-q4",
+        "unsloth/gemma-4-26B-A4B-it-GGUF",
+        ("gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", "*UD-Q4_K_M*.gguf"),
+    ),
+    ModelSpec(
         "mistral-medium-3.5-q4",
         "bartowski/mistralai_Mistral-Medium-3.5-128B-GGUF",
         ("*Q4_K_M*.gguf",),
