@@ -14,7 +14,9 @@ case "${MODE}" in
   *) echo "usage: $0 {minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b} [smoke|full]" >&2; exit 2 ;;
 esac
 
-INFRA_DIR="${SLOPCODE_INFRA_DIR:-${HOME}/infra/slopcode-infra}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_INFRA_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+INFRA_DIR="${SLOPCODE_INFRA_DIR:-${DEFAULT_INFRA_DIR}}"
 FORTBENCH_DIR="${FORTBENCH_DIR:-${HOME}/code/fortbench}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 JOB_ID="${SLURM_JOB_ID:-manual}"
