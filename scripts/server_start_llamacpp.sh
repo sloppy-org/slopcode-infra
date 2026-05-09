@@ -236,8 +236,14 @@ case "${MODEL_ALIAS}" in
     SAMPLER_ARGS+=(
       --temp 1.0
       --top-p 1.0
+      --min-p 0
       --presence-penalty 0.0
       --repeat-penalty 1.0
+      --reasoning-format deepseek
+      --reasoning-budget "${REASONING_BUDGET}"
+      --chat-template-kwargs '{"thinking":true}'
+      --reasoning on
+      --cache-ram 0
       --no-context-shift
     )
     ;;

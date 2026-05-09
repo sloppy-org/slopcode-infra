@@ -353,7 +353,18 @@ if [[ ! -x "${FORTBENCH_OPENCODE_BIN}" ]]; then
 fi
 "${FORTBENCH_OPENCODE_BIN}" --version | tee "${RUN_DIR}/opencode-version.txt" || true
 
+LLAMACPP_NEEDS_BUILD=false
 if [[ ! -x "${LLAMACPP_HOME}/llama-server" ]]; then
+  LLAMACPP_NEEDS_BUILD=true
+elif [[ "${MODEL_KEY}" == "deepseek-v4-flash" && "${LLAMACPP_REF}" == "wip/deepseek-v4-support" ]]; then
+  desired_llamacpp_sha="$(git ls-remote "${LLAMACPP_REPO}" "refs/heads/${LLAMACPP_REF}" 2>/dev/null | awk '{print $1}' | head -1)"
+  installed_llamacpp_version="$(cat "${LLAMACPP_HOME}/VERSION" 2>/dev/null || true)"
+  if [[ -n "${desired_llamacpp_sha}" && "${installed_llamacpp_version}" != *"${desired_llamacpp_sha:0:12}"* ]]; then
+    echo "DeepSeek llama.cpp build is stale: installed='${installed_llamacpp_version}', desired=${desired_llamacpp_sha}"
+    LLAMACPP_NEEDS_BUILD=true
+  fi
+fi
+if [[ "${LLAMACPP_NEEDS_BUILD}" == "true" ]]; then
   echo "building CUDA llama.cpp into ${LLAMACPP_HOME}"
   bash "${INFRA_DIR}/scripts/setup_llamacpp.sh" 2>&1 | tee "${RUN_DIR}/llamacpp-build.log"
 fi
