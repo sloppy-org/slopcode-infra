@@ -128,7 +128,7 @@ ExecStart=${EXEC_BIN} agent \\
   --management-addr \${SLOPGATE_MANAGEMENT_ADDR} \\
   --external-llamacpp-addr \${SLOPGATE_LOCAL_LLAMACPP_ADDR} \\
   --local-llamacpp-addr \${SLOPGATE_LOCAL_LLAMACPP_ADDR} \\
-  --llamacpp-request-timeout \${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT} \\
+  --llamacpp-request-timeout ${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT} \\
   --max-context \${SLOPGATE_LOCAL_MAX_CONTEXT} \\
   --model-alias \${SLOPGATE_LOCAL_MODEL_ALIAS} \\
   --name \${SLOPGATE_LOCAL_AGENT_NAME}
