@@ -21,6 +21,7 @@ run_test() {
 
 run_test "llama.cpp Profile" "${SCRIPT_DIR}/test_llamacpp_profile.sh"
 run_test "slopgate Profile"  "${SCRIPT_DIR}/test_slopgate_profile.sh"
+run_test "SearXNG Profile"   "${SCRIPT_DIR}/test_searxng_profile.sh"
 run_test "Mock Server Health" "${SCRIPT_DIR}/test_server_health.sh"
 run_test "Meeting Chunking" "${SCRIPT_DIR}/test_meeting_chunking.sh"
 
