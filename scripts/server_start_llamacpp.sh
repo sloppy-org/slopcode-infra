@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Start one llama-server instance. Defaults match the blessed Qwen3.6 profile:
-#   Q8_0 KV cache, flash attention, 256K per-slot context,
+#   Q8_0 KV cache, flash attention, 128K single-slot context,
 #   partial MoE offload (--n-cpu-moe 35, -ub 1024) tuned for a 16 GB CUDA
 #   GPU coexisting with whisper-server (~1 GB) + Qwen3-TTS (~4.4 GB at synth
 #   peak) on Linux/Windows; Metal (no MoE split) on Mac; reasoning enabled.
 #
 # Slot counts per platform:
-#   Linux/Windows: -np 1 -c 262144           (1 slot x 256K, 16 GB GPU cap)
-#   Mac:           -np 4 -c 1048576          (4 slots x 256K)
+#   default: -np 1 -c 131072
 #
 # Env overrides:
 #   LLAMACPP_HOME         install dir (default ~/.local/llama.cpp)
@@ -17,7 +16,7 @@
 #   LLAMACPP_MODEL_ALIAS  alias from the model registry (default: blessed)
 #   LLAMACPP_INSTANCE     name suffix for pid/port/log files (default: empty -> .run/llamacpp.*)
 #   LLAMACPP_SERVED_ALIAS --alias served in /v1/models (default: qwen)
-#   LLAMACPP_CONTEXT      total context size across slots (default 262144, full ctx for one slot)
+#   LLAMACPP_CONTEXT      total context size across slots (default 131072)
 #   LLAMACPP_PORT         listen port (default 8080; 8081 when the local
 #                         slopgate-balancer/agent unit is installed so the
 #                         proxy can take 8080)
@@ -122,11 +121,7 @@ elif slopgate_present; then
 fi
 HOST="${LLAMACPP_HOST:-${HOST_DEFAULT}}"
 PORT="${LLAMACPP_PORT:-${PORT_DEFAULT}}"
-if [[ "${PLATFORM}" == "mac" ]]; then
-  CONTEXT="${LLAMACPP_CONTEXT:-1048576}"
-else
-  CONTEXT="${LLAMACPP_CONTEXT:-262144}"
-fi
+CONTEXT="${LLAMACPP_CONTEXT:-131072}"
 BATCH="${LLAMACPP_BATCH:-2048}"
 # -ub sizes the GPU compute buffer. On a 16 GB RTX 5060 Ti with --n-cpu-moe 30
 # and c=262144, -ub 1024 lands at ~11.0 GB VRAM (prefill 647 t/s, decode 39.7
@@ -138,17 +133,9 @@ NGL="${LLAMACPP_NGL:-99}"
 CACHE_TYPE_K="${LLAMACPP_CACHE_TYPE_K:-q8_0}"
 CACHE_TYPE_V="${LLAMACPP_CACHE_TYPE_V:-q8_0}"
 
-# One slot per instance on Linux/Windows by default — 16 GB GPU is the cap and
-# halving the 262144 context across two slots made opencode auto-compaction fire
-# at ~79K conversation tokens instead of ~210K. Mac defaults to four slots
-# because unified memory has plenty of room (the previously-bundled 27B dense
-# companion is gone) and a single user often runs concurrent opencode + student
-# traffic through the slopgate proxy.
-if [[ "${PLATFORM}" == "mac" ]]; then
-  PARALLEL="${LLAMACPP_PARALLEL:-4}"
-else
-  PARALLEL="${LLAMACPP_PARALLEL:-1}"
-fi
+# The local offline profile is on-demand and single-slot. Use LLAMACPP_PARALLEL
+# and LLAMACPP_CONTEXT for multi-slot slopgate or benchmark runs.
+PARALLEL="${LLAMACPP_PARALLEL:-1}"
 
 # Partial MoE offload: on a 16 GB CUDA GPU coexisting with whisper-server
 # (~0.9 GB resident) and Qwen3-TTS (~4.4 GB at synth peak), --n-cpu-moe 35
@@ -161,7 +148,13 @@ fi
 # Mac keeps everything in unified memory; no split. Setting LLAMACPP_CPU_MOE=
 # true forces the old all-CPU-moe path (--n-cpu-moe 99) for emergencies.
 N_CPU_MOE_DEFAULT=""
-[[ "${PLATFORM}" != "mac" ]] && N_CPU_MOE_DEFAULT="35"
+if [[ "${PLATFORM}" != "mac" ]]; then
+  case "${MODEL_ALIAS}" in
+    *a3b*|*a10b*|*a12b*|*a17b*|*a22b*|*a35b*|minimax-*|nemotron-*)
+      N_CPU_MOE_DEFAULT="35"
+      ;;
+  esac
+fi
 N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-${N_CPU_MOE_DEFAULT}}"
 if [[ -z "${LLAMACPP_N_CPU_MOE:-}" && "${LLAMACPP_CPU_MOE:-false}" == "true" ]]; then
   N_CPU_MOE="99"

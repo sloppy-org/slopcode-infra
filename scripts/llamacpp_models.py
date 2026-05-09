@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Manage the single blessed llama.cpp model for this repo.
+"""Manage the blessed llama.cpp models for this repo.
 
-One alias, one repo, one quantization:
-    qwen3.6-35b-a3b-q4 -> unsloth/Qwen3.6-35B-A3B-GGUF (UD-Q4_K_M)
+Default offline model:
+    qwen3.6-27b-q4 -> bartowski/Qwen_Qwen3.6-27B-GGUF (Q4_K_M)
 
-Optional extra aliases live in OPTIONAL_ALIASES below. They are never
-downloaded automatically; `prefetch` only touches the default.
+Optional aliases live in OPTIONAL_ALIASES below. They are never downloaded
+automatically; `prefetch` only touches the default.
 """
 from __future__ import annotations
 
@@ -43,23 +43,23 @@ class ModelSpec:
         return CACHE_ROOT / self.repo_id.replace("/", "_")
 
 DEFAULT_SPEC = ModelSpec(
-    alias="qwen3.6-35b-a3b-q4",
-    repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
-    include=("*UD-Q4_K_M*.gguf",),
-    mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
+    alias="qwen3.6-27b-q4",
+    repo_id="bartowski/Qwen_Qwen3.6-27B-GGUF",
+    include=("*Q4_K_M*.gguf",),
+    mmproj_include=("mmproj-*bf16.gguf", "mmproj-*BF16.gguf", "mmproj-*f16.gguf", "mmproj-*F16.gguf"),
     default=True,
 )
 
 OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec(
-        alias="qwen3.6-35b-a3b-bartowski-q4",
-        repo_id="bartowski/Qwen_Qwen3.6-35B-A3B-GGUF",
-        include=("*Q4_K_M*.gguf",),
-        mmproj_include=("mmproj-*f16.gguf", "mmproj-*F16.gguf"),
+        alias="qwen3.6-35b-a3b-q4",
+        repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
+        include=("*UD-Q4_K_M*.gguf",),
+        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     ),
     ModelSpec(
-        alias="qwen3.6-27b-q4",
-        repo_id="bartowski/Qwen_Qwen3.6-27B-GGUF",
+        alias="qwen3.6-35b-a3b-bartowski-q4",
+        repo_id="bartowski/Qwen_Qwen3.6-35B-A3B-GGUF",
         include=("*Q4_K_M*.gguf",),
         mmproj_include=("mmproj-*f16.gguf", "mmproj-*F16.gguf"),
     ),

@@ -7,21 +7,24 @@ Guidance for Claude Code working inside this repository.
 One blessed local coding stack, nothing else:
 
 - **Runtime**: `llama-server` from the latest upstream ggml-org/llama.cpp release.
-- **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_M` — alias
-  `qwen3.6-35b-a3b-q4`. The same model on every platform.
+- **Model**: `bartowski/Qwen_Qwen3.6-27B-GGUF` at `Q4_K_M` — alias
+  `qwen3.6-27b-q4`, served as `qwen`. The 35B-A3B Q4 profile remains an
+  optional alias.
 - **Harness**: `opencode` CLI, title generation disabled, reasoning on.
 - **Optional load balancer**: `sloppy-org/slopgate` (fork of distantmagic/
   paddler v1.x) for multi-host deployments. See "Multi-host (slopgate)" below.
 
-The launcher binds `0.0.0.0:8080` by default. When a slopgate balancer or
+The launcher binds `0.0.0.0:8080` by default. The local offline Mac path uses
+`scripts/server_start_qwen27b.sh`, which forces loopback `127.0.0.1:8080` and
+starts only on demand. When a slopgate balancer or
 agent unit is locally installed, the launcher flips to `127.0.0.1:8081` so the
 proxy can take `:8080`.
 
 | OS      | Backend | Instances | Model + alias              | User service        |
 | ------- | ------- | --------- | -------------------------- | ------------------- |
-| Linux   | CUDA    | 1         | 35B-A3B `qwen` :8080       | `systemd --user`    |
-| Windows | Vulkan  | 1         | 35B-A3B `qwen` :8080       | `schtasks ONLOGON`  |
-| macOS   | Metal   | 1         | 35B-A3B `qwen` :8080       | launchd user agent  |
+| Linux   | CUDA    | 1         | 27B `qwen` :8080           | `systemd --user`    |
+| Windows | Vulkan  | 1         | 27B `qwen` :8080           | `schtasks ONLOGON`  |
+| macOS   | Metal   | on demand | 27B `qwen` :8080           | none by default     |
 
 No root or admin is required anywhere. The only automatic downloads are the
 single GGUF and the llama-server binary.
@@ -82,6 +85,8 @@ scripts/
                                 Flips to 127.0.0.1:8081 when slopgate is locally
                                 installed; LLAMACPP_BIND_LOOPBACK=true forces it
                                 without slopgate detection (followers).
+  server_start_qwen27b.sh       on-demand local offline profile: Qwen3.6 27B
+                                Q4_K_M, Q8 KV, 128K context, loopback :8080.
   server_stop_llamacpp.sh
   install_linux_systemd.sh      write & enable ~/.config/systemd/user/slopcode-
                                 llamacpp.service; enable-linger for boot autostart
@@ -142,23 +147,9 @@ Every instance launched through `server_start_llamacpp.sh` always passes:
 --reasoning on
 ```
 
-`-np`, `-ub`, and MoE placement are caller/platform-dependent. Linux/Windows
-default to `-np 1 -ub 1024 --n-cpu-moe 35 -c 262144` (partial MoE offload,
-5/40 routed-expert layers on GPU, small compute buffer to coexist with
-whisper-server and Qwen3-TTS). Mac defaults to `-np 4 -ub 1024 -c 1048576`
-(four slots × 256K each, no MoE split — Metal handles experts in unified
-memory).
-Per-slot context lands at the model's native `n_ctx_train` (262144) on every
-platform, so no YaRN scaling is involved.
-
-Why four slots on the Mac: Qwen3.6-35B-A3B is a hybrid
-architecture (10/40 layers carry full-attention KV, the other 30 are Gated
-DeltaNet linear-attention with a constant ~250 MiB recurrent state). At
-q8_0 KV that puts each 256K slot at ~2.5 GiB of cache. Four slots leave
-room for the local 27B dense companion, whisper / Qwen3-TTS, and other apps
-while keeping every slot at the full native 256K context. Slopgate is the
-v1.2.1 transparent-proxy line — it does not overbook; admission is strict
-1-request-per-physical-slot, KV-headroom-filtered.
+The local offline default is single-slot 128K: `-np 1 -ub 1024 -c 131072`.
+Qwen3.6 27B is dense, so no MoE split is emitted. Linux/Windows add
+`--n-cpu-moe 35` only for MoE aliases such as 35B-A3B.
 
 On Linux/Windows partial MoE offload replaces the old blanket `--cpu-moe`.
 Benchmark on RTX 5060 Ti 16 GB with Qwen3.6-35B-A3B UD-Q4_K_M at c=262144:
@@ -195,18 +186,11 @@ Default deployment per platform:
 
 | Host            | Instances        | `--alias` | `-np` | `-c`     | Per-slot ctx |
 | --------------- | ---------------- | --------- | ----- | -------- | ------------ |
-| Linux / Windows | 35B-A3B on :8080 | `qwen`    | 1     | 262144   | 262144       |
-| macOS           | 35B-A3B on :8080 | `qwen`    | 4     | 1048576  | 262144       |
+| Linux / Windows | 27B on :8080 | `qwen` | 1 | 131072 | 131072 |
+| macOS           | 27B on :8080 | `qwen` | 1 | 131072 | 131072 |
 
-Every slot on every platform gets 256K — exactly the model's native
-`n_ctx_train`. Linux/Windows run one slot because a single local user rarely
-needs two concurrent decode streams and halving the window made opencode
-auto-compaction fire at ~79K conversation tokens instead of ~210K. With
-`-np 1` compaction still blocks the only slot for the duration of the summary
-call, but the user gets ~2.6× more working context before that happens and
-the session always recovers. macOS runs four slots so combined opencode +
-student traffic still benefits from concurrent decode streams without
-silently shrinking each slot below 256K.
+The 35B-A3B profiles remain in `scripts/llamacpp_models.py` for manual
+prefetch and explicit runs. They are not the default opencode path.
 
 Override per invocation with `LLAMACPP_PARALLEL` and `LLAMACPP_CONTEXT`.
 

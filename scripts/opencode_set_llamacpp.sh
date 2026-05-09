@@ -24,7 +24,7 @@ else
   HOST="${LLAMACPP_HOST:-127.0.0.1}"
   BASE_URL="http://${HOST}:8080/v1"
 fi
-CONTEXT_SIZE_DEFAULT=262144
+CONTEXT_SIZE_DEFAULT=131072
 CONTEXT_SIZE="${OPENCODE_LOCAL_CONTEXT:-${CONTEXT_SIZE_DEFAULT}}"
 OUTPUT_LIMIT="${OPENCODE_LOCAL_OUTPUT:-16384}"
 THINKING_BUDGET="${OPENCODE_LOCAL_THINKING_BUDGET:-$(default_reasoning_budget)}"
@@ -32,6 +32,11 @@ THINKING_BUDGET="${OPENCODE_LOCAL_THINKING_BUDGET:-$(default_reasoning_budget)}"
 CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/opencode"
 CONFIG_PATH="${OPENCODE_CONFIG_PATH:-${CONFIG_DIR}/opencode.json}"
 mkdir -p "$(dirname "${CONFIG_PATH}")"
+EXISTING_CONFIG=""
+if [[ -f "${CONFIG_PATH}" ]]; then
+  EXISTING_CONFIG="$(mktemp)"
+  cp "${CONFIG_PATH}" "${EXISTING_CONFIG}"
+fi
 
 BACKUP_PATH="${CONFIG_PATH}.slopcode-infra.bak"
 if [[ -f "${CONFIG_PATH}" && ! -f "${BACKUP_PATH}" ]]; then
@@ -94,14 +99,14 @@ providers_block() {
   sid="$(session_id)"
   cat <<EOF
   "provider": {
-$(provider_block "llamacpp" "llama.cpp 27B (Local)" "qwen27b" "Qwen3.6 27B Dense Q4 + KV-Q8 (Local)" "qwen27b" "${sid}"),
-$(provider_block "llamacpp-moe" "llama.cpp 35B-A3B (Local)" "qwen" "Qwen3.6 35B A3B Q4 + KV-Q8 (Local)" "qwen" "${sid}")
+$(provider_block "llamacpp" "llama.cpp 27B (Local)" "qwen" "Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Local)" "qwen" "${sid}"),
+$(provider_block "llamacpp-35b" "llama.cpp 35B-A3B (Local)" "qwen35b" "Qwen3.6 35B A3B Q4 + KV-Q8 (Local)" "qwen35b" "${sid}")
   }
 EOF
 }
 
-DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-llamacpp/qwen27b}"
-SMALL_MODEL="${OPENCODE_LOCAL_SMALL_MODEL:-llamacpp/qwen27b}"
+DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-llamacpp/qwen}"
+SMALL_MODEL="${OPENCODE_LOCAL_SMALL_MODEL:-llamacpp/qwen}"
 PROVIDER_BLOCK="$(providers_block)"
 DISABLED='"disabled_providers": ["exa", "opencode", "llmgateway", "github-copilot", "copilot", "openai", "anthropic", "google", "mistral", "groq", "xai", "ollama"]'
 
@@ -126,6 +131,29 @@ cat > "${CONFIG_PATH}" <<EOF
 ${PROVIDER_BLOCK}
 }
 EOF
+
+if [[ -n "${EXISTING_CONFIG}" ]]; then
+  python3 - "${EXISTING_CONFIG}" "${CONFIG_PATH}" <<'PY'
+import json
+import sys
+
+old_path, new_path = sys.argv[1:]
+try:
+    with open(old_path, encoding="utf-8") as f:
+        old = json.load(f)
+except Exception:
+    old = {}
+with open(new_path, encoding="utf-8") as f:
+    new = json.load(f)
+mcp = old.get("mcp")
+if isinstance(mcp, dict) and mcp:
+    new["mcp"] = mcp
+with open(new_path, "w", encoding="utf-8") as f:
+    json.dump(new, f, indent=2)
+    f.write("\n")
+PY
+  rm -f "${EXISTING_CONFIG}"
+fi
 
 if [[ "${OPENCODE_SKIP_PRIVACY_ENV:-false}" != "true" ]]; then
   bash "${SCRIPT_DIR}/opencode_privacy.sh"

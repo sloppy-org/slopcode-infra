@@ -1,6 +1,6 @@
 # slopcode-infra
 
-Single-path local coding stack: **llama.cpp + Qwen3.6 35B A3B (UD-Q4_K_M) +
+Single-path local coding stack: **llama.cpp + Qwen3.6 27B (Q4_K_M) +
 OpenCode**, whisper.cpp, meeting tools, and voxtype install scripts.
 Every component lives in the user profile and runs as a user-level service.
 No root, no admin.
@@ -15,13 +15,13 @@ License: [MIT](LICENSE)
 | Intel Arc box    | Windows | Intel Arc    | 32 GB shared   | Vulkan  | on      |
 | Apple M1         | macOS   | M1           | 32 GB unified  | Metal   | off     |
 
-- **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_M` (~22 GB), served as `qwen`.
-- **Runtime**: `llama-server` (upstream release, Q8_0 KV, 256 K context per slot, `-fa on`, `--jinja`).
+- **Model**: `bartowski/Qwen_Qwen3.6-27B-GGUF` at `Q4_K_M` (~18 GB), served as `qwen`.
+- **Runtime**: `llama-server` (upstream release, Q8_0 KV, 128 K context, `-fa on`, `--jinja`).
 - **Harnesses**: `opencode` by default; title generation disabled for OpenCode, local llama.cpp providers, telemetry disabled, `reasoning: true`, server-enforced thinking budget (`4096` by default).
 
 Nothing else is downloaded automatically. Optional aliases live in
-`scripts/llamacpp_models.py` for manual prefetch only, including the FortBench
-MiniMax benchmark profiles.
+`scripts/llamacpp_models.py` for manual prefetch only, including the 35B-A3B
+and FortBench profiles.
 
 ## Install from this repo
 
@@ -31,7 +31,7 @@ Every script below runs as the unprivileged user and assumes `git`,
 ```
 scripts/setup_llamacpp.sh                     # fetch latest upstream release for this OS
 python3 scripts/llamacpp_models.py prefetch   # download the blessed model
-scripts/server_start_llamacpp.sh              # foreground run, smoke test
+scripts/server_start_qwen27b.sh               # on-demand foreground run, smoke test
 scripts/install_linux_systemd.sh              # systemd --user unit (Linux)
 scripts/install_mac_launchagents.sh           # launchd user agents (macOS)
 scripts/opencode_install.sh                   # curl|bash the opencode CLI

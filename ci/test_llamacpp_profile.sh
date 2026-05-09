@@ -26,7 +26,7 @@ PY
 test_server_start_dry_run() {
   echo "TEST: llama.cpp launcher dry-run profile"
   local home_dir="${TMPDIR}/home"
-  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+  local model_path="${TMPDIR}/Qwen_Qwen3.6-27B-Q4_K_M.gguf"
   local mmproj_path="${TMPDIR}/mmproj-BF16.gguf"
   mkdir -p "${home_dir}/.local/llama.cpp"
   cat > "${home_dir}/.local/llama.cpp/llama-server" <<'EOF'
@@ -55,16 +55,9 @@ EOF
 
   local platform moe_ok=1
   platform="$(uname -s)"
-  if [[ "${platform}" == "Darwin" ]]; then
-    # Mac: no MoE split at all — experts live in unified memory.
-    [[ "${output}" != *"--n-cpu-moe"* ]] || moe_ok=0
-    [[ "${output}" != *"--cpu-moe"* ]] || moe_ok=0
-  else
-    # Non-Mac: partial MoE offload tuned for 16 GB CUDA + TTS/STT neighbours.
-    [[ "${output}" == *"--n-cpu-moe 35"* ]] || moe_ok=0
-    # The legacy --cpu-moe flag must not be emitted anymore.
-    [[ "${output}" != *"--cpu-moe "* ]] || moe_ok=0
-  fi
+  # Qwen3.6 27B is dense, so no MoE split is emitted by default.
+  [[ "${output}" != *"--n-cpu-moe"* ]] || moe_ok=0
+  [[ "${output}" != *"--cpu-moe"* ]] || moe_ok=0
 
   # Thread caps: only pinned on non-Mac. On Mac the flags must be absent.
   local threads_ok=1
@@ -76,14 +69,8 @@ EOF
     [[ "${output}" == *"--threads-http 4"* ]] || threads_ok=0
   fi
 
-  local context_expected np_expected
-  if [[ "${platform}" == "Darwin" ]]; then
-    context_expected="-c 1048576"
-    np_expected="-np 4"
-  else
-    context_expected="-c 262144"
-    np_expected="-np 1"
-  fi
+  local context_expected="-c 131072"
+  local np_expected="-np 1"
 
   if [[ "${output}" == *"${context_expected}"* && \
         "${output}" == *"--cache-type-k q8_0"* && \
@@ -98,7 +85,7 @@ EOF
         "${output}" == *"--port ${port}"* && \
         "${output}" == *"${np_expected}"* && \
         "${output}" == *"-ub 1024"* && \
-        "${output}" == *"Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"* && \
+        "${output}" == *"Qwen_Qwen3.6-27B-Q4_K_M.gguf"* && \
         "${moe_ok}" == "1" && \
         "${threads_ok}" == "1" ]]; then
     echo "PASS: launcher emits the blessed profile for $(uname -s) (${np_expected}, ${context_expected})"
@@ -186,11 +173,7 @@ EOF
   )"
 
   local np_expected
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    np_expected="-np 4"
-  else
-    np_expected="-np 1"
-  fi
+  np_expected="-np 1"
   if [[ "${output}" == *"--alias qwen-27b"* && \
         "${output}" == *"--port ${port}"* && \
         "${output}" == *"- instance: 27b"* && \
@@ -209,6 +192,13 @@ test_opencode_config() {
   local home_dir="${TMPDIR}/home-config"
   local config_path="${TMPDIR}/opencode.json"
   mkdir -p "${home_dir}"
+  cat > "${config_path}" <<'JSON'
+{
+  "mcp": {
+    "helpy": {"type": "local", "command": ["/bin/helpy", "mcp-stdio"], "enabled": true}
+  }
+}
+JSON
 
   HOME="${home_dir}" \
   OPENCODE_CONFIG_PATH="${config_path}" \
@@ -222,9 +212,13 @@ test_opencode_config() {
   grep -q '"permission": "allow"' "${config_path}" || common_ok=0
   grep -q '"output": 16384' "${config_path}" || common_ok=0
   grep -q '"reasoning": true' "${config_path}" || common_ok=0
-  grep -q '"interleaved": {"field": "reasoning_content"}' "${config_path}" || common_ok=0
+  grep -q '"interleaved"' "${config_path}" || common_ok=0
+  grep -q '"reasoning_content"' "${config_path}" || common_ok=0
   grep -q '"attachment": true' "${config_path}" || common_ok=0
-  grep -q '"modalities": {"input": \["text", "image"\], "output": \["text"\]}' "${config_path}" || common_ok=0
+  grep -q '"modalities"' "${config_path}" || common_ok=0
+  grep -q '"input"' "${config_path}" || common_ok=0
+  grep -q '"image"' "${config_path}" || common_ok=0
+  grep -q '"output"' "${config_path}" || common_ok=0
   grep -q "\"thinking_budget\": ${reasoning_budget}" "${config_path}" || common_ok=0
   grep -q '"temperature": 0.6' "${config_path}" || common_ok=0
   grep -q '"top_p": 0.95' "${config_path}" || common_ok=0
@@ -239,17 +233,20 @@ test_opencode_config() {
   grep -q '"opencode"' "${config_path}" || common_ok=0
   grep -q '"llmgateway"' "${config_path}" || common_ok=0
   grep -q '"github-copilot"' "${config_path}" || common_ok=0
-  grep -q '"disabled_providers": \["exa",' "${config_path}" || common_ok=0
+  grep -q '"disabled_providers"' "${config_path}" || common_ok=0
+  grep -q '"exa"' "${config_path}" || common_ok=0
+  grep -q '"mcp"' "${config_path}" || common_ok=0
+  grep -q '"/bin/helpy"' "${config_path}" || common_ok=0
 
   local platform_ok=1
-  local context_expected=262144
-  grep -q '"model": "llamacpp/qwen27b"' "${config_path}" || platform_ok=0
-  grep -q '"small_model": "llamacpp/qwen27b"' "${config_path}" || platform_ok=0
+  local context_expected=131072
+  grep -q '"model": "llamacpp/qwen"' "${config_path}" || platform_ok=0
+  grep -q '"small_model": "llamacpp/qwen"' "${config_path}" || platform_ok=0
   grep -q "\"context\": ${context_expected}" "${config_path}" || platform_ok=0
   grep -q 'http://127.0.0.1:8080/v1' "${config_path}" || platform_ok=0
-  grep -q '"x-model": "qwen27b"' "${config_path}" || platform_ok=0
   grep -q '"x-model": "qwen"' "${config_path}" || platform_ok=0
-  grep -q 'Qwen3.6 27B Dense Q4 + KV-Q8 (Local)' "${config_path}" || platform_ok=0
+  grep -q '"x-model": "qwen35b"' "${config_path}" || platform_ok=0
+  grep -q 'Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Local)' "${config_path}" || platform_ok=0
   grep -q 'Qwen3.6 35B A3B Q4 + KV-Q8 (Local)' "${config_path}" || platform_ok=0
   [[ -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || platform_ok=0
 
@@ -349,8 +346,8 @@ test_models_default_alias() {
   echo "TEST: llamacpp_models.py default alias"
   local alias
   alias="$(python3 "${REPO_ROOT}/scripts/llamacpp_models.py" default-alias)"
-  if [[ "${alias}" == "qwen3.6-35b-a3b-q4" ]]; then
-    echo "PASS: default alias is qwen3.6-35b-a3b-q4"
+  if [[ "${alias}" == "qwen3.6-27b-q4" ]]; then
+    echo "PASS: default alias is qwen3.6-27b-q4"
   else
     echo "FAIL: default alias was '${alias}'"
     return 1
@@ -454,11 +451,7 @@ EOF
     grep -qx -- '35' "${stamp}" || moe_ok=0
   fi
   local np_value ub_value
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    np_value=4
-  else
-    np_value=1
-  fi
+  np_value=1
   ub_value=1024
   if grep -qx -- '-np' "${stamp}" \
     && grep -qx -- "${np_value}" "${stamp}" \
