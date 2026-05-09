@@ -79,7 +79,7 @@ provider_block_single() {
   local headers_block=""
   if [[ -n "${SLOPGATE_LEADER}" ]]; then
     # Stable per-host opaque session id so multi-turn opencode runs land on the
-    # same backend agent (slopgate's optional X-Slopgate-Session affinity).
+    # same backend agent (slopgate's optional x-session-affinity routing).
     local session_id_file="${HOME}/.config/slopgate/opencode-session-id"
     local session_id=""
     if [[ -f "${session_id_file}" ]]; then
@@ -90,7 +90,7 @@ provider_block_single() {
       session_id="$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')"
       printf '%s\n' "${session_id}" > "${session_id_file}"
     fi
-    headers_block=", \"headers\": {\"X-Slopgate-Session\": \"${session_id}\"}"
+    headers_block=", \"headers\": {\"x-session-affinity\": \"${session_id}\"}"
   fi
   cat <<EOF
   "provider": {

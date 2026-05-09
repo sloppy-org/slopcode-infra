@@ -98,7 +98,7 @@ scripts/
   usb_format.sh                 exFAT USB formatter + empty bundle skeleton.
   opencode_set_llamacpp.sh      write ~/.config/opencode/opencode.json. SLOPGATE_LEADER
                                 points baseURL at the proxy + emits
-                                X-Slopgate-Session header for sticky routing.
+                                x-session-affinity header for sticky routing.
   install_mcp_servers.sh        wire `helpy mcp-stdio` and `sloptools mcp-server`
                                 into claude/codex/opencode/qwen as stdio MCP
                                 servers. Pure stdio: no listening port, no
@@ -231,8 +231,9 @@ heartbeat.
 
 **Routing.** Power-of-Two-Choices over the free-slot count, filtered by
 KV-cache headroom so a long-context request never lands on a slot that can't
-fit it. Optional sticky session affinity via the `X-Slopgate-Session` header
-(opencode emits this automatically when `SLOPGATE_LEADER` is configured).
+fit it. Optional sticky session affinity via the `x-session-affinity` header;
+slopgate also accepts the legacy `X-Slopgate-Session` name and opencode's
+native `x-opencode-session` header.
 
 **Configuration.** Per-host capability data and topology live in env files
 outside the repo:
@@ -251,7 +252,7 @@ units (Linux) or launchd user agents (macOS). No sudo.
 
 **opencode integration.** Set `SLOPGATE_LEADER=<wg-ip>:8080` (or just
 `<wg-ip>`) when running `scripts/opencode_set_llamacpp.sh`; baseURL becomes
-`http://<wg-ip>:8080/v1` and a stable `X-Slopgate-Session` header is added
+`http://<wg-ip>:8080/v1` and a stable `x-session-affinity` header is added
 for sticky multi-turn routing.
 
 **ARP / neighbour warmup.** The balancer runs an UpstreamProberService that

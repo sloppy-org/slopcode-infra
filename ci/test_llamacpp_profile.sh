@@ -278,7 +278,7 @@ test_opencode_config_slopgate() {
 
   local ok=1
   grep -q '"baseURL": "http://10.0.0.99:8080/v1"' "${config_path}" || ok=0
-  grep -q '"X-Slopgate-Session"' "${config_path}" || ok=0
+  grep -q '"x-session-affinity"' "${config_path}" || ok=0
   [[ -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || ok=0
 
   local explicit_path="${TMPDIR}/opencode-slopgate-explicit.json"
@@ -291,7 +291,7 @@ test_opencode_config_slopgate() {
   grep -q '"baseURL": "http://10.0.0.99:9090/v1"' "${explicit_path}" || ok=0
 
   if [[ "${ok}" == "1" ]]; then
-    echo "PASS: SLOPGATE_LEADER baseURL + X-Slopgate-Session header set"
+    echo "PASS: SLOPGATE_LEADER baseURL + x-session-affinity header set"
   else
     echo "FAIL: opencode SLOPGATE_LEADER branch did not produce expected config"
     cat "${config_path}"
