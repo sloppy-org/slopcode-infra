@@ -78,7 +78,7 @@ EOF
 
   local context_expected np_expected
   if [[ "${platform}" == "Darwin" ]]; then
-    context_expected="-c 2097152"
+    context_expected="-c 1048576"
     np_expected="-np 4"
   else
     context_expected="-c 262144"
@@ -243,17 +243,15 @@ test_opencode_config() {
 
   local platform_ok=1
   local context_expected=262144
-  if [[ "$(uname -s)" == "Darwin" ]] && [[ "$(detect_total_ram_gb)" -lt 64 ]]; then
-    context_expected=131072
-  fi
-  grep -q '"model": "llamacpp/qwen"' "${config_path}" || platform_ok=0
-  grep -q '"small_model": "llamacpp/qwen"' "${config_path}" || platform_ok=0
+  grep -q '"model": "llamacpp/qwen27b"' "${config_path}" || platform_ok=0
+  grep -q '"small_model": "llamacpp/qwen27b"' "${config_path}" || platform_ok=0
   grep -q "\"context\": ${context_expected}" "${config_path}" || platform_ok=0
   grep -q 'http://127.0.0.1:8080/v1' "${config_path}" || platform_ok=0
+  grep -q '"x-model": "qwen27b"' "${config_path}" || platform_ok=0
+  grep -q '"x-model": "qwen"' "${config_path}" || platform_ok=0
+  grep -q 'Qwen3.6 27B Dense Q4 + KV-Q8 (Local)' "${config_path}" || platform_ok=0
   grep -q 'Qwen3.6 35B A3B Q4 + KV-Q8 (Local)' "${config_path}" || platform_ok=0
-  if grep -q 'qwen-27b\|qwen-35b-a3b' "${config_path}"; then
-    platform_ok=0
-  fi
+  [[ -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || platform_ok=0
 
   if [[ "${common_ok}" == "1" && "${platform_ok}" == "1" ]]; then
     echo "PASS: OpenCode config matches the blessed profile for $(uname -s)"

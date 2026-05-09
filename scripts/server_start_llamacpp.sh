@@ -7,10 +7,7 @@
 #
 # Slot counts per platform:
 #   Linux/Windows: -np 1 -c 262144           (1 slot x 256K, 16 GB GPU cap)
-#   Mac:           -np 4 -c 2097152          (4 slots x 512K, M-series unified
-#                                             memory; lowered from 8 to leave
-#                                             GPU headroom on shared boxes
-#                                             where /slots latency matters)
+#   Mac:           -np 4 -c 1048576          (4 slots x 256K)
 #
 # Env overrides:
 #   LLAMACPP_HOME         install dir (default ~/.local/llama.cpp)
@@ -126,7 +123,7 @@ fi
 HOST="${LLAMACPP_HOST:-${HOST_DEFAULT}}"
 PORT="${LLAMACPP_PORT:-${PORT_DEFAULT}}"
 if [[ "${PLATFORM}" == "mac" ]]; then
-  CONTEXT="${LLAMACPP_CONTEXT:-2097152}"
+  CONTEXT="${LLAMACPP_CONTEXT:-1048576}"
 else
   CONTEXT="${LLAMACPP_CONTEXT:-262144}"
 fi

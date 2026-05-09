@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
-# Configure OpenCode for the local llama.cpp deployment.
-#
-# Every platform now serves a single Qwen3.6-35B-A3B UD-Q4_K_M instance with the
-# blessed Qwen "precise coding + thinking" sampler (temp 0.6, top_p 0.95,
-# top_k 20, min_p 0, presence 0, repeat_penalty 1.0) at 256K per-slot context.
-# Linux/Windows run -c 262144 -np 1; macOS runs -c 1048576 -np 4 since the
-# 27B dense companion is no longer bundled.
+# Configure OpenCode for slopgate-backed llama.cpp routing. The dense 27B
+# provider is the default coding model; the 35B-A3B MoE provider remains
+# available as llamacpp-moe/qwen. Both advertise 256K context per slot.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/_common.sh"
 
-PLATFORM="$(detect_platform)"
 # Default to talking to the local llama-server. When SLOPGATE_LEADER is set
 # (a host:port or bare host on the operator's WireGuard / LAN), point opencode
 # at the slopgate balancer there instead. The balancer fronts every node's
@@ -29,15 +24,7 @@ else
   HOST="${LLAMACPP_HOST:-127.0.0.1}"
   BASE_URL="http://${HOST}:8080/v1"
 fi
-# Per-slot context = model's native n_ctx_train (262144) on every platform.
-# Linux/Windows: -c 262144 -np 1 (16 GB GPU cap). Mac M-series with >= 64 GB:
-# -c 1048576 -np 4 (the freed 27B unified memory budget). Small Macs (< 64 GB)
-# stay at 131072 per slot to keep KV within available memory.
 CONTEXT_SIZE_DEFAULT=262144
-if [[ "${PLATFORM}" == "mac" ]]; then
-  ram_gb="$(detect_total_ram_gb)"
-  [[ "${ram_gb}" -lt 64 ]] && CONTEXT_SIZE_DEFAULT=131072
-fi
 CONTEXT_SIZE="${OPENCODE_LOCAL_CONTEXT:-${CONTEXT_SIZE_DEFAULT}}"
 OUTPUT_LIMIT="${OPENCODE_LOCAL_OUTPUT:-16384}"
 THINKING_BUDGET="${OPENCODE_LOCAL_THINKING_BUDGET:-$(default_reasoning_budget)}"
@@ -74,41 +61,48 @@ model_block() {
 EOF
 }
 
-provider_block_single() {
-  local id="$1" name="$2"
-  local headers_block=""
-  if [[ -n "${SLOPGATE_LEADER}" ]]; then
-    # Stable per-host opaque session id so multi-turn opencode runs land on the
-    # same backend agent (slopgate's optional x-session-affinity routing).
-    local session_id_file="${HOME}/.config/slopgate/opencode-session-id"
-    local session_id=""
-    if [[ -f "${session_id_file}" ]]; then
-      session_id="$(<"${session_id_file}")"
-    fi
-    if [[ -z "${session_id}" ]]; then
-      mkdir -p "$(dirname "${session_id_file}")"
-      session_id="$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')"
-      printf '%s\n' "${session_id}" > "${session_id_file}"
-    fi
-    headers_block=", \"headers\": {\"x-session-affinity\": \"${session_id}\"}"
+session_id() {
+  local session_id_file="${HOME}/.config/slopgate/opencode-session-id"
+  local id=""
+  if [[ -f "${session_id_file}" ]]; then
+    id="$(<"${session_id_file}")"
   fi
+  if [[ -z "${id}" ]]; then
+    mkdir -p "$(dirname "${session_id_file}")"
+    id="$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())')"
+    printf '%s\n' "${id}" > "${session_id_file}"
+  fi
+  printf '%s' "${id}"
+}
+
+provider_block() {
+  local provider="$1" provider_name="$2" id="$3" model_name="$4" route_model="$5" sid="$6"
   cat <<EOF
-  "provider": {
-    "llamacpp": {
+    "${provider}": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "llama.cpp (Local)",
-      "options": {"baseURL": "${BASE_URL}"${headers_block}},
+      "name": "${provider_name}",
+      "options": {"baseURL": "${BASE_URL}", "headers": {"x-session-affinity": "${sid}", "x-model": "${route_model}"}},
       "models": {
-$(model_block "${id}" "${name}")
+$(model_block "${id}" "${model_name}")
       }
     }
+EOF
+}
+
+providers_block() {
+  local sid
+  sid="$(session_id)"
+  cat <<EOF
+  "provider": {
+$(provider_block "llamacpp" "llama.cpp 27B (Local)" "qwen27b" "Qwen3.6 27B Dense Q4 + KV-Q8 (Local)" "qwen27b" "${sid}"),
+$(provider_block "llamacpp-moe" "llama.cpp 35B-A3B (Local)" "qwen" "Qwen3.6 35B A3B Q4 + KV-Q8 (Local)" "qwen" "${sid}")
   }
 EOF
 }
 
-DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-llamacpp/qwen}"
-SMALL_MODEL="${OPENCODE_LOCAL_SMALL_MODEL:-llamacpp/qwen}"
-PROVIDER_BLOCK="$(provider_block_single qwen "Qwen3.6 35B A3B Q4 + KV-Q8 (Local)")"
+DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-llamacpp/qwen27b}"
+SMALL_MODEL="${OPENCODE_LOCAL_SMALL_MODEL:-llamacpp/qwen27b}"
+PROVIDER_BLOCK="$(providers_block)"
 DISABLED='"disabled_providers": ["exa", "opencode", "llmgateway", "github-copilot", "copilot", "openai", "anthropic", "google", "mistral", "groq", "xai", "ollama"]'
 
 cat > "${CONFIG_PATH}" <<EOF

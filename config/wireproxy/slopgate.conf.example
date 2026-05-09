@@ -1,0 +1,33 @@
+# wireproxy follower config. Copy to ~/.config/wireproxy/slopgate.conf and
+# fill in the placeholder values for THIS host. The real file is git-ignored.
+#
+# wireproxy is the unprivileged userspace WG client used on follower nodes
+# that don't have root. Two TCPServerTunnels expose host services on the
+# WG IP so other peers can reach them without TUG VPN: 8080 → llama-server,
+# 22 → sshd. The TCPClientTunnel exposes the leader's slopgate management
+# endpoint on 127.0.0.1:18085 for the local slopgate-agent.
+
+[Interface]
+PrivateKey = <wireguard-private-key>
+Address = 10.77.0.<host-octet>/32
+
+[Peer]
+PublicKey = <leader-public-key>
+Endpoint = <leader-public-ip>:<leader-listen-port>
+AllowedIPs = 10.77.0.20/32
+PersistentKeepalive = 25
+
+# llama-server reachable as <wg-addr>:8080 from any other peer
+[TCPServerTunnel]
+ListenPort = 8080
+Target = 127.0.0.1:8080
+
+# sshd reachable as ssh <wg-addr> from any other peer (no TUG VPN required)
+[TCPServerTunnel]
+ListenPort = 22
+Target = 127.0.0.1:22
+
+# slopgate-agent points SLOPGATE_LEADER_MANAGEMENT_ADDR at this loopback addr
+[TCPClientTunnel]
+BindAddress = 127.0.0.1:18085
+Target = 10.77.0.20:8085

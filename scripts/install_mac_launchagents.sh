@@ -2,13 +2,15 @@
 # Install macOS launchd user agents for the slopcode llama.cpp deployment
 # plus the whisper.cpp transcription server:
 #   com.slopcode.llamacpp        -> 35B-A3B Q4 (MoE) on 0.0.0.0:8080 with
-#                                    -np 4 -c 2097152 (512K per slot)
+#                                    -np 4 -c 1048576 (256K per slot)
+#   com.slopcode.llamacpp-27b    -> optional 27B dense companion on
+#                                    127.0.0.1:8082 with -np 4 -c 1048576
 #   com.slopcode.whisper-server  -> ggml-large-v3-turbo on 0.0.0.0:8427
 #                                    OpenAI-compat at /v1/audio/transcriptions
 #
 # Each agent sets KeepAlive=true and RunAtLoad=true so the servers come up on
 # login and restart on crash. Legacy dual-instance + devstral-named labels
-# (com.slopcode.llamacpp-{27b,35b-a3b}, com.devstral.llamacpp-*,
+# (com.slopcode.llamacpp-35b-a3b, com.devstral.llamacpp-*,
 # com.qwenstack.llamacpp, com.slopcode.llamacpp-macbook) are booted out first.
 #
 # Env overrides:
@@ -18,6 +20,7 @@
 #                        build/bin/whisper-server).
 #   WHISPER_MODEL_PATH   whisper model file (default:
 #                        ~/.local/whisper.cpp/models/ggml-large-v3-turbo.bin).
+#   INSTALL_QWEN27B      auto (default), true, or false.
 #   SKIP_WHISPER         set to true to install only the llama agents.
 set -euo pipefail
 
@@ -61,6 +64,16 @@ MODEL_PATH="$(resolve_model qwen3.6-35b-a3b-q4)"
 MMPROJ_PATH="$(resolve_mmproj_optional qwen3.6-35b-a3b-q4)"
 [[ -n "${MMPROJ_PATH}" ]] || die "mmproj for qwen3.6-35b-a3b-q4 not on disk. Run: python3 ${MODELS_SCRIPT} prefetch qwen3.6-35b-a3b-q4"
 
+INSTALL_QWEN27B="${INSTALL_QWEN27B:-auto}"
+MODEL_27B_PATH="$(python3 "${MODELS_SCRIPT}" resolve qwen3.6-27b-q4 2>/dev/null || true)"
+MMPROJ_27B_PATH="$(resolve_mmproj_optional qwen3.6-27b-q4)"
+if [[ "${INSTALL_QWEN27B}" == "true" && ( -z "${MODEL_27B_PATH}" || ! -f "${MODEL_27B_PATH}" ) ]]; then
+  die "model for alias qwen3.6-27b-q4 not on disk. Run: python3 ${MODELS_SCRIPT} prefetch qwen3.6-27b-q4"
+fi
+if [[ "${INSTALL_QWEN27B}" == "true" && -z "${MMPROJ_27B_PATH}" ]]; then
+  die "mmproj for qwen3.6-27b-q4 not on disk. Run: python3 ${MODELS_SCRIPT} prefetch qwen3.6-27b-q4"
+fi
+
 bootout_if_loaded() {
   local label="$1" plist="${AGENTS_DIR}/${1}.plist"
   if launchctl list | awk '{print $3}' | grep -qx "${label}"; then
@@ -70,9 +83,8 @@ bootout_if_loaded() {
   rm -f "${plist}"
 }
 
-# Boot out every previous label this project has shipped, including the dual-
-# instance ones (com.slopcode.llamacpp-{27b,35b-a3b}). The new single-instance
-# label is com.slopcode.llamacpp.
+# Boot out previous labels this project has shipped. The 27B label is retained
+# because current multi-model installs may manage it below.
 for legacy in com.qwenstack.llamacpp \
               com.devstral.llamacpp-local \
               com.devstral.llamacpp-macbook \
@@ -80,7 +92,6 @@ for legacy in com.qwenstack.llamacpp \
               com.devstral.llamacpp-27b \
               com.slopcode.llamacpp-local \
               com.slopcode.llamacpp-macbook \
-              com.slopcode.llamacpp-27b \
               com.slopcode.llamacpp-35b-a3b; do
   bootout_if_loaded "${legacy}"
 done
@@ -129,7 +140,7 @@ write_llamacpp_plist() {
   <array>
     <string>${SERVER_BIN}</string>
     <string>-m</string><string>${MODEL_PATH}</string>
-${mmproj_xml}    <string>-c</string><string>2097152</string>
+${mmproj_xml}    <string>-c</string><string>1048576</string>
     <string>-b</string><string>2048</string>
     <string>-ub</string><string>1024</string>
     <string>-ngl</string><string>99</string>
@@ -165,13 +176,81 @@ XML
   wait_gone "${label}" || die "failed to unload existing ${label}"
   launchctl bootstrap "gui/$(id -u)" "${plist}"
   if [[ -n "${MMPROJ_PATH}" ]]; then
-    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 2097152, mmproj $(basename "${MMPROJ_PATH}"))"
+    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 1048576, mmproj $(basename "${MMPROJ_PATH}"))"
   else
-    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 2097152)"
+    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 1048576)"
   fi
 }
 
 write_llamacpp_plist
+
+write_llamacpp_27b_plist() {
+  [[ "${INSTALL_QWEN27B}" != "false" ]] || return 0
+  [[ -n "${MODEL_27B_PATH}" && -f "${MODEL_27B_PATH}" ]] || {
+    echo "skipping com.slopcode.llamacpp-27b (model qwen3.6-27b-q4 not cached)"
+    return 0
+  }
+  [[ -n "${MMPROJ_27B_PATH}" ]] || {
+    echo "skipping com.slopcode.llamacpp-27b (mmproj for qwen3.6-27b-q4 not cached)"
+    return 0
+  }
+
+  local label="com.slopcode.llamacpp-27b"
+  local plist="${AGENTS_DIR}/${label}.plist"
+  local log="${LOG_DIR_ABS}/llamacpp-27b.log"
+  cat > "${plist}" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${SERVER_BIN}</string>
+    <string>-m</string><string>${MODEL_27B_PATH}</string>
+    <string>--mmproj</string><string>${MMPROJ_27B_PATH}</string>
+    <string>-c</string><string>1048576</string>
+    <string>-b</string><string>2048</string>
+    <string>-ub</string><string>1024</string>
+    <string>-ngl</string><string>99</string>
+    <string>-fa</string><string>on</string>
+    <string>-np</string><string>4</string>
+    <string>--cache-type-k</string><string>q8_0</string>
+    <string>--cache-type-v</string><string>q8_0</string>
+    <string>--alias</string><string>qwen27b</string>
+    <string>--jinja</string>
+    <string>--temp</string><string>0.6</string>
+    <string>--top-p</string><string>0.95</string>
+    <string>--top-k</string><string>20</string>
+    <string>--min-p</string><string>0</string>
+    <string>--presence-penalty</string><string>0.0</string>
+    <string>--repeat-penalty</string><string>1.0</string>
+    <string>--reasoning-format</string><string>deepseek</string>
+    <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
+    <string>--no-context-shift</string>
+    <string>--no-webui</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8082</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DYLD_LIBRARY_PATH</key><string>${SERVER_DIR}</string>
+  </dict>
+  <key>StandardOutPath</key><string>${log}</string>
+  <key>StandardErrorPath</key><string>${log}</string>
+</dict>
+</plist>
+XML
+  launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
+  wait_gone "${label}" || die "failed to unload existing ${label}"
+  launchctl bootstrap "gui/$(id -u)" "${plist}"
+  echo "loaded ${label} (127.0.0.1:8082, alias qwen27b, -np 4 -c 1048576, mmproj $(basename "${MMPROJ_27B_PATH}"))"
+}
+
+write_llamacpp_27b_plist
 
 # whisper.cpp transcription server. Runs on Metal GPU (built with
 # -DGGML_METAL=1). Used by voxtype dictation, slopbox voice-memo classifier,

@@ -16,8 +16,8 @@ License: [MIT](LICENSE)
 | Apple M1         | macOS   | M1           | 32 GB unified  | Metal   | off     |
 
 - **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_M` (~22 GB), served as `qwen`.
-- **Runtime**: `llama-server` (upstream release, Q8_0 KV, 128 K context, `-fa on`, `--jinja`).
-- **Harnesses**: `opencode` by default; title generation disabled for OpenCode, local llama.cpp provider, telemetry disabled, `reasoning: true`, server-enforced thinking budget (`4096` by default).
+- **Runtime**: `llama-server` (upstream release, Q8_0 KV, 256 K context per slot, `-fa on`, `--jinja`).
+- **Harnesses**: `opencode` by default; title generation disabled for OpenCode, local llama.cpp providers, telemetry disabled, `reasoning: true`, server-enforced thinking budget (`4096` by default).
 
 Nothing else is downloaded automatically. Optional aliases live in
 `scripts/llamacpp_models.py` for manual prefetch only, including the FortBench
