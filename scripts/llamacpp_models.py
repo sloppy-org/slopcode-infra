@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -123,7 +124,11 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec("kimi-k2.6", "ubergarm/Kimi-K2.6-GGUF", ("*Q4_X*.gguf",)),
     ModelSpec("mimo-v2.5", "bartowski/MiMo-V2.5-GGUF", ("*Q4_K_M*.gguf",)),
     ModelSpec("mimo-v2.5-pro", "AesSedai/MiMo-V2.5-Pro-GGUF", ("*IQ3_S*.gguf",)),
-    ModelSpec("glm-5.1", "ubergarm/GLM-5.1-GGUF", ("*IQ3_KS*.gguf",)),
+    ModelSpec(
+        "glm-5.1",
+        "unsloth/GLM-5.1-GGUF",
+        ("UD-Q3_K_XL/*.gguf", "*UD-Q3_K_XL*.gguf"),
+    ),
     ModelSpec(
         "mistral-large-3-675b",
         "bartowski/mistralai_Mistral-Large-3-675B-Instruct-2512-GGUF",
@@ -180,6 +185,16 @@ def find_cli() -> str:
         if path:
             return path
     raise RuntimeError("missing hf or huggingface-cli in PATH; install with: pip install --user huggingface_hub[cli]")
+
+
+def positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    value = int(raw)
+    if value < 1:
+        raise ValueError(f"{name} must be >= 1, got {value}")
+    return value
 
 def matching_files(model: ModelSpec) -> list[Path]:
     return matching_paths(model, model.include)
@@ -247,7 +262,26 @@ def download(model: ModelSpec) -> int:
     for pattern in (*model.include, *model.mmproj_include):
         command.extend(["--include", pattern])
     print(f"downloading {model.alias} from {model.repo_id}")
-    return subprocess.run(command, text=True).returncode
+    attempts = positive_int_env("LLAMACPP_PREFETCH_ATTEMPTS", 4)
+    base_delay = positive_int_env("LLAMACPP_PREFETCH_RETRY_DELAY", 15)
+    exit_code = 1
+    for attempt in range(1, attempts + 1):
+        completed = subprocess.run(command, text=True)
+        exit_code = completed.returncode
+        files = matching_files(model)
+        mmproj_files = matching_mmproj_files(model)
+        if exit_code == 0 and files and (not model.mmproj_include or mmproj_files):
+            return 0
+        if attempt == attempts:
+            return exit_code
+        delay = base_delay * (2 ** (attempt - 1))
+        print(
+            f"{model.alias}: download attempt {attempt}/{attempts} ended with exit code {exit_code}; "
+            f"retrying in {delay}s",
+            file=sys.stderr,
+        )
+        time.sleep(delay)
+    return exit_code
 
 def cmd_prefetch(args: argparse.Namespace) -> int:
     if args.alias:

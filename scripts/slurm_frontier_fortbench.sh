@@ -226,7 +226,7 @@ case "${MODEL_KEY}" in
     SUITE_BASE="mimo-v2.5-pro"
     ;;
   glm51)
-    RUN_SLUG="glm-5.1-iq3ks-32k"
+    RUN_SLUG="glm-5.1-udq3xl-32k"
     export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-glm-5.1}"
     export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-glm-5.1}"
     export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-glm51}"
