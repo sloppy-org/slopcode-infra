@@ -64,6 +64,8 @@ test_leader_install_dry_run() {
       local a="${agents_dir}/com.slopcode.slopgate-agent.plist"
       if [[ -f "${b}" && -f "${a}" ]] \
         && grep -q '<string>balancer</string>' "${b}" \
+        && grep -q '<key>ProcessType</key><string>Background</string>' "${b}" \
+        && grep -q '<key>LimitLoadToSessionType</key><string>Background</string>' "${b}" \
         && grep -q '<string>0.0.0.0:8080</string>' "${b}" \
         && grep -q '<string>0.0.0.0:8085</string>' "${b}" \
         && ! grep -q '<string>--overbook-factor</string>' "${b}" \
@@ -74,6 +76,8 @@ test_leader_install_dry_run() {
         && ! grep -q '<string>--session-ttl</string>' "${b}" \
         && grep -q '<string>--management-dashboard-enable</string>' "${b}" \
         && grep -q '<string>agent</string>' "${a}" \
+        && grep -q '<key>ProcessType</key><string>Background</string>' "${a}" \
+        && grep -q '<key>LimitLoadToSessionType</key><string>Background</string>' "${a}" \
         && grep -q '<string>127.0.0.1:8081</string>' "${a}" \
         && grep -q '<string>--max-context</string>' "${a}" \
         && grep -q '<string>262144</string>' "${a}" \
@@ -152,6 +156,8 @@ test_follower_install_dry_run() {
       local a="${agents_dir}/com.slopcode.slopgate-agent.plist"
       if [[ -f "${a}" ]] \
         && grep -q '<string>agent</string>' "${a}" \
+        && grep -q '<key>ProcessType</key><string>Background</string>' "${a}" \
+        && grep -q '<key>LimitLoadToSessionType</key><string>Background</string>' "${a}" \
         && grep -q '<string>10.77.0.1:8085</string>' "${a}" \
         && grep -q '<string>10.77.0.10:8080</string>' "${a}" \
         && grep -q '<string>follower-1</string>' "${a}" \

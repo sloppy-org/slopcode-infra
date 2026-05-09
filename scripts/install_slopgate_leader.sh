@@ -180,6 +180,8 @@ UNIT
   <key>Label</key><string>${BALANCER_LABEL}</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>LimitLoadToSessionType</key><string>Background</string>
   <key>ProgramArguments</key>
   <array>
     <string>${EXEC_BIN}</string>
@@ -203,6 +205,8 @@ XML
   <key>Label</key><string>${AGENT_LABEL}</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>LimitLoadToSessionType</key><string>Background</string>
   <key>ProgramArguments</key>
   <array>
     <string>${EXEC_BIN}</string>
@@ -230,9 +234,14 @@ XML
 
     for label in "${BALANCER_LABEL}" "${AGENT_LABEL}"; do
       launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
+      launchctl bootout "user/$(id -u)/${label}" 2>/dev/null || true
     done
-    launchctl bootstrap "gui/$(id -u)" "${BALANCER_PLIST}"
-    launchctl bootstrap "gui/$(id -u)" "${AGENT_PLIST}"
+    launchctl bootstrap "user/$(id -u)" "${BALANCER_PLIST}"
+    launchctl bootstrap "user/$(id -u)" "${AGENT_PLIST}"
+    launchctl enable "user/$(id -u)/${BALANCER_LABEL}" 2>/dev/null || true
+    launchctl enable "user/$(id -u)/${AGENT_LABEL}" 2>/dev/null || true
+    launchctl kickstart -k "user/$(id -u)/${BALANCER_LABEL}"
+    launchctl kickstart -k "user/$(id -u)/${AGENT_LABEL}"
     echo "loaded ${BALANCER_LABEL} + ${AGENT_LABEL}"
     ;;
 

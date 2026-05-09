@@ -147,6 +147,8 @@ UNIT
   <key>Label</key><string>${AGENT_LABEL}</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>LimitLoadToSessionType</key><string>Background</string>
   <key>ProgramArguments</key>
   <array>
     <string>${EXEC_BIN}</string>
@@ -172,7 +174,10 @@ XML
     fi
 
     launchctl bootout "gui/$(id -u)/${AGENT_LABEL}" 2>/dev/null || true
-    launchctl bootstrap "gui/$(id -u)" "${AGENT_PLIST}"
+    launchctl bootout "user/$(id -u)/${AGENT_LABEL}" 2>/dev/null || true
+    launchctl bootstrap "user/$(id -u)" "${AGENT_PLIST}"
+    launchctl enable "user/$(id -u)/${AGENT_LABEL}" 2>/dev/null || true
+    launchctl kickstart -k "user/$(id -u)/${AGENT_LABEL}"
     echo "loaded ${AGENT_LABEL}"
     ;;
 
