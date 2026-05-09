@@ -21,6 +21,19 @@ MODELS_SCRIPT="${SCRIPT_DIR}/llamacpp_models.py"
 AGENTS_DIR="${HOME}/Library/LaunchAgents"
 mkdir -p "${AGENTS_DIR}" "${RUN_DIR}"
 
+DEFAULT_MODEL_ALIAS="$(python3 "${MODELS_SCRIPT}" default-alias)"
+MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-${DEFAULT_MODEL_ALIAS}}"
+if ! model_path="$(python3 "${MODELS_SCRIPT}" resolve "${MODEL_ALIAS}" 2>/dev/null)" \
+  || [[ -z "${model_path}" || ! -f "${model_path}" ]]; then
+  if [[ -n "${LLAMACPP_MODEL_ALIAS:-}" ]]; then
+    die "model alias ${MODEL_ALIAS} not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${MODEL_ALIAS}"
+  fi
+  MODEL_ALIAS="qwen3.6-35b-a3b-bartowski-q4"
+  model_path="$(python3 "${MODELS_SCRIPT}" resolve "${MODEL_ALIAS}" 2>/dev/null || true)"
+fi
+[[ -n "${model_path}" && -f "${model_path}" ]] \
+  || die "35B-A3B model not on disk. Run: python3 ${MODELS_SCRIPT} prefetch"
+
 SERVER_BIN="${LLAMACPP_SERVER_BIN:-}"
 if [[ -z "${SERVER_BIN}" ]]; then
   if ! SERVER_BIN="$(resolve_llamacpp_server_bin)"; then
@@ -30,10 +43,6 @@ fi
 [[ -x "${SERVER_BIN}" ]] || die "not executable: ${SERVER_BIN}"
 SERVER_DIR="$(cd "$(dirname "${SERVER_BIN}")" && pwd)"
 REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
-
-model_path="$(python3 "${MODELS_SCRIPT}" resolve 2>/dev/null || true)"
-[[ -n "${model_path}" && -f "${model_path}" ]] \
-  || die "35B-A3B model not on disk. Run: python3 ${MODELS_SCRIPT} prefetch"
 
 LABEL="com.slopcode.llamacpp-macbook"
 PLIST="${AGENTS_DIR}/${LABEL}.plist"
@@ -91,6 +100,7 @@ cat > "${PLIST}" <<XML
   <key>EnvironmentVariables</key>
   <dict>
     <key>LLAMACPP_EXEC</key><string>true</string>
+    <key>LLAMACPP_MODEL_ALIAS</key><string>${MODEL_ALIAS}</string>
     <key>LLAMACPP_SERVED_ALIAS</key><string>qwen</string>
     <key>LLAMACPP_PORT</key><string>8080</string>
     <key>LLAMACPP_HOST</key><string>0.0.0.0</string>
@@ -109,7 +119,7 @@ cat > "${PLIST}" <<XML
 XML
 
 launchctl bootstrap "gui/$(id -u)" "${PLIST}"
-echo "loaded ${LABEL} (35B-A3B Q4 on :8080, alias qwen)"
+echo "loaded ${LABEL} (35B-A3B Q4 on :8080, alias qwen, model ${MODEL_ALIAS})"
 
 echo
 echo "waiting for /v1/models (up to 900s)..."

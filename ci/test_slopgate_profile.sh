@@ -72,7 +72,7 @@ test_leader_install_dry_run() {
         && ! grep -q '<string>--default-t-out</string>' "${b}" \
         && ! grep -q '<string>--session-lru-capacity</string>' "${b}" \
         && ! grep -q '<string>--session-ttl</string>' "${b}" \
-        && ! grep -q '<string>--management-dashboard-enable</string>' "${b}" \
+        && grep -q '<string>--management-dashboard-enable</string>' "${b}" \
         && grep -q '<string>agent</string>' "${a}" \
         && grep -q '<string>127.0.0.1:8081</string>' "${a}" \
         && grep -q '<string>--max-context</string>' "${a}" \
@@ -111,7 +111,7 @@ test_leader_install_dry_run() {
         && ! grep -q -- '--default-t-out' "${b}" \
         && ! grep -q -- '--session-lru-capacity' "${b}" \
         && ! grep -q -- '--session-ttl' "${b}" \
-        && ! grep -q -- '--management-dashboard-enable' "${b}" \
+        && grep -q -- '--management-dashboard-enable' "${b}" \
         && grep -q "^EnvironmentFile=${env_file}$" "${a}" \
         && grep -q 'ExecStart=.* agent ' "${a}" \
         && grep -q -- '--max-context ${SLOPGATE_LOCAL_MAX_CONTEXT}' "${a}" \

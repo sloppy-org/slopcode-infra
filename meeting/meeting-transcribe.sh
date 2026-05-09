@@ -54,7 +54,8 @@ audio="$(meeting_abs "$1")"
 meeting_require curl
 meeting_require python3
 
-case "${audio,,}" in
+audio_lower="$(printf '%s' "${audio}" | tr '[:upper:]' '[:lower:]')"
+case "${audio_lower}" in
   *.wav) mime="audio/wav" ;;
   *) meeting_die "unsupported audio type. Use PCM WAV." ;;
 esac
