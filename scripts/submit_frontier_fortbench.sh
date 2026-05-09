@@ -41,6 +41,32 @@ resources_for() {
     qwen35-4b:full)          echo "--cpus-per-task=16 --mem=128G --time=16:00:00" ;;
     qwen35-2b:smoke)         echo "--cpus-per-task=16 --mem=128G --time=01:00:00" ;;
     qwen35-2b:full)          echo "--cpus-per-task=16 --mem=128G --time=12:00:00" ;;
+    kimi-k26:smoke)          echo "--cpus-per-task=64 --mem=900G --time=14:00:00" ;;
+    kimi-k26:full)           echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    mimo-v25:smoke)          echo "--cpus-per-task=64 --mem=900G --time=12:00:00" ;;
+    mimo-v25:full)           echo "--cpus-per-task=64 --mem=900G --time=72:00:00" ;;
+    mimo-v25-pro:smoke)      echo "--cpus-per-task=64 --mem=900G --time=16:00:00" ;;
+    mimo-v25-pro:full)       echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    glm51:smoke)             echo "--cpus-per-task=64 --mem=900G --time=16:00:00" ;;
+    glm51:full)              echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    mistral-large-3:smoke)   echo "--cpus-per-task=64 --mem=900G --time=14:00:00" ;;
+    mistral-large-3:full)    echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    qwen3-coder-480b:smoke)  echo "--cpus-per-task=64 --mem=900G --time=14:00:00" ;;
+    qwen3-coder-480b:full)   echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    qwen3-coder-next:smoke)  echo "--cpus-per-task=32 --mem=256G --time=04:00:00" ;;
+    qwen3-coder-next:full)   echo "--cpus-per-task=32 --mem=256G --time=48:00:00" ;;
+    qwen3-235b:smoke)        echo "--cpus-per-task=64 --mem=900G --time=12:00:00" ;;
+    qwen3-235b:full)         echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    mistral-small-4:smoke)   echo "--cpus-per-task=32 --mem=256G --time=06:00:00" ;;
+    mistral-small-4:full)    echo "--cpus-per-task=32 --mem=256G --time=72:00:00" ;;
+    devstral-2-123b:smoke)   echo "--cpus-per-task=32 --mem=256G --time=06:00:00" ;;
+    devstral-2-123b:full)    echo "--cpus-per-task=32 --mem=256G --time=72:00:00" ;;
+    trinity-large-preview:smoke)  echo "--cpus-per-task=64 --mem=900G --time=12:00:00" ;;
+    trinity-large-preview:full)   echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    trinity-large-thinking:smoke) echo "--cpus-per-task=64 --mem=900G --time=12:00:00" ;;
+    trinity-large-thinking:full)  echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    nemotron-120b-a12b:smoke)     echo "--cpus-per-task=32 --mem=256G --time=06:00:00" ;;
+    nemotron-120b-a12b:full)      echo "--cpus-per-task=32 --mem=256G --time=72:00:00" ;;
     *) echo "unknown model/mode: $1 $2" >&2; return 2 ;;
   esac
 }

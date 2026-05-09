@@ -271,7 +271,50 @@ case "${MODEL_ALIAS}" in
       --no-context-shift
     )
     ;;
-  *)
+  mistral-small-4-*|mistral-large-3-*|devstral-2-*)
+    SAMPLER_ARGS+=(
+      --temp 0.15
+      --top-p 0.95
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --no-context-shift
+    )
+    ;;
+  nemotron-*)
+    SAMPLER_ARGS+=(
+      --temp 1.0
+      --top-p 0.95
+      --top-k 40
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --no-context-shift
+    )
+    ;;
+  kimi-*|mimo-*|glm-*|trinity-*)
+    SAMPLER_ARGS+=(
+      --temp 0.6
+      --top-p 0.95
+      --top-k 40
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --no-context-shift
+    )
+    ;;
+  qwen3-coder-*|qwen3-235b-*)
+    SAMPLER_ARGS+=(
+      --temp 0.7
+      --top-p 0.8
+      --top-k 20
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.05
+      --no-context-shift
+    )
+    ;;
+  qwen*)
     SAMPLER_ARGS+=(
       --temp 0.6
       --top-p 0.95
@@ -281,6 +324,17 @@ case "${MODEL_ALIAS}" in
       --repeat-penalty 1.0
       --reasoning-format deepseek
       --reasoning-budget "${REASONING_BUDGET}"
+      --no-context-shift
+    )
+    ;;
+  *)
+    SAMPLER_ARGS+=(
+      --temp 0.6
+      --top-p 0.95
+      --top-k 20
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
       --no-context-shift
     )
     ;;

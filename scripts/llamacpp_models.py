@@ -120,6 +120,55 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         "bartowski/openai_gpt-oss-120b-GGUF",
         ("*Q4_K_M*.gguf",),
     ),
+    ModelSpec("kimi-k2.6", "ubergarm/Kimi-K2.6-GGUF", ("*Q4_X*.gguf",)),
+    ModelSpec("mimo-v2.5", "bartowski/MiMo-V2.5-GGUF", ("*Q4_K_M*.gguf",)),
+    ModelSpec("mimo-v2.5-pro", "AesSedai/MiMo-V2.5-Pro-GGUF", ("*IQ3_S*.gguf",)),
+    ModelSpec("glm-5.1", "ubergarm/GLM-5.1-GGUF", ("*IQ3_KS*.gguf",)),
+    ModelSpec(
+        "mistral-large-3-675b",
+        "bartowski/mistralai_Mistral-Large-3-675B-Instruct-2512-GGUF",
+        ("*Q4_K_M*.gguf",),
+    ),
+    ModelSpec(
+        "qwen3-coder-480b-a35b",
+        "bartowski/Qwen_Qwen3-Coder-480B-A35B-Instruct-GGUF",
+        ("*IQ4_XS*.gguf",),
+    ),
+    ModelSpec(
+        "qwen3-coder-next",
+        "unsloth/Qwen3-Coder-Next-GGUF",
+        ("*Q5_K_M*.gguf",),
+    ),
+    ModelSpec(
+        "qwen3-235b-a22b-2507",
+        "bartowski/Qwen_Qwen3-235B-A22B-Instruct-2507-GGUF",
+        ("*Q4_K_M*.gguf",),
+    ),
+    ModelSpec(
+        "mistral-small-4-119b",
+        "bartowski/mistralai_Mistral-Small-4-119B-2603-GGUF",
+        ("*Q5_K_M*.gguf",),
+    ),
+    ModelSpec(
+        "devstral-2-123b",
+        "bartowski/mistralai_Devstral-2-123B-Instruct-2512-GGUF",
+        ("*Q5_K_M*.gguf",),
+    ),
+    ModelSpec(
+        "trinity-large-preview",
+        "bartowski/arcee-ai_Trinity-Large-Preview-GGUF",
+        ("*Q4_K_M*.gguf",),
+    ),
+    ModelSpec(
+        "trinity-large-thinking",
+        "bartowski/arcee-ai_Trinity-Large-Thinking-GGUF",
+        ("*Q4_K_M*.gguf",),
+    ),
+    ModelSpec(
+        "nemotron-120b-a12b",
+        "unsloth/NVIDIA-Nemotron-3-Super-120B-A12B-GGUF",
+        ("*Q4_K_M*.gguf",),
+    ),
 )
 
 MODEL_SPECS: tuple[ModelSpec, ...] = (DEFAULT_SPEC, *OPTIONAL_SPECS)

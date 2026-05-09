@@ -117,9 +117,16 @@ detect_physical_cores() {
 # that trip idle-timeout RSTs on concurrent unrelated TCP streams). Floor
 # at 2 for tiny hosts so we don't silently degrade into single-threaded.
 default_compute_threads() {
-  local phys reserve=2 threads
-  phys="$(detect_physical_cores)"
-  threads=$(( phys - reserve ))
+  local available="" phys reserve=2 threads
+  if [[ -n "${SLURM_CPUS_PER_TASK:-}" && "${SLURM_CPUS_PER_TASK}" =~ ^[0-9]+$ && "${SLURM_CPUS_PER_TASK}" -gt 0 ]]; then
+    available="${SLURM_CPUS_PER_TASK}"
+  elif [[ -n "${SLURM_CPUS_ON_NODE:-}" && "${SLURM_CPUS_ON_NODE}" =~ ^[0-9]+$ && "${SLURM_CPUS_ON_NODE}" -gt 0 ]]; then
+    available="${SLURM_CPUS_ON_NODE}"
+  else
+    phys="$(detect_physical_cores)"
+    available="${phys}"
+  fi
+  threads=$(( available - reserve ))
   [[ "${threads}" -lt 2 ]] && threads=2
   echo "${threads}"
 }
