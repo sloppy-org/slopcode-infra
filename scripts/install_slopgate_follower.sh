@@ -45,6 +45,8 @@ set -o allexport
 source "${ENV_FILE}"
 set +o allexport
 
+SLOPGATE_LLAMACPP_REQUEST_TIMEOUT="${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT:-120}"
+
 canonicalize_path() {
   python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$1"
 }
@@ -98,6 +100,7 @@ ExecStart=${EXEC_BIN} agent \\
   --management-addr \${SLOPGATE_LEADER_MANAGEMENT_ADDR} \\
   --external-llamacpp-addr \${SLOPGATE_EXTERNAL_LLAMACPP_ADDR} \\
   --local-llamacpp-addr \${SLOPGATE_LOCAL_LLAMACPP_ADDR} \\
+  --llamacpp-request-timeout \${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT} \\
   --max-context \${SLOPGATE_MAX_CONTEXT} \\
   --model-alias \${SLOPGATE_MODEL_ALIAS} \\
   --name \${SLOPGATE_AGENT_NAME}
@@ -156,6 +159,7 @@ UNIT
     <string>--management-addr</string><string>${SLOPGATE_LEADER_MANAGEMENT_ADDR}</string>
     <string>--external-llamacpp-addr</string><string>${SLOPGATE_EXTERNAL_LLAMACPP_ADDR}</string>
     <string>--local-llamacpp-addr</string><string>${SLOPGATE_LOCAL_LLAMACPP_ADDR}</string>
+    <string>--llamacpp-request-timeout</string><string>${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT}</string>
     <string>--max-context</string><string>${SLOPGATE_MAX_CONTEXT}</string>
     <string>--model-alias</string><string>${SLOPGATE_MODEL_ALIAS}</string>
     <string>--name</string><string>${SLOPGATE_AGENT_NAME}</string>

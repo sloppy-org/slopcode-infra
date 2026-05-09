@@ -26,6 +26,7 @@ SLOPGATE_REVERSEPROXY_ADDR=0.0.0.0:8080
 SLOPGATE_MANAGEMENT_ADDR=0.0.0.0:8085
 SLOPGATE_LOCAL_AGENT_NAME=leader
 SLOPGATE_LOCAL_LLAMACPP_ADDR=127.0.0.1:8081
+SLOPGATE_LLAMACPP_REQUEST_TIMEOUT=120
 SLOPGATE_LOCAL_MAX_CONTEXT=262144
 SLOPGATE_LOCAL_MODEL_ALIAS=qwen
 EOF
@@ -36,6 +37,7 @@ follower_env_file() {
   cat > "${env_file}" <<EOF
 SLOPGATE_LEADER_MANAGEMENT_ADDR=10.77.0.1:8085
 SLOPGATE_LOCAL_LLAMACPP_ADDR=127.0.0.1:8080
+SLOPGATE_LLAMACPP_REQUEST_TIMEOUT=120
 SLOPGATE_EXTERNAL_LLAMACPP_ADDR=10.77.0.10:8080
 SLOPGATE_AGENT_NAME=follower-1
 SLOPGATE_MAX_CONTEXT=262144
@@ -79,6 +81,8 @@ test_leader_install_dry_run() {
         && grep -q '<key>ProcessType</key><string>Background</string>' "${a}" \
         && grep -q '<key>LimitLoadToSessionType</key><string>Background</string>' "${a}" \
         && grep -q '<string>127.0.0.1:8081</string>' "${a}" \
+        && grep -q '<string>--llamacpp-request-timeout</string>' "${a}" \
+        && grep -q '<string>120</string>' "${a}" \
         && grep -q '<string>--max-context</string>' "${a}" \
         && grep -q '<string>262144</string>' "${a}" \
         && grep -q '<string>--model-alias</string>' "${a}" \
@@ -118,6 +122,7 @@ test_leader_install_dry_run() {
         && grep -q -- '--management-dashboard-enable' "${b}" \
         && grep -q "^EnvironmentFile=${env_file}$" "${a}" \
         && grep -q 'ExecStart=.* agent ' "${a}" \
+        && grep -q -- '--llamacpp-request-timeout ${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT}' "${a}" \
         && grep -q -- '--max-context ${SLOPGATE_LOCAL_MAX_CONTEXT}' "${a}" \
         && grep -q -- '--model-alias ${SLOPGATE_LOCAL_MODEL_ALIAS}' "${a}" \
         && grep -q -- '--name ${SLOPGATE_LOCAL_AGENT_NAME}' "${a}" \
@@ -160,6 +165,7 @@ test_follower_install_dry_run() {
         && grep -q '<key>LimitLoadToSessionType</key><string>Background</string>' "${a}" \
         && grep -q '<string>10.77.0.1:8085</string>' "${a}" \
         && grep -q '<string>10.77.0.10:8080</string>' "${a}" \
+        && grep -q '<string>--llamacpp-request-timeout</string>' "${a}" \
         && grep -q '<string>follower-1</string>' "${a}" \
         && grep -q '<string>--max-context</string>' "${a}" \
         && grep -q '<string>--model-alias</string>' "${a}" \
@@ -187,6 +193,7 @@ test_follower_install_dry_run() {
         && grep -q "^EnvironmentFile=${env_file}$" "${a}" \
         && grep -q -- '--management-addr ${SLOPGATE_LEADER_MANAGEMENT_ADDR}' "${a}" \
         && grep -q -- '--external-llamacpp-addr ${SLOPGATE_EXTERNAL_LLAMACPP_ADDR}' "${a}" \
+        && grep -q -- '--llamacpp-request-timeout ${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT}' "${a}" \
         && grep -q -- '--max-context ${SLOPGATE_MAX_CONTEXT}' "${a}" \
         && grep -q -- '--model-alias ${SLOPGATE_MODEL_ALIAS}' "${a}" \
         && grep -q -- '--name ${SLOPGATE_AGENT_NAME}' "${a}" \
