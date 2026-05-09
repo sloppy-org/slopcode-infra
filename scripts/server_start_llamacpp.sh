@@ -234,16 +234,12 @@ case "${MODEL_ALIAS}" in
     ;;
   deepseek-v4-flash-*)
     SAMPLER_ARGS+=(
-      --temp 1.0
-      --top-p 1.0
+      --temp 0.6
+      --top-p 0.95
+      --top-k 20
       --min-p 0
       --presence-penalty 0.0
       --repeat-penalty 1.0
-      --reasoning-format deepseek
-      --reasoning-budget "${REASONING_BUDGET}"
-      --chat-template-kwargs '{"thinking":true}'
-      --reasoning on
-      --cache-ram 0
       --no-context-shift
     )
     ;;

@@ -44,16 +44,19 @@ case "${MODEL_KEY}" in
     SUITE_BASE="step-3.5-flash"
     ;;
   deepseek-v4-flash)
-    RUN_SLUG="deepseek-v4-flash-fp4fp8-128k"
-    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-deepseek-v4-flash-fp4fp8}"
+    RUN_SLUG="deepseek-v4-flash-q4kexp-32k"
+    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-deepseek-v4-flash-q4kexp}"
     export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-deepseek-v4-flash}"
     export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-deepseek-v4-flash}"
     export LLAMACPP_PORT="${LLAMACPP_PORT:-8093}"
     export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4103}"
-    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-deepseek-v4-cuda-sm120}"
-    export LLAMACPP_REPO="${LLAMACPP_REPO:-https://github.com/nisparks/llama.cpp.git}"
-    export LLAMACPP_REF="${LLAMACPP_REF:-wip/deepseek-v4-support}"
+    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-deepseek-v4-stable-cuda-sm120}"
     export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-99}"
+    export LLAMACPP_CONTEXT="${LLAMACPP_CONTEXT:-32768}"
+    export LLAMACPP_BATCH="${LLAMACPP_BATCH:-512}"
+    export LLAMACPP_UBATCH="${LLAMACPP_UBATCH:-128}"
+    export LLAMACPP_THREADS="${LLAMACPP_THREADS:-48}"
+    export LLAMACPP_START_TIMEOUT="${LLAMACPP_START_TIMEOUT:-7200}"
     SUITE_BASE="deepseek-v4-flash"
     ;;
   gemma4-31b)
@@ -557,14 +560,6 @@ fi
 LLAMACPP_NEEDS_BUILD=false
 if [[ ! -x "${LLAMACPP_HOME}/llama-server" ]]; then
   LLAMACPP_NEEDS_BUILD=true
-elif [[ "${MODEL_KEY}" == "deepseek-v4-flash" && "${LLAMACPP_REF}" == "wip/deepseek-v4-support" ]]; then
-  desired_llamacpp_sha="$(git ls-remote "${LLAMACPP_REPO}" "refs/heads/${LLAMACPP_REF}" 2>/dev/null | awk '{print $1}' | head -1)"
-  installed_llamacpp_version="$(cat "${LLAMACPP_HOME}/VERSION" 2>/dev/null || true)"
-  if [[ -n "${desired_llamacpp_sha}" && "${installed_llamacpp_version}" != *"${desired_llamacpp_sha:0:12}"* ]]; then
-    echo "DeepSeek llama.cpp build is stale: installed='${installed_llamacpp_version}', desired=${desired_llamacpp_sha}"
-    LLAMACPP_NEEDS_BUILD=true
-  fi
-fi
 if [[ "${LLAMACPP_NEEDS_BUILD}" == "true" ]]; then
   echo "building CUDA llama.cpp into ${LLAMACPP_HOME}"
   bash "${INFRA_DIR}/scripts/setup_llamacpp.sh" 2>&1 | tee "${RUN_DIR}/llamacpp-build.log"

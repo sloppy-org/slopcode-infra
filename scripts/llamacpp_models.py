@@ -81,9 +81,9 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         ("step3p5_flash_Q4_K_S-*.gguf", "*Q4_K_S*.gguf"),
     ),
     ModelSpec(
-        "deepseek-v4-flash-fp4fp8",
-        "nsparks/DeepSeek-V4-Flash-FP4-FP8-GGUF",
-        ("DeepSeek-V4-Flash-FP4-FP8-native.gguf", "*FP4-FP8*.gguf"),
+        "deepseek-v4-flash-q4kexp",
+        "antirez/deepseek-v4-gguf",
+        ("*Q4KExperts*chat-v2.gguf",),
     ),
     ModelSpec(
         "gemma-4-31b-it-q4",
