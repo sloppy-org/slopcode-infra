@@ -44,7 +44,7 @@ case "${MODEL_KEY}" in
     SUITE_BASE="step-3.5-flash"
     ;;
   deepseek-v4-flash)
-    RUN_SLUG="deepseek-v4-flash-q4kexp-32k"
+    RUN_SLUG="deepseek-v4-flash-q4kexp-128k"
     export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-deepseek-v4-flash-q4kexp}"
     export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-deepseek-v4-flash}"
     export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-deepseek-v4-flash}"
@@ -52,7 +52,7 @@ case "${MODEL_KEY}" in
     export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4103}"
     export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-deepseek-v4-stable-cuda-sm120}"
     export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-99}"
-    export LLAMACPP_CONTEXT="${LLAMACPP_CONTEXT:-32768}"
+    export LLAMACPP_CONTEXT="${LLAMACPP_CONTEXT:-131072}"
     export LLAMACPP_BATCH="${LLAMACPP_BATCH:-512}"
     export LLAMACPP_UBATCH="${LLAMACPP_UBATCH:-128}"
     export LLAMACPP_THREADS="${LLAMACPP_THREADS:-48}"
@@ -560,6 +560,7 @@ fi
 LLAMACPP_NEEDS_BUILD=false
 if [[ ! -x "${LLAMACPP_HOME}/llama-server" ]]; then
   LLAMACPP_NEEDS_BUILD=true
+fi
 if [[ "${LLAMACPP_NEEDS_BUILD}" == "true" ]]; then
   echo "building CUDA llama.cpp into ${LLAMACPP_HOME}"
   bash "${INFRA_DIR}/scripts/setup_llamacpp.sh" 2>&1 | tee "${RUN_DIR}/llamacpp-build.log"
