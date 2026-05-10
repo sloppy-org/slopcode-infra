@@ -233,7 +233,7 @@ case "${MODEL_ALIAS}" in
       --no-context-shift
     )
     ;;
-  deepseek-v4-flash-*)
+  deepseek-v4-flash-*|deepseek-v4-pro-*)
     SAMPLER_ARGS+=(
       --temp 0.6
       --top-p 0.95
