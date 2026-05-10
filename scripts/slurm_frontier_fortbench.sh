@@ -481,6 +481,7 @@ export FORTBENCH_PYTHON="${FORTBENCH_PYTHON:-${FORTBENCH_RUNTIME_DIR}/venv/bin/p
 export FORTBENCH_TOOLS_BIN="${FORTBENCH_TOOLS_BIN:-${FORTBENCH_RUNTIME_DIR}/bin}"
 export FORTBENCH_LITELLM_PROXY_BIN="${FORTBENCH_LITELLM_PROXY_BIN:-${FORTBENCH_RUNTIME_DIR}/venv/bin/litellm}"
 export FORTBENCH_OPENCODE_BIN="${FORTBENCH_OPENCODE_BIN:-${HOME}/.local/node_modules/.bin/opencode}"
+export FORTBENCH_SKIP_SUITE="${FORTBENCH_SKIP_SUITE:-false}"
 export PATH="${FORTBENCH_TOOLS_BIN}:${FORTBENCH_RUNTIME_DIR}/venv/bin:${HOME}/.local/node_modules/.bin:${PATH}"
 
 {
@@ -629,6 +630,11 @@ curl -fsS "http://127.0.0.1:${LLAMACPP_PORT}/v1/chat/completions" \
   -H "content-type: application/json" \
   -d "{\"model\":\"${LLAMACPP_SERVED_ALIAS}\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly OK.\"}],\"max_tokens\":16}" \
   | tee "${RUN_DIR}/curl-smoke.json"
+
+if [[ "${FORTBENCH_SKIP_SUITE}" == "true" ]]; then
+  echo "completed ${MODE} startup probe: ${RUN_DIR}"
+  exit 0
+fi
 
 FORTBENCH_OUT="${RUN_DIR}/fortbench"
 if [[ "${MODE}" == "smoke" ]]; then
