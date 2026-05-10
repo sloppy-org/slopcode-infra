@@ -70,7 +70,10 @@ submit_job() {
 #   CUDA model buffer + ~3.2 GiB KV. KV scales linearly with ctx, so 98304 is a
 #   safer production target than 131072 on a 96 GB card.
 declare -A TUNE_CANDIDATES
-TUNE_CANDIDATES["glm51"]="58:512:128:131072 56:512:128:131072 60:1024:256:131072 64:1024:256:131072"
+# GLM-5.1 now has one real data point on this box: n58 / b512 / ub128 still
+# allocates ~98.3 GiB of CUDA model buffer before KV/compute, so probe the
+# smallest higher CPU-MoE values first and keep batch sizing conservative.
+TUNE_CANDIDATES["glm51"]="60:512:128:131072 62:512:128:131072 64:512:128:131072"
 TUNE_CANDIDATES["kimi-k26"]="0:1024:256:98304 8:1024:256:98304 16:1024:256:98304 24:1024:256:98304"
 
 declare -A BEST_N_CPU_MOE
