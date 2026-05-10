@@ -6,8 +6,8 @@ set -euo pipefail
 MODEL_KEY="${1:-}"
 MODE="${2:-smoke}"
 case "${MODEL_KEY}" in
-  minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b|qwen36-35b|qwen36-27b|qwen35-9b|qwen35-4b|qwen35-2b|kimi-k26|mimo-v25|mimo-v25-pro|glm51|mistral-large-3|qwen3-coder-480b|qwen3-coder-next|qwen3-235b|mistral-small-4|devstral-2-123b|trinity-large-preview|trinity-large-thinking|nemotron-120b-a12b) ;;
-  *) echo "usage: $0 {minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b|qwen36-35b|qwen36-27b|qwen35-9b|qwen35-4b|qwen35-2b|kimi-k26|mimo-v25|mimo-v25-pro|glm51|mistral-large-3|qwen3-coder-480b|qwen3-coder-next|qwen3-235b|mistral-small-4|devstral-2-123b|trinity-large-preview|trinity-large-thinking|nemotron-120b-a12b} [smoke|full]" >&2; exit 2 ;;
+  minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b|qwen36-35b|qwen36-27b|qwen35-9b|qwen35-4b|qwen35-2b|kimi-k26|mimo-v25|mimo-v25-pro|glm47|glm47-flash|glm51|mistral-large-3|qwen3-coder-480b|qwen3-coder-next|qwen3-235b|mistral-small-4|devstral-2-123b|trinity-large-preview|trinity-large-thinking|nemotron-120b-a12b) ;;
+  *) echo "usage: $0 {minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b|qwen36-35b|qwen36-27b|qwen35-9b|qwen35-4b|qwen35-2b|kimi-k26|mimo-v25|mimo-v25-pro|glm47|glm47-flash|glm51|mistral-large-3|qwen3-coder-480b|qwen3-coder-next|qwen3-235b|mistral-small-4|devstral-2-123b|trinity-large-preview|trinity-large-thinking|nemotron-120b-a12b} [smoke|full]" >&2; exit 2 ;;
 esac
 case "${MODE}" in
   smoke|full) ;;
@@ -43,6 +43,7 @@ FORTBENCH_DIR="${FORTBENCH_DIR:-${HOME}/code/fortbench}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 JOB_ID="${SLURM_JOB_ID:-manual}"
 RUN_ROOT="${FORTBENCH_RUN_ROOT:-${HOME}/fortbench-runs}"
+MODEL_CONTEXT_MAX=131072
 
 case "${MODEL_KEY}" in
   minimax-m27)
@@ -265,6 +266,45 @@ case "${MODEL_KEY}" in
     export LLAMACPP_THREADS="${LLAMACPP_THREADS:-48}"
     SUITE_BASE="glm-5.1"
     ;;
+  glm47)
+    # Web guidance: GLM-4.7 UD-Q2_K_XL is ~135 GiB and is intended to run with
+    # MoE offload. On our 96 GiB VRAM / ~1 TiB RAM frontier nodes, 128k context
+    # is reasonable, but we keep the batching conservative until real telemetry
+    # says otherwise.
+    RUN_SLUG="glm-4.7-udq2xl-128k"
+    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-glm-4.7}"
+    export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-glm-4.7}"
+    export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-glm47}"
+    export LLAMACPP_PORT="${LLAMACPP_PORT:-8117}"
+    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-glm47-cuda-sm120}"
+    export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4127}"
+    export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-35}"
+    export LLAMACPP_CONTEXT="${LLAMACPP_CONTEXT:-131072}"
+    export LLAMACPP_BATCH="${LLAMACPP_BATCH:-512}"
+    export LLAMACPP_UBATCH="${LLAMACPP_UBATCH:-128}"
+    export LLAMACPP_START_TIMEOUT="${LLAMACPP_START_TIMEOUT:-7200}"
+    export LLAMACPP_THREADS="${LLAMACPP_THREADS:-48}"
+    SUITE_BASE="glm-4.7"
+    ;;
+  glm47-flash)
+    # GLM-4.7-Flash is a much smaller 30B-A3B MoE. Z.ai/Unsloth recommend
+    # llama.cpp with repeat penalty disabled and min-p 0.01; on frontier this
+    # should fit as an all-GPU run with healthy 128k context headroom.
+    RUN_SLUG="glm-4.7-flash-udq4xl-128k"
+    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-glm-4.7-flash}"
+    export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-glm-4.7-flash}"
+    export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-glm47-flash}"
+    export LLAMACPP_PORT="${LLAMACPP_PORT:-8118}"
+    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-glm47-flash-cuda-sm120}"
+    export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4128}"
+    export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-0}"
+    export LLAMACPP_CONTEXT="${LLAMACPP_CONTEXT:-131072}"
+    export LLAMACPP_BATCH="${LLAMACPP_BATCH:-1024}"
+    export LLAMACPP_UBATCH="${LLAMACPP_UBATCH:-256}"
+    export LLAMACPP_START_TIMEOUT="${LLAMACPP_START_TIMEOUT:-3600}"
+    MODEL_CONTEXT_MAX=202752
+    SUITE_BASE="glm-4.7-flash"
+    ;;
   mistral-large-3)
     RUN_SLUG="mistral-large-3-675b-q4km-16k"
     export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-mistral-large-3-675b}"
@@ -404,9 +444,9 @@ case "${MODEL_KEY}" in
     ;;
 esac
 
-if [[ -n "${LLAMACPP_CONTEXT:-}" ]] && [[ "${LLAMACPP_CONTEXT}" =~ ^[0-9]+$ ]] && (( LLAMACPP_CONTEXT > 131072 )); then
-  echo "warning: LLAMACPP_CONTEXT exceeds 128k max; capping to 131072" >&2
-  export LLAMACPP_CONTEXT=131072
+if [[ -n "${LLAMACPP_CONTEXT:-}" ]] && [[ "${LLAMACPP_CONTEXT}" =~ ^[0-9]+$ ]] && (( LLAMACPP_CONTEXT > MODEL_CONTEXT_MAX )); then
+  echo "warning: LLAMACPP_CONTEXT exceeds model max; capping to ${MODEL_CONTEXT_MAX}" >&2
+  export LLAMACPP_CONTEXT="${MODEL_CONTEXT_MAX}"
 fi
 
 RUN_DIR="${RUN_DIR:-${RUN_ROOT}/${RUN_SLUG}-${MODE}-${JOB_ID}-${STAMP}}"

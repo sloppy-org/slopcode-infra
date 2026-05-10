@@ -125,6 +125,16 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec("mimo-v2.5", "bartowski/MiMo-V2.5-GGUF", ("*Q4_K_M*.gguf",)),
     ModelSpec("mimo-v2.5-pro", "AesSedai/MiMo-V2.5-Pro-GGUF", ("*IQ3_S*.gguf",)),
     ModelSpec(
+        "glm-4.7",
+        "unsloth/GLM-4.7-GGUF",
+        ("UD-Q2_K_XL/*.gguf", "*UD-Q2_K_XL*.gguf"),
+    ),
+    ModelSpec(
+        "glm-4.7-flash",
+        "unsloth/GLM-4.7-Flash-GGUF",
+        ("*UD-Q4_K_XL*.gguf",),
+    ),
+    ModelSpec(
         "glm-5.1",
         "unsloth/GLM-5.1-GGUF",
         ("UD-Q3_K_XL/*.gguf", "*UD-Q3_K_XL*.gguf"),
