@@ -558,7 +558,7 @@ req = urllib.request.Request(args.url, data=data, headers=headers, method=method
 try:
     with urllib.request.urlopen(req, timeout=args.timeout) as resp:
         body = resp.read()
-        if args.I:
+        if args.head:
             sys.stdout.write(f"HTTP/1.1 {resp.status} {resp.reason}\n")
             for k, v in resp.headers.items():
                 sys.stdout.write(f"{k}: {v}\n")
