@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="${SCRIPT_DIR}/slurm_frontier_fortbench.sh"
 RUN_ROOT="${FORTBENCH_RUN_ROOT:-${HOME}/fortbench-runs}"
+SLOPCODE_INFRA_DIR="${SLOPCODE_INFRA_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+FORTBENCH_DIR="${FORTBENCH_DIR:-${HOME}/code/fortbench}"
 mkdir -p "${RUN_ROOT}/slurm"
 
 if [[ "$#" -gt 0 ]]; then
@@ -80,6 +82,7 @@ for model in "${MODELS[@]}"; do
     "${smoke_resources[@]}" \
     --output="${RUN_ROOT}/slurm/${model}-smoke-%j.out" \
     --error="${RUN_ROOT}/slurm/${model}-smoke-%j.err" \
+    --export="ALL,SLOPCODE_INFRA_DIR=${SLOPCODE_INFRA_DIR},FORTBENCH_DIR=${FORTBENCH_DIR}" \
     "${RUNNER}" "${model}" smoke)"
 
   read -r -a full_resources <<<"$(resources_for "${model}" full)"
@@ -91,6 +94,7 @@ for model in "${MODELS[@]}"; do
     "${full_resources[@]}" \
     --output="${RUN_ROOT}/slurm/${model}-full-%j.out" \
     --error="${RUN_ROOT}/slurm/${model}-full-%j.err" \
+    --export="ALL,SLOPCODE_INFRA_DIR=${SLOPCODE_INFRA_DIR},FORTBENCH_DIR=${FORTBENCH_DIR}" \
     "${RUNNER}" "${model}" full)"
 
   echo "${model}: smoke_job=${smoke_job} full_job=${full_job}"
