@@ -78,6 +78,9 @@ declare -A BEST_BATCH
 declare -A BEST_UBATCH
 declare -A BEST_CONTEXT
 
+TOP3_COMMON_ENV="GGML_CUDA_ENABLE_UNIFIED_MEMORY=0,LLAMACPP_CACHE_RAM=0"
+TOP3_MOE_ENV="LLAMACPP_NO_MMAP=true,LLAMACPP_FIT=off"
+
 for model in glm51 kimi-k26; do
   echo "=== startup probe ${model} ==="
   selected=false
@@ -85,7 +88,7 @@ for model in glm51 kimi-k26; do
   for candidate in ${TUNE_CANDIDATES["${model}"]}; do
     IFS=: read -r ncpu batch ubatch context <<<"${candidate}"
     tag="n${ncpu}-b${batch}-ub${ubatch}-c${context}"
-    env_csv="LLAMACPP_N_CPU_MOE=${ncpu},LLAMACPP_BATCH=${batch},LLAMACPP_UBATCH=${ubatch},LLAMACPP_CONTEXT=${context},LLAMACPP_START_TIMEOUT=5400,FORTBENCH_SKIP_SUITE=true"
+    env_csv="LLAMACPP_N_CPU_MOE=${ncpu},LLAMACPP_BATCH=${batch},LLAMACPP_UBATCH=${ubatch},LLAMACPP_CONTEXT=${context},LLAMACPP_START_TIMEOUT=5400,FORTBENCH_SKIP_SUITE=true,${TOP3_COMMON_ENV},${TOP3_MOE_ENV}"
     tune_job="$(submit_job "${model}" smoke "${model}-tune-${tag}" "${env_csv}")"
     echo "submitted ${model} ${tag}: probe_job=${tune_job}"
 
@@ -116,7 +119,7 @@ BEST_UBATCH["devstral-2-123b"]="256"
 BEST_CONTEXT["devstral-2-123b"]="98304"
 
 echo "=== startup probe devstral-2-123b ==="
-devstral_probe_env="LLAMACPP_N_CPU_MOE=0,LLAMACPP_BATCH=1024,LLAMACPP_UBATCH=256,LLAMACPP_CONTEXT=98304,LLAMACPP_START_TIMEOUT=3600,FORTBENCH_SKIP_SUITE=true"
+devstral_probe_env="LLAMACPP_N_CPU_MOE=0,LLAMACPP_BATCH=1024,LLAMACPP_UBATCH=256,LLAMACPP_CONTEXT=98304,LLAMACPP_START_TIMEOUT=3600,FORTBENCH_SKIP_SUITE=true,${TOP3_COMMON_ENV}"
 devstral_probe_job="$(submit_job "devstral-2-123b" smoke "devstral-2-123b-probe-c98304" "${devstral_probe_env}")"
 echo "submitted devstral-2-123b probe: probe_job=${devstral_probe_job}"
 devstral_probe_state="$(wait_for_terminal_state "${devstral_probe_job}")"
@@ -132,7 +135,11 @@ for model in devstral-2-123b glm51 kimi-k26; do
   batch="${BEST_BATCH["${model}"]}"
   ubatch="${BEST_UBATCH["${model}"]}"
   context="${BEST_CONTEXT["${model}"]}"
-  env_csv="LLAMACPP_N_CPU_MOE=${ncpu},LLAMACPP_BATCH=${batch},LLAMACPP_UBATCH=${ubatch},LLAMACPP_CONTEXT=${context}"
+  extra_env="${TOP3_COMMON_ENV}"
+  if [[ "${model}" != "devstral-2-123b" ]]; then
+    extra_env="${extra_env},${TOP3_MOE_ENV}"
+  fi
+  env_csv="LLAMACPP_N_CPU_MOE=${ncpu},LLAMACPP_BATCH=${batch},LLAMACPP_UBATCH=${ubatch},LLAMACPP_CONTEXT=${context},${extra_env}"
   full_job="$(submit_job "${model}" full "${model}-full-prod" "${env_csv}")"
   echo "production ${model}: full_job=${full_job} n_cpu_moe=${ncpu} batch=${batch} ubatch=${ubatch} context=${context}"
 done

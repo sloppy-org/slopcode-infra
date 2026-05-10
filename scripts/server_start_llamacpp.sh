@@ -45,6 +45,11 @@
 #   LLAMACPP_REASONING_BUDGET
 #                         hidden-reasoning token cap (default: 4096;
 #                         -1 restores unrestricted, 0 disables thinking)
+#   LLAMACPP_NO_MMAP      true to pass --no-mmap (useful when tensor overrides
+#                         place part of the model on CPU)
+#   LLAMACPP_FIT          explicit value passed to -fit (for example: off)
+#   LLAMACPP_CACHE_RAM    explicit value passed to --cache-ram; 0 disables the
+#                         prompt cache
 #   LLAMACPP_DRY_RUN      true to print the command and exit
 #   LLAMACPP_EXEC         true to exec llama-server in the foreground (for
 #                         systemd/launchd ExecStart); skips nohup, pid files,
@@ -187,6 +192,9 @@ elif [[ -n "${LLAMACPP_THREADS:-}" ]]; then
   THREADS_HTTP="${LLAMACPP_THREADS_HTTP:-}"
 fi
 REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
+NO_MMAP="${LLAMACPP_NO_MMAP:-false}"
+FIT="${LLAMACPP_FIT:-}"
+CACHE_RAM="${LLAMACPP_CACHE_RAM:-}"
 
 SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-qwen}"
 INSTANCE="${LLAMACPP_INSTANCE:-}"
@@ -356,6 +364,15 @@ CMD=(
   -np "${PARALLEL}"
   --no-webui
 )
+if [[ "${NO_MMAP}" == "true" ]]; then
+  CMD+=(--no-mmap)
+fi
+if [[ -n "${FIT}" ]]; then
+  CMD+=(-fit "${FIT}")
+fi
+if [[ -n "${CACHE_RAM}" ]]; then
+  CMD+=(--cache-ram "${CACHE_RAM}")
+fi
 if [[ -n "${MMPROJ_PATH}" ]]; then
   CMD+=(--mmproj "${MMPROJ_PATH}")
 fi
@@ -378,6 +395,9 @@ echo "- context: ${CONTEXT}"
 echo "- slots:   ${PARALLEL}"
 echo "- batch:   b=${BATCH} ub=${UBATCH}"
 echo "- KV:      ${CACHE_TYPE_K} / ${CACHE_TYPE_V}"
+[[ "${NO_MMAP}" == "true" ]] && echo "- mmap:    off"
+[[ -n "${FIT}" ]] && echo "- fit:     ${FIT}"
+[[ -n "${CACHE_RAM}" ]] && echo "- cache-ram: ${CACHE_RAM}"
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   echo "- n-cpu-moe: ${N_CPU_MOE} (first N expert layers on CPU; rest on GPU)"
 else
