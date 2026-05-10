@@ -49,6 +49,10 @@ resources_for() {
     mimo-v25:full)           echo "--cpus-per-task=64 --mem=900G --time=72:00:00" ;;
     mimo-v25-pro:smoke)      echo "--cpus-per-task=64 --mem=900G --time=16:00:00" ;;
     mimo-v25-pro:full)       echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    glm47:smoke)             echo "--cpus-per-task=64 --mem=900G --time=12:00:00" ;;
+    glm47:full)              echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
+    glm47-flash:smoke)       echo "--cpus-per-task=32 --mem=256G --time=04:00:00" ;;
+    glm47-flash:full)        echo "--cpus-per-task=32 --mem=256G --time=48:00:00" ;;
     glm51:smoke)             echo "--cpus-per-task=64 --mem=900G --time=16:00:00" ;;
     glm51:full)              echo "--cpus-per-task=64 --mem=900G --time=96:00:00" ;;
     mistral-large-3:smoke)   echo "--cpus-per-task=64 --mem=900G --time=14:00:00" ;;

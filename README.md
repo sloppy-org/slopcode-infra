@@ -1,27 +1,33 @@
 # slopcode-infra
 
-Single-path local coding stack: **llama.cpp + Qwen3.6 35B A3B (UD-Q4_K_M) +
-OpenCode**, whisper.cpp, meeting tools, and voxtype install scripts.
-Every component lives in the user profile and runs as a user-level service.
-No root, no admin.
+Single-path local coding stack plus the frontier FortBench harness:
+**llama.cpp + local coding agents**, whisper.cpp, meeting tools, and
+hardware-aware Slurm launchers for the RTX PRO 6000 Blackwell nodes.
+Everything lives in the user profile and runs user-level. No root, no admin.
 
 License: [MIT](LICENSE)
 
-## The one blessed configuration
+## Overview
 
 | Target           | OS      | GPU          | Memory         | Backend | CPU-MoE |
 | ---------------- | ------- | ------------ | -------------- | ------- | ------- |
 | Local (this box) | Linux   | NVIDIA 16 GB | 96 GB          | CUDA    | on      |
 | Intel Arc box    | Windows | Intel Arc    | 32 GB shared   | Vulkan  | on      |
 | Apple M1         | macOS   | M1           | 32 GB unified  | Metal   | off     |
+| Frontier cluster | Linux   | RTX PRO 6000 Blackwell Max-Q (96 GB) | 1.1 TiB | CUDA | model-specific |
 
 - **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_M` (~22 GB), served as `qwen`.
 - **Runtime**: `llama-server` (upstream release, Q8_0 KV, 128 K context, `-fa on`, `--jinja`).
 - **Harnesses**: `opencode` by default; title generation disabled for OpenCode, local llama.cpp provider, telemetry disabled, `reasoning: true`, server-enforced thinking budget (`4096` by default).
+- **Frontier FortBench lane**: explicit CPU/GPU placement on the cluster
+  (`GGML_CUDA_ENABLE_UNIFIED_MEMORY=0`, optional `--n-cpu-moe`,
+  `--no-mmap`, `-fit off`, `--cache-ram 0`) with current frontier aliases
+  including `glm-4.7`, `glm-4.7-flash`, `glm-5.1`, `kimi-k2.6`,
+  `devstral-2-123b`, `qwen3-coder-next`, `qwen3.5-122b-a10b`, and others.
 
 Nothing else is downloaded automatically. Optional aliases live in
 `scripts/llamacpp_models.py` for manual prefetch only, including the FortBench
-MiniMax benchmark profiles.
+benchmark profiles and frontier cluster rows.
 
 ## Install from this repo
 

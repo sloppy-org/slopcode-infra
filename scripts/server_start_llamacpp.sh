@@ -288,6 +288,29 @@ case "${MODEL_ALIAS}" in
       --no-context-shift
     )
     ;;
+  glm-4.7-flash*)
+    # Z.ai recommends tool-calling parameters for agentic runs. Unsloth also
+    # notes llama.cpp needs min-p 0.01 instead of its higher default here.
+    SAMPLER_ARGS+=(
+      --temp 0.7
+      --top-p 1.0
+      --min-p 0.01
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --no-context-shift
+    )
+    ;;
+  glm-4.7*)
+    # GLM-4.7's official coding / terminal evaluation parameters use a lower
+    # temperature and unconstrained top-p versus our older generic GLM preset.
+    SAMPLER_ARGS+=(
+      --temp 0.7
+      --top-p 1.0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --no-context-shift
+    )
+    ;;
   nemotron-*)
     SAMPLER_ARGS+=(
       --temp 1.0
