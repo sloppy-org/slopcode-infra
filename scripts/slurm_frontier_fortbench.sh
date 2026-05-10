@@ -512,7 +512,8 @@ nvidia-smi --query-gpu=name,memory.total,driver_version,power.limit --format=csv
 ss -ltnp 2>/dev/null | tee "${RUN_DIR}/listeners-before.txt" || true
 
 python3 -m venv "${FORTBENCH_RUNTIME_DIR}/venv"
-if ! command -v curl >/dev/null 2>&1; then
+curl_bin="$(command -v curl || true)"
+if [[ -z "${curl_bin}" || "${curl_bin}" == "${FORTBENCH_RUNTIME_DIR}/venv/bin/curl" ]]; then
   cat > "${FORTBENCH_RUNTIME_DIR}/venv/bin/curl" <<'PYEOF'
 #!/usr/bin/env python3
 from __future__ import annotations
@@ -521,18 +522,31 @@ import sys
 import urllib.error
 import urllib.request
 
+expanded_argv = []
+for token in sys.argv[1:]:
+    if token.startswith("--") or not token.startswith("-") or token == "-" or len(token) <= 2:
+        expanded_argv.append(token)
+        continue
+
+    short_flags = token[1:]
+    if all(ch in "fsSLI" for ch in short_flags):
+        expanded_argv.extend(f"-{ch}" for ch in short_flags)
+    else:
+        expanded_argv.append(token)
+
 parser = argparse.ArgumentParser(add_help=False)
-parser.add_argument("-f", action="store_true")
-parser.add_argument("-s", action="store_true")
-parser.add_argument("-S", action="store_true")
-parser.add_argument("-L", action="store_true")
-parser.add_argument("-I", action="store_true")
-parser.add_argument("-H", dest="headers", action="append", default=[])
-parser.add_argument("-d", dest="data", default=None)
-parser.add_argument("-o", dest="output", default=None)
-parser.add_argument("-m", dest="timeout", type=float, default=300.0)
+parser.add_argument("-f", "--fail", dest="fail", action="store_true")
+parser.add_argument("-s", "--silent", dest="silent", action="store_true")
+parser.add_argument("-S", "--show-error", dest="show_error", action="store_true")
+parser.add_argument("-L", "--location", dest="location", action="store_true")
+parser.add_argument("-I", "--head", dest="head", action="store_true")
+parser.add_argument("-H", "--header", dest="headers", action="append", default=[])
+parser.add_argument("-d", "--data", dest="data", default=None)
+parser.add_argument("-o", "--output", dest="output", default=None)
+parser.add_argument("-m", "--max-time", dest="timeout", type=float, default=300.0)
+parser.add_argument("--connect-timeout", dest="connect_timeout", type=float, default=None)
 parser.add_argument("url")
-args, _ = parser.parse_known_args()
+args, _ = parser.parse_known_args(expanded_argv)
 headers = {}
 for raw in args.headers:
     if ":" in raw:
@@ -554,11 +568,11 @@ try:
         else:
             sys.stdout.buffer.write(body)
 except urllib.error.HTTPError as exc:
-    if args.S:
+    if args.show_error:
         print(f"curl shim: HTTP {exc.code}: {exc.reason}", file=sys.stderr)
-    sys.exit(22 if args.f else 0)
+    sys.exit(22 if args.fail else 0)
 except Exception as exc:
-    if args.S:
+    if args.show_error:
         print(f"curl shim: {exc}", file=sys.stderr)
     sys.exit(7)
 PYEOF
