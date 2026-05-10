@@ -6,7 +6,7 @@ set -euo pipefail
 MODEL_KEY="${1:-}"
 MODE="${2:-smoke}"
 case "${MODEL_KEY}" in
-  minimax-m27|step35-flash|deepseek-v4-flash|deepseek-v4-pro|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b|qwen36-35b|qwen36-27b|qwen35-9b|qwen35-4b|qwen35-2b|kimi-k26|mimo-v25|mimo-v25-pro|glm47|glm47-flash|glm51|mistral-large-3|qwen3-coder-480b|qwen3-coder-next|qwen3-235b|mistral-small-4|devstral-2-123b|trinity-large-preview|trinity-large-thinking|nemotron-120b-a12b) ;;
+  minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b|qwen36-35b|qwen36-27b|qwen35-9b|qwen35-4b|qwen35-2b|kimi-k26|mimo-v25|mimo-v25-pro|glm47|glm47-flash|glm51|mistral-large-3|qwen3-coder-480b|qwen3-coder-next|qwen3-235b|mistral-small-4|devstral-2-123b|trinity-large-preview|trinity-large-thinking|nemotron-120b-a12b) ;;
   *) echo "usage: $0 {minimax-m27|step35-flash|deepseek-v4-flash|gemma4-31b|gemma4-26b|qwen35-122b|qwen35-397b|gpt-oss-120b|qwen36-35b|qwen36-27b|qwen35-9b|qwen35-4b|qwen35-2b|kimi-k26|mimo-v25|mimo-v25-pro|glm47|glm47-flash|glm51|mistral-large-3|qwen3-coder-480b|qwen3-coder-next|qwen3-235b|mistral-small-4|devstral-2-123b|trinity-large-preview|trinity-large-thinking|nemotron-120b-a12b} [smoke|full]" >&2; exit 2 ;;
 esac
 case "${MODE}" in
@@ -69,40 +69,20 @@ case "${MODEL_KEY}" in
     SUITE_BASE="step-3.5-flash"
     ;;
   deepseek-v4-flash)
-    RUN_SLUG="deepseek-v4-flash-fp4fp8-128k"
-    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-deepseek-v4-flash-fp4fp8}"
+    RUN_SLUG="deepseek-v4-flash-q4kexp-128k"
+    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-deepseek-v4-flash-q4kexp}"
     export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-deepseek-v4-flash}"
     export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-deepseek-v4-flash}"
     export LLAMACPP_PORT="${LLAMACPP_PORT:-8093}"
     export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4103}"
-    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-deepseek-v4-cuda-sm120}"
-    export LLAMACPP_REPO="${LLAMACPP_REPO:-https://github.com/nisparks/llama.cpp.git}"
-    export LLAMACPP_REF="${LLAMACPP_REF:-wip/deepseek-v4-support}"
+    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-deepseek-v4-stable-cuda-sm120}"
     export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-35}"
     export LLAMACPP_CONTEXT="${LLAMACPP_CONTEXT:-131072}"
-    export LLAMACPP_BATCH="${LLAMACPP_BATCH:-1024}"
+    export LLAMACPP_BATCH="${LLAMACPP_BATCH:-512}"
     export LLAMACPP_UBATCH="${LLAMACPP_UBATCH:-128}"
     export LLAMACPP_THREADS="${LLAMACPP_THREADS:-48}"
     export LLAMACPP_START_TIMEOUT="${LLAMACPP_START_TIMEOUT:-7200}"
     SUITE_BASE="deepseek-v4-flash"
-    ;;
-  deepseek-v4-pro)
-    RUN_SLUG="deepseek-v4-pro-q4km-32k"
-    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-deepseek-v4-pro-q4km}"
-    export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-deepseek-v4-pro}"
-    export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-deepseek-v4-pro}"
-    export LLAMACPP_PORT="${LLAMACPP_PORT:-8119}"
-    export FORTBENCH_LITELLM_PROXY_PORT="${FORTBENCH_LITELLM_PROXY_PORT:-4129}"
-    export LLAMACPP_HOME="${LLAMACPP_HOME:-${HOME}/.local/llama.cpp-deepseek-v4-cuda-sm120}"
-    export LLAMACPP_REPO="${LLAMACPP_REPO:-https://github.com/nisparks/llama.cpp.git}"
-    export LLAMACPP_REF="${LLAMACPP_REF:-wip/deepseek-v4-support}"
-    export LLAMACPP_N_CPU_MOE="${LLAMACPP_N_CPU_MOE:-99}"
-    export LLAMACPP_CONTEXT="${LLAMACPP_CONTEXT:-32768}"
-    export LLAMACPP_BATCH="${LLAMACPP_BATCH:-1024}"
-    export LLAMACPP_UBATCH="${LLAMACPP_UBATCH:-128}"
-    export LLAMACPP_THREADS="${LLAMACPP_THREADS:-48}"
-    export LLAMACPP_START_TIMEOUT="${LLAMACPP_START_TIMEOUT:-10800}"
-    SUITE_BASE="deepseek-v4-pro"
     ;;
   gemma4-31b)
     RUN_SLUG="gemma4-31b-q4-128k"

@@ -19,8 +19,6 @@ resources_for() {
   case "$1:$2" in
     deepseek-v4-flash:smoke) echo "--cpus-per-task=64 --mem=900G --time=12:00:00" ;;
     deepseek-v4-flash:full)  echo "--cpus-per-task=64 --mem=900G --time=72:00:00" ;;
-    deepseek-v4-pro:smoke)   echo "--cpus-per-task=64 --mem=1100G --time=14:00:00" ;;
-    deepseek-v4-pro:full)    echo "--cpus-per-task=64 --mem=1100G --time=96:00:00" ;;
     minimax-m27:smoke)       echo "--cpus-per-task=64 --mem=900G --time=10:00:00" ;;
     minimax-m27:full)        echo "--cpus-per-task=64 --mem=900G --time=72:00:00" ;;
     step35-flash:smoke)      echo "--cpus-per-task=64 --mem=900G --time=10:00:00" ;;
