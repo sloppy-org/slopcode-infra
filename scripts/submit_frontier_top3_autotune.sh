@@ -63,9 +63,11 @@ submit_job() {
 # - GLM-5.1 UD-Q3_K_XL is ~316.8 GiB. At ctx=131072 and n_cpu_moe=35 the current
 #   log reports ~189.9 GiB CUDA model buffer + ~5.4 GiB KV/compute, so 35 is far
 #   too GPU-heavy for physical 96 GB VRAM. Probe higher n_cpu_moe values first.
-# - Kimi-K2.6 Q4_X is ~543.6 GiB. Prior ctx=32768, n_cpu_moe=35 logs show only
-#   ~11.2 GiB CUDA model buffer + ~3.7 GiB KV/compute, so we have ample VRAM
-#   headroom and can probe more aggressive GPU placements first.
+# - Kimi-K2.6 Q4_X is ~543.6 GiB. The clean historical fit we actually have on
+#   this box is the CPU-heavy split (n_cpu_moe=99) at ctx=32768 with only
+#   ~11.2 GiB CUDA model buffer + ~3.7 GiB KV/compute. A fresh n_cpu_moe=0 probe
+#   tried to allocate ~555 GiB of CUDA model buffer, so start from the known-safe
+#   CPU-heavy side instead of assuming aggressive GPU placement will fit.
 # - Devstral-2-123b Q5_K_M is ~82.2 GiB dense. At ctx=32768 it uses ~83.2 GiB
 #   CUDA model buffer + ~3.2 GiB KV. KV scales linearly with ctx, so 98304 is a
 #   safer production target than 131072 on a 96 GB card.
@@ -74,7 +76,7 @@ declare -A TUNE_CANDIDATES
 # allocates ~98.3 GiB of CUDA model buffer before KV/compute, so probe the
 # smallest higher CPU-MoE values first and keep batch sizing conservative.
 TUNE_CANDIDATES["glm51"]="60:512:128:131072 62:512:128:131072 64:512:128:131072"
-TUNE_CANDIDATES["kimi-k26"]="0:1024:256:98304 8:1024:256:98304 16:1024:256:98304 24:1024:256:98304"
+TUNE_CANDIDATES["kimi-k26"]="99:1024:256:98304 99:512:128:98304 99:1024:256:32768"
 
 declare -A BEST_N_CPU_MOE
 declare -A BEST_BATCH
