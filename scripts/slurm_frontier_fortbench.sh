@@ -69,8 +69,8 @@ case "${MODEL_KEY}" in
     SUITE_BASE="step-3.5-flash"
     ;;
   deepseek-v4-flash)
-    RUN_SLUG="deepseek-v4-flash-q4kexp-128k"
-    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-deepseek-v4-flash-q4kexp}"
+    RUN_SLUG="deepseek-v4-flash-fp4fp8-128k"
+    export LLAMACPP_MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-deepseek-v4-flash-fp4fp8}"
     export LLAMACPP_SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-deepseek-v4-flash}"
     export LLAMACPP_INSTANCE="${LLAMACPP_INSTANCE:-deepseek-v4-flash}"
     export LLAMACPP_PORT="${LLAMACPP_PORT:-8093}"
