@@ -203,6 +203,9 @@ fi
 DRY_RUN="${LLAMACPP_DRY_RUN:-false}"
 SMOKE_TEST="${LLAMACPP_SMOKE_TEST:-true}"
 START_TIMEOUT="${LLAMACPP_START_TIMEOUT:-900}"
+START_CONNECT_TIMEOUT="${LLAMACPP_START_CONNECT_TIMEOUT:-2}"
+START_PROBE_TIMEOUT="${LLAMACPP_START_PROBE_TIMEOUT:-5}"
+SMOKE_TEST_TIMEOUT="${LLAMACPP_SMOKE_TEST_TIMEOUT:-30}"
 
 # Skip the live-port check on dry runs — the test harness only inspects the
 # emitted argv and shouldn't be confused by whatever is actually listening on
@@ -422,7 +425,10 @@ while : ; do
     tail -n 40 "${LOG_FILE}" >&2 || true
     die "llama-server exited before becoming ready"
   fi
-  if curl -fsS "http://${probe_host}:${PORT}/v1/models" >/dev/null 2>&1; then
+  if curl -fsS \
+      --connect-timeout "${START_CONNECT_TIMEOUT}" \
+      --max-time "${START_PROBE_TIMEOUT}" \
+      "http://${probe_host}:${PORT}/v1/models" >/dev/null 2>&1; then
     break
   fi
   [[ $(date +%s) -ge ${deadline} ]] && die "timed out waiting for llama-server"
@@ -432,7 +438,10 @@ echo "server is ready on http://${probe_host}:${PORT}/v1"
 
 if [[ "${SMOKE_TEST}" == "true" ]]; then
   echo "running chat smoke test..."
-  resp="$(curl -fsS "http://${probe_host}:${PORT}/v1/chat/completions" \
+  resp="$(curl -fsS \
+    --connect-timeout "${START_CONNECT_TIMEOUT}" \
+    --max-time "${SMOKE_TEST_TIMEOUT}" \
+    "http://${probe_host}:${PORT}/v1/chat/completions" \
     -H "content-type: application/json" \
     -d "{\"model\":\"${SERVED_ALIAS}\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly READY.\"}],\"max_tokens\":16}")"
   if [[ "${resp}" == *'"content"'* ]]; then
