@@ -9,49 +9,50 @@
 #SBATCH --error=%x-%j.err
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INFRA_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
-# Use the Fringe210 build (built by the Flash smoke job prior to this)
-FRINGE_HOME="${HOME}/.local/llama.cpp-deepseek-v4-fringe-cuda-sm120"
-FRINGE_SRC="${HOME}/.local/llama.cpp-deepseek-v4-fringe-cuda-sm120-src"
-
 HF_HOME="${HF_HOME:-${HOME}/models/huggingface}"
 MODEL_CACHE="${HOME}/models/llama.cpp"
 OUT_DIR="${MODEL_CACHE}/local_DeepSeek-V4-Pro-GGUF"
 mkdir -p "${OUT_DIR}"
 
-# Python env from an existing fortbench runtime (borrows huggingface-hub)
+# Python env: borrows huggingface-hub from gemma4-26b runtime
 PYTHON="${HOME}/.local/fortbench-runtime-py311-gemma4-26b/venv/bin/python3"
 
-echo "[$(date)] Downloading DeepSeek-V4-Pro BF16 weights..."
-HF_HOME="${HF_HOME}" "${PYTHON}" -m huggingface_hub.commands.huggingface_cli download \
-  deepseek-ai/DeepSeek-V4-Pro \
-  --local-dir "${HF_HOME}/deepseek-ai_DeepSeek-V4-Pro" \
-  --include "*.safetensors" "*.json" "tokenizer*"
+# nsparks source tree (same fork as Flash/Pro builds), for convert_hf_to_gguf.py
+NSPARKS_SRC="${HOME}/.local/llama.cpp-deepseek-v4-nsparks-src"
 
-# Fringe210 fork source tree should exist from the Flash smoke build.
-# If not, clone it (no GPU needed for conversion).
-if [[ ! -f "${FRINGE_SRC}/convert_hf_to_gguf.py" ]]; then
-  echo "[$(date)] Cloning Fringe210 fork for conversion scripts..."
-  git clone --depth 1 https://github.com/Fringe210/llama.cpp-deepseek-v4-flash-cuda.git \
-    "${FRINGE_SRC}"
+echo "[$(date)] Downloading DeepSeek-V4-Pro BF16 weights..."
+HF_HOME="${HF_HOME}" HF_HUB_ENABLE_HF_TRANSFER=1 "${PYTHON}" - <<PYEOF
+from huggingface_hub import snapshot_download
+snapshot_download(
+    repo_id="deepseek-ai/DeepSeek-V4-Pro",
+    local_dir="${HF_HOME}/deepseek-ai_DeepSeek-V4-Pro",
+    ignore_patterns=["*.bin"],
+)
+PYEOF
+
+if [[ ! -f "${NSPARKS_SRC}/convert_hf_to_gguf.py" ]]; then
+  echo "[$(date)] Cloning nsparks fork for conversion scripts..."
+  git clone --depth 1 --branch wip/deepseek-v4-support \
+    https://github.com/nisparks/llama.cpp.git "${NSPARKS_SRC}"
 fi
+
+# Install conversion dependencies
+"${PYTHON}" -m pip install -q -r "${NSPARKS_SRC}/requirements.txt" 2>/dev/null || true
 
 # Convert BF16 -> F16 GGUF
 F16_GGUF="${OUT_DIR}/DeepSeek-V4-Pro-F16.gguf"
 echo "[$(date)] Converting to F16 GGUF..."
-"${PYTHON}" "${FRINGE_SRC}/convert_hf_to_gguf.py" \
+"${PYTHON}" "${NSPARKS_SRC}/convert_hf_to_gguf.py" \
   "${HF_HOME}/deepseek-ai_DeepSeek-V4-Pro" \
   --outfile "${F16_GGUF}" \
   --outtype f16
 
-# Quantize F16 -> Q4_K_M
+# Quantize F16 -> Q4_K_M using the already-built nsparks llama-quantize
+LLAMACPP_HOME="${HOME}/.local/llama.cpp-deepseek-v4-cuda-sm120"
 Q4KM_GGUF="${OUT_DIR}/DeepSeek-V4-Pro-Q4_K_M.gguf"
 echo "[$(date)] Quantizing to Q4_K_M..."
-"${FRINGE_HOME}/llama-quantize" "${F16_GGUF}" "${Q4KM_GGUF}" Q4_K_M
+"${LLAMACPP_HOME}/llama-quantize" "${F16_GGUF}" "${Q4KM_GGUF}" Q4_K_M
 
-# Remove intermediate F16 to free disk
 rm -f "${F16_GGUF}"
 echo "[$(date)] Done. Output: ${Q4KM_GGUF}"
 ls -lh "${Q4KM_GGUF}"
