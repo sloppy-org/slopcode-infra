@@ -9,6 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="${SCRIPT_DIR}/slurm_frontier_fortbench.sh"
 RUN_ROOT="${FORTBENCH_RUN_ROOT:-${HOME}/fortbench-runs}"
 POLL_SECONDS="${POLL_SECONDS:-60}"
+SLOPCODE_INFRA_DIR="${SLOPCODE_INFRA_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+FORTBENCH_DIR="${FORTBENCH_DIR:-${HOME}/code/fortbench}"
 
 mkdir -p "${RUN_ROOT}/slurm"
 
@@ -92,7 +94,7 @@ submit_job() {
     "${resources[@]}" \
     --output="${RUN_ROOT}/slurm/${model}-${mode}-%j.out" \
     --error="${RUN_ROOT}/slurm/${model}-${mode}-%j.err" \
-    --export="ALL,${env_csv}" \
+    --export="ALL,SLOPCODE_INFRA_DIR=${SLOPCODE_INFRA_DIR},FORTBENCH_DIR=${FORTBENCH_DIR},${env_csv}" \
     "${RUNNER}" "${model}" "${mode}"
 }
 
@@ -114,6 +116,7 @@ for model in glm51 kimi-k26; do
   best_n=35
   best_b=512
   best_ub=128
+  success_count=0
 
   for candidate in ${TUNE_CANDIDATES["${model}"]}; do
     IFS=: read -r ncpu batch ubatch <<<"${candidate}"
@@ -128,6 +131,7 @@ for model in glm51 kimi-k26; do
     echo "result ${model} ${tag}: state=${state} rows=${rows} solved=${solved} avg_sec=${avg_runtime} run_dir=${run_dir:-n/a}"
 
     if [[ "${state}" == "COMPLETED" ]]; then
+      ((success_count += 1))
       if (( solved > best_solved )) || { (( solved == best_solved )) && awk "BEGIN{exit !(${avg_runtime} < ${best_avg})}"; }; then
         best_solved="${solved}"
         best_avg="${avg_runtime}"
@@ -137,6 +141,11 @@ for model in glm51 kimi-k26; do
       fi
     fi
   done
+
+  if (( success_count == 0 )); then
+    echo "error: all tuning candidates failed for ${model}; refusing to launch production runs" >&2
+    exit 1
+  fi
 
   BEST_N_CPU_MOE["${model}"]="${best_n}"
   BEST_BATCH["${model}"]="${best_b}"

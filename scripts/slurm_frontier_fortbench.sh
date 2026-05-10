@@ -15,8 +15,30 @@ case "${MODE}" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_INFRA_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-INFRA_DIR="${SLOPCODE_INFRA_DIR:-${DEFAULT_INFRA_DIR}}"
+
+resolve_infra_dir() {
+  local candidate
+  for candidate in \
+    "${SLOPCODE_INFRA_DIR:-}" \
+    "$(cd "${SCRIPT_DIR}/.." && pwd)" \
+    "${SLURM_SUBMIT_DIR:-}" \
+    "${PWD:-}"
+  do
+    [[ -n "${candidate}" ]] || continue
+    if [[ -f "${candidate}/scripts/llamacpp_models.py" \
+          && -f "${candidate}/scripts/server_start_llamacpp.sh" \
+          && -f "${candidate}/scripts/setup_llamacpp.sh" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+INFRA_DIR="$(resolve_infra_dir)" || {
+  echo "error: could not resolve SLOPCODE infra repo; set SLOPCODE_INFRA_DIR explicitly" >&2
+  exit 1
+}
 FORTBENCH_DIR="${FORTBENCH_DIR:-${HOME}/code/fortbench}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 JOB_ID="${SLURM_JOB_ID:-manual}"
