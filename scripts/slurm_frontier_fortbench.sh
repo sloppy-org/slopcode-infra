@@ -553,7 +553,7 @@ for raw in args.headers:
         k, v = raw.split(":", 1)
         headers[k.strip()] = v.strip()
 data = args.data.encode("utf-8") if args.data is not None else None
-method = "HEAD" if args.I else ("POST" if data is not None else "GET")
+method = "HEAD" if args.head else ("POST" if data is not None else "GET")
 req = urllib.request.Request(args.url, data=data, headers=headers, method=method)
 try:
     with urllib.request.urlopen(req, timeout=args.timeout) as resp:
