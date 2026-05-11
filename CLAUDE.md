@@ -7,24 +7,23 @@ Guidance for Claude Code working inside this repository.
 One blessed local coding stack, nothing else:
 
 - **Runtime**: `llama-server` from the latest upstream ggml-org/llama.cpp release.
-- **Model**: `bartowski/Qwen_Qwen3.6-27B-GGUF` at `Q4_K_M` — alias
-  `qwen3.6-27b-q4`, served as `qwen`. The 35B-A3B Q4 profile remains an
-  optional alias.
+- **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_M` — alias
+  `qwen3.6-35b-a3b-q4`, served as `qwen`. The 27B dense profile
+  (`qwen3.6-27b-q4`) is a special mode for slopgate deployments on more
+  powerful hardware.
 - **Harness**: `opencode` CLI, title generation disabled, reasoning on.
 - **Optional load balancer**: `sloppy-org/slopgate` (fork of distantmagic/
   paddler v1.x) for multi-host deployments. See "Multi-host (slopgate)" below.
 
-The launcher binds `0.0.0.0:8080` by default. The local offline Mac path uses
-`scripts/server_start_qwen27b.sh`, which forces loopback `127.0.0.1:8080` and
-starts only on demand. When a slopgate balancer or
+The launcher binds `0.0.0.0:8080` by default. When a slopgate balancer or
 agent unit is locally installed, the launcher flips to `127.0.0.1:8081` so the
 proxy can take `:8080`.
 
 | OS      | Backend | Instances | Model + alias              | User service        |
 | ------- | ------- | --------- | -------------------------- | ------------------- |
-| Linux   | CUDA    | 1         | 27B `qwen` :8080           | `systemd --user`    |
-| Windows | Vulkan  | 1         | 27B `qwen` :8080           | `schtasks ONLOGON`  |
-| macOS   | Metal   | on demand | 27B `qwen` :8080           | none by default     |
+| Linux   | CUDA    | 1         | 35B-A3B `qwen` :8080       | `systemd --user`    |
+| Windows | Vulkan  | 1         | 35B-A3B `qwen` :8080       | `schtasks ONLOGON`  |
+| macOS   | Metal   | on demand | 35B-A3B `qwen` :8080       | none by default     |
 
 No root or admin is required anywhere. The only automatic downloads are the
 single GGUF and the llama-server binary.
@@ -85,8 +84,9 @@ scripts/
                                 Flips to 127.0.0.1:8081 when slopgate is locally
                                 installed; LLAMACPP_BIND_LOOPBACK=true forces it
                                 without slopgate detection (followers).
-  server_start_qwen27b.sh       on-demand local offline profile: Qwen3.6 27B
-                                Q4_K_M, Q8 KV, 128K context, loopback :8080.
+  server_start_qwen27b.sh       slopgate/powerful-machine special mode:
+                                Qwen3.6 27B Q4_K_M, Q8 KV, 128K context,
+                                loopback :8080. Not the standard local default.
   server_stop_llamacpp.sh
   install_linux_systemd.sh      write & enable ~/.config/systemd/user/slopcode-
                                 llamacpp.service; enable-linger for boot autostart
@@ -148,8 +148,8 @@ Every instance launched through `server_start_llamacpp.sh` always passes:
 ```
 
 The local offline default is single-slot 128K: `-np 1 -ub 1024 -c 131072`.
-Qwen3.6 27B is dense, so no MoE split is emitted. Linux/Windows add
-`--n-cpu-moe 35` only for MoE aliases such as 35B-A3B.
+Qwen3.6 35B-A3B is MoE: Linux/Windows add `--n-cpu-moe 35` (expert layers 0–34
+on CPU, 35–39 on GPU). Mac uses unified memory — no MoE split.
 
 On Linux/Windows partial MoE offload replaces the old blanket `--cpu-moe`.
 Benchmark on RTX 5060 Ti 16 GB with Qwen3.6-35B-A3B UD-Q4_K_M at c=262144:
@@ -184,13 +184,15 @@ per invocation via `LLAMACPP_THREADS` / `LLAMACPP_THREADS_HTTP`.
 
 Default deployment per platform:
 
-| Host            | Instances        | `--alias` | `-np` | `-c`     | Per-slot ctx |
-| --------------- | ---------------- | --------- | ----- | -------- | ------------ |
-| Linux / Windows | 27B on :8080 | `qwen` | 1 | 131072 | 131072 |
-| macOS           | 27B on :8080 | `qwen` | 1 | 131072 | 131072 |
+| Host            | Instances            | `--alias` | `-np` | `-c`     | Per-slot ctx |
+| --------------- | -------------------- | --------- | ----- | -------- | ------------ |
+| Linux / Windows | 35B-A3B on :8080 | `qwen` | 1 | 131072 | 131072 |
+| macOS           | 35B-A3B on :8080 | `qwen` | 1 | 131072 | 131072 |
 
-The 35B-A3B profiles remain in `scripts/llamacpp_models.py` for manual
-prefetch and explicit runs. They are not the default opencode path.
+The 27B dense profile (`qwen3.6-27b-q4`) remains in `scripts/llamacpp_models.py`
+for manual prefetch and explicit runs via `scripts/server_start_qwen27b.sh`. It
+is not the default opencode path — use it only on slopgate deployments backed
+by more powerful hardware.
 
 Override per invocation with `LLAMACPP_PARALLEL` and `LLAMACPP_CONTEXT`.
 

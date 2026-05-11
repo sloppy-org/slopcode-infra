@@ -26,7 +26,7 @@ PY
 test_server_start_dry_run() {
   echo "TEST: llama.cpp launcher dry-run profile"
   local home_dir="${TMPDIR}/home"
-  local model_path="${TMPDIR}/Qwen_Qwen3.6-27B-Q4_K_M.gguf"
+  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
   local mmproj_path="${TMPDIR}/mmproj-BF16.gguf"
   mkdir -p "${home_dir}/.local/llama.cpp"
   cat > "${home_dir}/.local/llama.cpp/llama-server" <<'EOF'
@@ -55,9 +55,12 @@ EOF
 
   local platform moe_ok=1
   platform="$(uname -s)"
-  # Qwen3.6 27B is dense, so no MoE split is emitted by default.
-  [[ "${output}" != *"--n-cpu-moe"* ]] || moe_ok=0
-  [[ "${output}" != *"--cpu-moe"* ]] || moe_ok=0
+  # 35B-A3B is MoE: non-Mac emits --n-cpu-moe 35; Mac uses unified memory (no split).
+  if [[ "${platform}" == "Darwin" ]]; then
+    [[ "${output}" != *"--n-cpu-moe"* ]] || moe_ok=0
+  else
+    [[ "${output}" == *"--n-cpu-moe 35"* ]] || moe_ok=0
+  fi
 
   # Thread caps: only pinned on non-Mac. On Mac the flags must be absent.
   local threads_ok=1
@@ -85,7 +88,7 @@ EOF
         "${output}" == *"--port ${port}"* && \
         "${output}" == *"${np_expected}"* && \
         "${output}" == *"-ub 1024"* && \
-        "${output}" == *"Qwen_Qwen3.6-27B-Q4_K_M.gguf"* && \
+        "${output}" == *"Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"* && \
         "${moe_ok}" == "1" && \
         "${threads_ok}" == "1" ]]; then
     echo "PASS: launcher emits the blessed profile for $(uname -s) (${np_expected}, ${context_expected})"
@@ -245,9 +248,9 @@ JSON
   grep -q "\"context\": ${context_expected}" "${config_path}" || platform_ok=0
   grep -q 'http://127.0.0.1:8080/v1' "${config_path}" || platform_ok=0
   grep -q '"x-model": "qwen"' "${config_path}" || platform_ok=0
-  grep -q '"x-model": "qwen35b"' "${config_path}" || platform_ok=0
-  grep -q 'Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Local)' "${config_path}" || platform_ok=0
+  grep -q '"x-model": "qwen27b"' "${config_path}" || platform_ok=0
   grep -q 'Qwen3.6 35B A3B Q4 + KV-Q8 (Local)' "${config_path}" || platform_ok=0
+  grep -q 'Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Slopgate)' "${config_path}" || platform_ok=0
   [[ -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || platform_ok=0
 
   if [[ "${common_ok}" == "1" && "${platform_ok}" == "1" ]]; then
@@ -346,8 +349,8 @@ test_models_default_alias() {
   echo "TEST: llamacpp_models.py default alias"
   local alias
   alias="$(python3 "${REPO_ROOT}/scripts/llamacpp_models.py" default-alias)"
-  if [[ "${alias}" == "qwen3.6-27b-q4" ]]; then
-    echo "PASS: default alias is qwen3.6-27b-q4"
+  if [[ "${alias}" == "qwen3.6-35b-a3b-q4" ]]; then
+    echo "PASS: default alias is qwen3.6-35b-a3b-q4"
   else
     echo "FAIL: default alias was '${alias}'"
     return 1

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start the default offline Qwen3.6 27B profile on demand.
+# Start the Qwen3.6 27B dense profile — special mode for slopgate deployments
+# on more powerful hardware. The standard local default is 35B-A3B MoE.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

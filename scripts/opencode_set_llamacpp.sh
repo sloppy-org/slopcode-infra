@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Configure OpenCode for slopgate-backed llama.cpp routing. The dense 27B
-# provider is the default coding model; the 35B-A3B MoE provider remains
-# available as llamacpp-moe/qwen. Both advertise 256K context per slot.
+# Configure OpenCode for llama.cpp routing. The 35B-A3B MoE provider is the
+# default coding model; the dense 27B provider is a secondary option for
+# slopgate deployments running on more powerful hardware.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -99,8 +99,8 @@ providers_block() {
   sid="$(session_id)"
   cat <<EOF
   "provider": {
-$(provider_block "llamacpp" "llama.cpp 27B (Local)" "qwen" "Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Local)" "qwen" "${sid}"),
-$(provider_block "llamacpp-35b" "llama.cpp 35B-A3B (Local)" "qwen35b" "Qwen3.6 35B A3B Q4 + KV-Q8 (Local)" "qwen35b" "${sid}")
+$(provider_block "llamacpp" "llama.cpp 35B-A3B (Local)" "qwen" "Qwen3.6 35B A3B Q4 + KV-Q8 (Local)" "qwen" "${sid}"),
+$(provider_block "llamacpp-27b" "llama.cpp 27B (Slopgate)" "qwen27b" "Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Slopgate)" "qwen27b" "${sid}")
   }
 EOF
 }
