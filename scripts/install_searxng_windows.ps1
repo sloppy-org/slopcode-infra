@@ -112,7 +112,7 @@ Set-Location '$SearxngSrc'
 
 $Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$RunnerPath`""
 $Triggers = @(
-    New-ScheduledTaskTrigger -AtStartup,
+    New-ScheduledTaskTrigger -AtStartup
     New-ScheduledTaskTrigger -AtLogOn -User $UserId
 )
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
