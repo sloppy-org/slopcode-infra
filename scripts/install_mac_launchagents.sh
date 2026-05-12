@@ -20,6 +20,11 @@
 #                        build/bin/whisper-server).
 #   WHISPER_MODEL_PATH   whisper model file (default:
 #                        ~/.local/whisper.cpp/models/ggml-large-v3-turbo.bin).
+#   LLAMACPP_CACHE_TYPE_K  KV-cache key type: q8_0 (default) or f16.
+#                          Use f16 on machines with >=128 GB unified memory
+#                          (e.g. Mac Studio) for a free quality gain.
+#   LLAMACPP_CACHE_TYPE_V  KV-cache value type: q8_0 (default) or f16.
+#                          Set in sync with LLAMACPP_CACHE_TYPE_K.
 #   INSTALL_QWEN27B      auto (default), true, or false.
 #   SKIP_WHISPER         set to true to install only the llama agents.
 set -euo pipefail
@@ -44,6 +49,8 @@ fi
 [[ -x "${SERVER_BIN}" ]] || die "not executable: ${SERVER_BIN}"
 SERVER_DIR="$(cd "$(dirname "${SERVER_BIN}")" && pwd)"
 REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
+KV_TYPE_K="${LLAMACPP_CACHE_TYPE_K:-q8_0}"
+KV_TYPE_V="${LLAMACPP_CACHE_TYPE_V:-q8_0}"
 
 resolve_model() {
   local alias="$1" path
@@ -146,8 +153,8 @@ ${mmproj_xml}    <string>-c</string><string>1048576</string>
     <string>-ngl</string><string>99</string>
     <string>-fa</string><string>on</string>
     <string>-np</string><string>4</string>
-    <string>--cache-type-k</string><string>q8_0</string>
-    <string>--cache-type-v</string><string>q8_0</string>
+    <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
+    <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
     <string>--alias</string><string>qwen</string>
     <string>--jinja</string>
     <string>--temp</string><string>0.6</string>
@@ -218,8 +225,8 @@ write_llamacpp_27b_plist() {
     <string>-ngl</string><string>99</string>
     <string>-fa</string><string>on</string>
     <string>-np</string><string>4</string>
-    <string>--cache-type-k</string><string>q8_0</string>
-    <string>--cache-type-v</string><string>q8_0</string>
+    <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
+    <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
     <string>--alias</string><string>qwen27b</string>
     <string>--jinja</string>
     <string>--temp</string><string>0.6</string>
