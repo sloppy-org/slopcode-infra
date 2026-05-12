@@ -758,12 +758,63 @@ installer does NOT install or start them. Follow the manual section
 below if you want speech-to-text + meeting workflow.
 
 
+PREREQUISITES (Arc 140V / Lunar Lake / 64 GB RAM)
+-------------------------------------------------
+Do these TWO things ONCE on the laptop, BEFORE running install.bat.
+Skipping them is the most likely reason the bundle will OOM or BSOD
+even though the flags are correct.
+
+(A) UPDATE THE INTEL GRAPHICS DRIVER to 32.0.101.8629 WHQL or newer.
+
+    Older Intel drivers (notably 101.8331 and earlier) have memory
+    accounting bugs on Lunar Lake UMA that produce
+    "ErrorOutOfDeviceMemory" even with sufficient RAM
+    (ggml-org/llama.cpp#18946).
+
+    To check current version:
+      Settings -> System -> About -> Device specifications
+        OR
+      open "Intel Graphics Software" / "Intel Arc Control" and read
+      the driver version on the home screen.
+
+    To update: Windows Update -> "Check for updates" -> "View optional
+    updates" -> Graphics. If Windows Update doesn't offer it, get the
+    direct installer from
+    https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html
+    (search "Intel Arc Graphics Driver"). Pick the latest WHQL.
+
+    Reboot after install.
+
+(B) RAISE SHARED GPU MEMORY OVERRIDE to 32 GB.
+
+    By default the Arc 140V Vulkan driver exposes only ~16 GB of GPU
+    memory to applications, even on a 64 GB system. The bundle uses
+    c=262144 plus -ub 1024 plus 5 MoE expert layers on the iGPU, which
+    can peak around 17-20 GB. Without raising this override the bundle
+    will hit "ErrorOutOfDeviceMemory" partway through warmup.
+
+    1. Open "Intel Graphics Software" (Start menu, type that).
+       Older driver: "Intel Arc Control" instead.
+    2. Performance tab (or "GPU" tab on older versions).
+    3. Find "Shared GPU Memory Override" (sometimes "GPU Memory
+       Override" or "Arc VRAM Override").
+    4. Set the value to 32 GB.
+    5. Apply, then reboot.
+
+    Half of system RAM is the usual safe maximum (32 GB of 64 GB).
+    Going higher leaves Windows and your other apps short of RAM.
+
+(C) OPTIONAL safety net: raise Windows TDR timeout. See TROUBLESHOOTING
+    -> "Raise Windows TDR timeout" further down.
+
+
 OPTION 1 - AUTOMATIC INSTALL (recommended)
 ------------------------------------------
-Double-click install.bat in this folder. A black Command Prompt
-window opens, copies the files, sets six environment variables,
-verifies model checksums, creates a Startup shortcut, and launches
-the llama.cpp background service.
+After the two prerequisites above are done and rebooted, double-click
+install.bat in this folder. A black Command Prompt window opens,
+copies the files, sets six environment variables, verifies model
+checksums, creates a Startup shortcut, and launches the llama.cpp
+background service.
 
 If Windows SmartScreen blocks it, click "More info" and "Run anyway".
 
@@ -960,7 +1011,7 @@ restart" (VIDEO_TDR_FAILURE):
 3. Update the startup shortcut to point at run-llamacpp-cpu.bat
    (Option A: edit the shortcut target; Option B: edit the .bat).
 
-OPTIONAL SAFETY NET — raise Windows TDR timeout
+RAISE WINDOWS TDR TIMEOUT (optional safety net)
 Default Windows TDR fires at 2 seconds, which is tight for big MoE
 dispatches on Intel Arc. To give the GPU more room before Windows
 resets the driver, add these DWORD values under
@@ -972,6 +1023,22 @@ HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\GraphicsDrivers
 
 Then reboot. This does not fix hangs, it just lets longer dispatches
 finish before Windows kills the driver.
+
+
+SECONDARY FALLBACK - garbage output that isn't slash-storm and isn't TDR
+If opencode shows NaN-like text, broken Unicode, or repetition that
+doesn't go away after the coopmat env vars and a fresh reboot, try
+disabling Vulkan F16 accumulation. On Intel iGPUs the default F16
+matmul accumulator can overflow on large batches and produce NaNs
+(ggml-org/llama.cpp#18969). Edit
+%USERPROFILE%\slopcode\run-llamacpp.bat and add this line right after
+the two GGML_VK_DISABLE_COOPMAT lines:
+
+    set "GGML_VK_DISABLE_F16=1"
+
+Costs roughly 15 percent decode throughput. Restart the service
+(Task Manager -> end llama-server.exe -> double-click run-llamacpp.bat
+again).
 EOF
 
   cat >"${t}/install.bat" <<'EOF'

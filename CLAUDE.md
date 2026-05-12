@@ -224,6 +224,36 @@ llama-server.exe -m <model> --mmproj <mmproj> \
 Win32_Processor` and emits the literal value into `run-llamacpp.bat`
 (140V: 4P + 4LP = 8 → `--threads 6`).
 
+### Required prerequisites before running install.bat
+
+Two manual setup steps the bundle install can't do for the user. If
+either is skipped on a 140V the bundle will OOM (without these the
+flags above are correct but unreachable).
+
+1. **Update Intel graphics driver to 32.0.101.8629 WHQL or newer**
+   (released 2026-04-02). Older drivers — notably 101.8331 and earlier
+   — have memory-accounting bugs on Lunar Lake UMA that surface as
+   `vk::Device::createComputePipeline: ErrorOutOfDeviceMemory` and
+   discrepancies like `compute buffer size of 160 MiB, does not match
+   expectation of 2.3 MiB` (ggml-org/llama.cpp#18946). Driver via
+   Windows Update → "View optional updates" → Graphics, or
+   <https://www.intel.com/content/www/us/en/download/785597/>.
+   The same release stream also contains the coopmat regression that
+   `GGML_VK_DISABLE_COOPMAT=1` works around; staying on a newer driver
+   doesn't bring back coopmat, but it does fix the unrelated memory
+   bugs.
+
+2. **Raise "Shared GPU Memory Override" to 32 GB** in Intel Graphics
+   Software / Intel Arc Control → Performance tab. The 140V Vulkan
+   driver only exposes ~16 GB to applications by default, even on a
+   64 GB host. The bundle's working set at `-c 262144 q8_0 KV --n-cpu-moe
+   35 -ub 1024` peaks around 17–20 GB on the GPU side, so the default
+   cap will OOM partway through warmup despite ample system RAM.
+
+These two steps are documented in the bundle's
+`windows-arc/README.md` under "PREREQUISITES" so colleagues see them
+before running `install.bat`.
+
 ### Why the GGML_VK_DISABLE_COOPMAT env vars are mandatory on Arc
 
 Tracked upstream as **ggml-org/llama.cpp#20554** (closed-as-workaround,
@@ -272,6 +302,13 @@ If the bundle TDRs anyway, the recovery sequence (in order, escalating):
    defensive net (HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers).
 5. Switch the Startup shortcut to `run-llamacpp-cpu.bat` (pure CPU,
    guaranteed-correct, ~10 t/s).
+
+If output is garbage but NOT slash-storm and NOT TDR — i.e. NaN-looking
+text, broken Unicode, or repetition that survives a reboot — try
+adding `set "GGML_VK_DISABLE_F16=1"` to `run-llamacpp.bat` next to the
+coopmat env vars. On Intel iGPUs the default F16 matmul accumulator
+can overflow on large batches and emit NaNs (ggml-org/llama.cpp#18969).
+Costs ~15 % decode throughput.
 
 ### Slash-storm history (May 2026)
 
