@@ -187,7 +187,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LD_LIBRARY_PATH="${HERE}/llama.cpp${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 exec "${HERE}/llama.cpp/llama-server" \
-  -m "${HERE}/../models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" \
+  -m "${HERE}/../models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" \
   --mmproj "${HERE}/../models/mmproj-BF16.gguf" \
   -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 \
   -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 \
@@ -305,7 +305,7 @@ Prerequisite: cmake and ninja must be installed.
        #!/usr/bin/env bash
        export LD_LIBRARY_PATH="$HOME/.local/slopcode/llama.cpp${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
        exec "$HOME/.local/slopcode/llama.cpp/llama-server" \
-         -m "$HOME/.local/slopcode/models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" \
+         -m "$HOME/.local/slopcode/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" \
          --mmproj "$HOME/.local/slopcode/models/mmproj-BF16.gguf" \
          -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 \
          -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 \
@@ -418,7 +418,7 @@ bash "${HERE}/opencode_privacy.sh"
 cat >"${DEST}/run-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
-exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 RUN
 chmod +x "${DEST}/run-llamacpp.sh"
 
@@ -566,7 +566,7 @@ Homebrew yet, visit https://brew.sh first.
        <key>Label</key><string>com.slopcode.llamacpp</string>
        <key>ProgramArguments</key><array>
        <string>HOME_PATH/Library/Application Support/slopcode/llama.cpp/llama-server</string>
-       <string>-m</string><string>HOME_PATH/Library/Application Support/slopcode/models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf</string>
+       <string>-m</string><string>HOME_PATH/Library/Application Support/slopcode/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf</string>
        <string>--mmproj</string><string>HOME_PATH/Library/Application Support/slopcode/models/mmproj-BF16.gguf</string>
        <string>-c</string><string>131072</string>
        <string>--cache-type-k</string><string>q8_0</string>
@@ -680,7 +680,7 @@ cat >"${LLAMA_PLIST}" <<XML
 <plist version="1.0"><dict>
 <key>Label</key><string>com.slopcode.llamacpp</string>
 <key>ProgramArguments</key><array>
-<string>${DEST}/llama.cpp/llama-server</string><string>-m</string><string>${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf</string><string>--mmproj</string><string>${DEST}/models/mmproj-BF16.gguf</string><string>-c</string><string>131072</string><string>--cache-type-k</string><string>q8_0</string><string>--cache-type-v</string><string>q8_0</string><string>-b</string><string>2048</string><string>-ub</string><string>1024</string><string>-ngl</string><string>99</string><string>-fa</string><string>on</string><string>-np</string><string>1</string><string>--alias</string><string>qwen</string><string>--jinja</string><string>--reasoning</string><string>on</string><string>--reasoning-budget</string><string>4096</string><string>--no-context-shift</string><string>--no-webui</string><string>--host</string><string>127.0.0.1</string><string>--port</string><string>8080</string>
+<string>${DEST}/llama.cpp/llama-server</string><string>-m</string><string>${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf</string><string>--mmproj</string><string>${DEST}/models/mmproj-BF16.gguf</string><string>-c</string><string>131072</string><string>--cache-type-k</string><string>q8_0</string><string>--cache-type-v</string><string>q8_0</string><string>-b</string><string>2048</string><string>-ub</string><string>1024</string><string>-ngl</string><string>99</string><string>-fa</string><string>on</string><string>-np</string><string>1</string><string>--alias</string><string>qwen</string><string>--jinja</string><string>--reasoning</string><string>on</string><string>--reasoning-budget</string><string>4096</string><string>--no-context-shift</string><string>--no-webui</string><string>--host</string><string>127.0.0.1</string><string>--port</string><string>8080</string>
 </array>
 <key>EnvironmentVariables</key><dict><key>DYLD_LIBRARY_PATH</key><string>${DEST}/llama.cpp</string></dict>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
@@ -909,12 +909,14 @@ OPTION 2 - MANUAL INSTALL
    "All Files" so Notepad does not append .txt.
 
        @echo off
-       REM Disable Vulkan cooperative-matrix path on Intel Arc; ggml-org/llama.cpp#20554
-       REM (KHR_coopmat + recent Intel Arc drivers cause GPU TDR / Windows BSOD).
+       REM Intel Arc Vulkan stability workarounds:
+       REM   GGML_VK_DISABLE_COOPMAT / COOPMAT2 -- Arc 140V Xe2 KHR_coopmat TDR (ggml-org/llama.cpp#20554)
+       REM   GGML_VK_DISABLE_F16                -- Intel iGPU F16 acc NaN/garbage (#18969)
        set "GGML_VK_DISABLE_COOPMAT=1"
        set "GGML_VK_DISABLE_COOPMAT2=1"
+       set "GGML_VK_DISABLE_F16=1"
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on --cpu-moe -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 
    On Arc 140V (Lunar Lake, 4P + 4LP = 8 physical cores) --threads 6 is
    the right value (physical - 2). On other Arc hosts substitute
@@ -926,7 +928,7 @@ OPTION 2 - MANUAL INSTALL
 
        @echo off
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 
 8. Create the whisper launcher %USERPROFILE%\slopcode\run-whisper.bat
    with this exact content:
@@ -941,7 +943,7 @@ OPTION 2 - MANUAL INSTALL
 
    Then open Notepad and paste this exact content (one long line):
 
-       {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":262144,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+       {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 
    Save as opencode.json in %USERPROFILE%\.config\opencode\
    (set "Save as type" to "All Files").
@@ -990,12 +992,15 @@ The background service runs as a visible Command Prompt window.
 Close it via Task Manager (Ctrl-Shift-Esc) or by closing the
 black window.
 
-run-llamacpp.bat       Vulkan GPU build, --n-cpu-moe 35 (35 of 40
-                       MoE expert layers on CPU, 5 on the Arc iGPU).
-                       Sets GGML_VK_DISABLE_COOPMAT=1 / COOPMAT2=1
-                       to dodge the Intel Arc TDR / BSOD bug
-                       documented at ggml-org/llama.cpp#20554.
-                       -c 262144, -ub 1024, q8_0 KV.
+run-llamacpp.bat       Vulkan GPU build, era-1 safe profile
+                       (--cpu-moe: all 40 MoE expert layers on CPU,
+                       only attention + KV + DeltaNet on the Arc iGPU).
+                       Sets three stability env vars:
+                         GGML_VK_DISABLE_COOPMAT/COOPMAT2 -- Arc 140V Xe2
+                           KHR_coopmat TDR bug (ggml-org/llama.cpp#20554)
+                         GGML_VK_DISABLE_F16             -- Intel iGPU
+                           F16 accumulator NaN bug (#18969)
+                       -c 131072, -ub 512, q8_0 KV, --cpu-moe.
 run-llamacpp-cpu.bat   Pure CPU fallback (-ngl 0). Always correct
                        output but only ~10 tokens per second.
 
@@ -1026,19 +1031,27 @@ finish before Windows kills the driver.
 
 
 SECONDARY FALLBACK - garbage output that isn't slash-storm and isn't TDR
-If opencode shows NaN-like text, broken Unicode, or repetition that
-doesn't go away after the coopmat env vars and a fresh reboot, try
-disabling Vulkan F16 accumulation. On Intel iGPUs the default F16
-matmul accumulator can overflow on large batches and produce NaNs
-(ggml-org/llama.cpp#18969). Edit
-%USERPROFILE%\slopcode\run-llamacpp.bat and add this line right after
-the two GGML_VK_DISABLE_COOPMAT lines:
+The three GGML_VK_DISABLE_* env vars in run-llamacpp.bat already cover
+the known coopmat (140V Xe2) and F16-acc (155H Xe-LPG) bugs. If you
+still see garbage:
 
-    set "GGML_VK_DISABLE_F16=1"
+1. Confirm the env vars actually took effect: in the llama-server
+   startup banner you should see "matrix cores: none" (not
+   "KHR_coopmat"). If it shows KHR_coopmat, the env vars aren't being
+   read - launch from the same Command Prompt that the bat file sets up.
 
-Costs roughly 15 percent decode throughput. Restart the service
-(Task Manager -> end llama-server.exe -> double-click run-llamacpp.bat
-again).
+2. Try bumping the KV cache to bf16 (slower, doubles memory, but Unsloth
+   recommends it as the gibberish remedy). Edit run-llamacpp.bat and
+   change "--cache-type-k q8_0 --cache-type-v q8_0" to
+   "--cache-type-k bf16 --cache-type-v bf16". You may also need to
+   drop -c from 131072 to 65536 to keep VRAM in budget.
+
+3. Try disabling flash attention. Change "-fa on" to "-fa off". This
+   trades performance for more conservative attention compute paths
+   that have been better-behaved on Intel iGPUs historically.
+
+4. Use the CPU fallback (run-llamacpp-cpu.bat). If that also produces
+   garbage, the model file is corrupt - re-copy from the USB.
 EOF
 
   cat >"${t}/install.bat" <<'EOF'
@@ -1055,6 +1068,31 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+echo.
+echo === Aggressive cleanup of any prior slopcode install ===
+echo Stopping any running llama-server / opencode...
+taskkill /F /IM llama-server.exe /T >nul 2>&1
+taskkill /F /IM opencode.exe /T >nul 2>&1
+REM Brief pause so Windows releases file handles before we rmdir.
+ping -n 3 127.0.0.1 >nul 2>&1
+echo Removing old Startup shortcuts...
+del /Q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" 2>nul
+del /Q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper.bat" 2>nul
+echo Removing old launchers and opencode config...
+del /Q "%DEST%\run-llamacpp.bat" 2>nul
+del /Q "%DEST%\run-llamacpp-cpu.bat" 2>nul
+del /Q "%DEST%\run-whisper.bat" 2>nul
+del /Q "%USERPROFILE%\.config\opencode\opencode.json" 2>nul
+echo Removing old llama.cpp + opencode dirs...
+rmdir /S /Q "%DEST%\llama.cpp" 2>nul
+rmdir /S /Q "%DEST%\opencode" 2>nul
+echo Removing old GGUFs from %DEST%\models...
+del /Q "%DEST%\models\*.gguf" 2>nul
+del /Q "%DEST%\models\*.sha256" 2>nul
+echo Clearing Intel shader cache...
+rmdir /S /Q "%LOCALAPPDATA%\Intel\ShaderCache" 2>nul
+echo === Cleanup done; installing fresh ===
+echo.
 mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" 2>nul
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
 xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
@@ -1065,7 +1103,7 @@ setx OPENCODE_DISABLE_MODELS_FETCH 1 >nul
 setx OPENCODE_DISABLE_LSP_DOWNLOAD 1 >nul
 setx OPENCODE_DISABLE_DEFAULT_PLUGINS 1 >nul
 setx OPENCODE_DISABLE_EMBEDDED_WEB_UI 1 >nul
-set "MODEL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+set "MODEL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
 set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
 REM Detect physical cores; --threads = physical - 2 (min 2). Lunar Lake Arc 140V
 REM has 4P + 4LP = 8 physical cores, so this lands on --threads 6.
@@ -1078,19 +1116,21 @@ if exist "%TEMP%\slopcode_threads.txt" (
 if "!THREADS!"=="" set /a THREADS=%NUMBER_OF_PROCESSORS%/2 - 1
 if !THREADS! LSS 2 set THREADS=2
 >"%DEST%\run-llamacpp.bat" echo @echo off
->>"%DEST%\run-llamacpp.bat" echo REM Disable Vulkan cooperative-matrix path on Intel Arc; ggml-org/llama.cpp#20554
->>"%DEST%\run-llamacpp.bat" echo REM (KHR_coopmat + recent Intel drivers cause GPU TDR / Windows BSOD).
+>>"%DEST%\run-llamacpp.bat" echo REM Intel Arc Vulkan stability workarounds:
+>>"%DEST%\run-llamacpp.bat" echo REM   GGML_VK_DISABLE_COOPMAT / COOPMAT2 -- Arc 140V Xe2 KHR_coopmat TDR ^(ggml-org/llama.cpp#20554^)
+>>"%DEST%\run-llamacpp.bat" echo REM   GGML_VK_DISABLE_F16                -- Intel iGPU F16 acc NaN/garbage ^(#18969^)
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
+>>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on --cpu-moe -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
->"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":262144,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+>"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); $add='%DEST%\opencode'; if (($p -split ';') -notcontains $add) { [Environment]::SetEnvironmentVariable('Path', ($add+';'+$p), 'User') }"
 start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 echo Installed localhost-only llama.cpp 8080 and opencode (--threads !THREADS!).

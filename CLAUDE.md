@@ -203,15 +203,17 @@ Target hardware: Intel Arc 140V iGPU (Lunar Lake, Xe2) on Windows 11,
 (MTL, ARL-H, dGPU B-series) should also work with the same flags but
 have not been validated end-to-end.
 
-The `windows-arc` bundle uses the era-cdd0121 "first slopcode" profile
-with the upstream-documented coopmat TDR workaround layered on:
+The `windows-arc` bundle uses the era-1 "qwenstack" safe profile plus
+the three upstream-documented Intel Arc Vulkan stability env vars and
+Unsloth's recommended `UD-Q4_K_XL` quant:
 
 ```
 GGML_VK_DISABLE_COOPMAT=1 \
 GGML_VK_DISABLE_COOPMAT2=1 \
-llama-server.exe -m <model> --mmproj <mmproj> \
-  -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 \
-  -ngl 99 -fa on --n-cpu-moe 35 \
+GGML_VK_DISABLE_F16=1 \
+llama-server.exe -m Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --mmproj mmproj-BF16.gguf \
+  -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 \
+  -ngl 99 -fa on --cpu-moe \
   -np 1 --threads <physical_cores - 2> --threads-http 4 \
   --alias qwen --jinja \
   --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
@@ -223,6 +225,21 @@ llama-server.exe -m <model> --mmproj <mmproj> \
 `install.bat` detects physical cores via PowerShell `Get-CimInstance
 Win32_Processor` and emits the literal value into `run-llamacpp.bat`
 (140V: 4P + 4LP = 8 → `--threads 6`).
+
+The model file is `Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf` (Unsloth's
+recommended variant, ~22.4 GB), not `UD-Q4_K_M` (which Unsloth's docs
+treat as a smaller-but-not-recommended quant and which produced
+slash-storm on a 155H Meteor Lake Xe-LPG iGPU even after coopmat was
+disabled). Bartowski's standard `Q4_K_M` is also available as
+`qwen3.6-35b-a3b-bartowski-q4` if a third variant is needed.
+
+`install.bat` is aggressive: it `taskkill`s any running
+`llama-server.exe` / `opencode.exe`, removes old Startup shortcuts,
+old launchers, old `opencode.json`, the entire `%DEST%\llama.cpp`
+and `%DEST%\opencode` directories, all old `*.gguf` in
+`%DEST%\models`, and the `%LOCALAPPDATA%\Intel\ShaderCache` before
+writing the new install. Re-running it always produces a clean
+state.
 
 ### Required prerequisites before running install.bat
 
@@ -303,12 +320,12 @@ If the bundle TDRs anyway, the recovery sequence (in order, escalating):
 5. Switch the Startup shortcut to `run-llamacpp-cpu.bat` (pure CPU,
    guaranteed-correct, ~10 t/s).
 
-If output is garbage but NOT slash-storm and NOT TDR — i.e. NaN-looking
-text, broken Unicode, or repetition that survives a reboot — try
-adding `set "GGML_VK_DISABLE_F16=1"` to `run-llamacpp.bat` next to the
-coopmat env vars. On Intel iGPUs the default F16 matmul accumulator
-can overflow on large batches and emit NaNs (ggml-org/llama.cpp#18969).
-Costs ~15 % decode throughput.
+The bundle's run-llamacpp.bat already sets `GGML_VK_DISABLE_F16=1` by
+default — this is the documented fix for ggml-org/llama.cpp#18969
+(Intel iGPU F16 accumulator overflows and emits NaN/garbage on large
+batches; symptom is non-slash-storm gibberish that survives a reboot).
+Costs ~15 % decode throughput; the trade is worth it for correctness
+across both Xe2 (140V) and Xe-LPG (155H Meteor Lake) hardware.
 
 ### Slash-storm history (May 2026)
 
