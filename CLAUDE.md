@@ -444,10 +444,19 @@ again, add it deliberately and update this file.
 Repo-first for our own machines; USB bundles for colleagues. The USB path is
 `scripts/build_bundle.sh all --out <mountpoint>` after formatting with
 `scripts/usb_format.sh` when needed. USB bundles include llama.cpp,
-opencode, whisper.cpp, Qwen GGUF/mmproj, and `ggml-large-v3-turbo.bin`.
-Generated services bind only localhost: llama.cpp on `127.0.0.1:8080`,
-whisper.cpp on `127.0.0.1:8427`. Opencode points only at localhost and
-sets the same privacy env/config as the repo install.
+opencode, whisper.cpp, the meeting workflow scripts, the Qwen GGUF/mmproj,
+and `ggml-large-v3-turbo.bin`.
+
+**Automatic install scope.** The bundled `install.sh` / `install.bat`
+auto-installs and autostarts **only** llama.cpp on `127.0.0.1:8080` plus
+opencode. Whisper.cpp + meeting tools are shipped on the USB but the
+automatic installer does NOT touch them: they aren't copied, built,
+registered, or autostarted. This is deliberate — running whisper-server
+alongside llama-server on Intel Arc Vulkan adds a second concurrent
+Vulkan workload that contributed to the May 2026 Windows TDR/BSOD
+incidents. Users who want speech-to-text follow the manual install
+section in the per-platform README. Opencode points only at localhost
+and sets the same privacy env/config as the repo install.
 
 Pi is a developer-only convenience installed through the system `npm` via
 `scripts/pi_install.sh`; if Node is missing the script tells the user to
