@@ -24,6 +24,11 @@ have python3 || die "python3 is required"
 TARGETS=()
 OUT=""
 LLAMACPP_TAG="${LLAMACPP_TAG:-}"
+# Pinned Vulkan release for Windows-arc. Intel Arc Vulkan has open regressions
+# (ggml-org/llama.cpp#19957, #20097) that require a tested stable baseline.
+# Bump deliberately after smoke-testing on Arc hardware.
+# Remove pin when #19957 (missing Vulkan SSM/DeltaNet kernels) is resolved upstream.
+LLAMACPP_WIN_TAG="${LLAMACPP_WIN_TAG:-b9095}"
 OPENCODE_TAG="${OPENCODE_TAG:-}"
 WHISPER_TAG="${WHISPER_TAG:-}"
 SKIP_MODEL="${SKIP_MODEL:-false}"
@@ -140,7 +145,12 @@ copy_model_alias() {
   fi
   src_dir="$(dirname "${primary}")"
   echo "copying ${alias}"
-  find "${src_dir}" -maxdepth 1 -type f -name '*.gguf' -exec cp -n {} "${OUT}/models/" \;
+  while IFS= read -r -d '' f; do
+    cp -n "${f}" "${OUT}/models/"
+    local bn
+    bn="$(basename "${f}")"
+    sha256sum "${f}" | awk '{print $1}' > "${OUT}/models/${bn}.sha256"
+  done < <(find "${src_dir}" -maxdepth 1 -type f -name '*.gguf' -print0)
 }
 
 copy_models() {
@@ -355,7 +365,11 @@ write_windows() {
   local t="${OUT}/windows-arc"
   mkdir -p "${t}/llama.cpp" "${t}/opencode" "${t}/whisper.cpp"
   local tag url oc_tag oc_url wh_tag wh_url
+  # Use a pinned Vulkan tag to avoid unvetted Arc regressions.
+  local saved_tag="${LLAMACPP_TAG}"
+  LLAMACPP_TAG="${LLAMACPP_WIN_TAG}"
   read -r tag url <<<"$(llama_asset win-vulkan-x64)"
+  LLAMACPP_TAG="${saved_tag}"
   echo "windows-arc llama.cpp ${tag}"
   fetch_archive "${url}" "${t}/llama.cpp" llama-server.exe
   read -r oc_tag oc_url <<<"$(github_asset sst/opencode "${OPENCODE_TAG}" opencode-windows-x64.zip)"
@@ -367,12 +381,45 @@ write_windows() {
   rm -rf "${t}/meeting"
   cp -R "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
+  # PowerShell helper: verify model checksums before install.
+  cat >"${t}/verify-models.ps1" <<'PS1'
+param([string]$ModelsDir)
+$ok = $true
+Get-ChildItem "$ModelsDir\*.sha256" | ForEach-Object {
+    $gguf = $_.FullName -replace '\.sha256$', ''
+    if (-not (Test-Path $gguf)) {
+        Write-Error "missing model file: $gguf"
+        $ok = $false
+        return
+    }
+    $expected = (Get-Content $_.FullName -Raw).Trim().ToUpper()
+    $actual   = (Get-FileHash -Algorithm SHA256 $gguf).Hash
+    if ($expected -ne $actual) {
+        Write-Error "SHA256 mismatch: $($_.Name -replace '\.sha256$', '')"
+        Write-Error "  expected: $expected"
+        Write-Error "  actual:   $actual"
+        $ok = $false
+    } else {
+        Write-Host "OK  $($_.Name -replace '\.sha256$', '')"
+    }
+}
+if (-not $ok) { exit 1 }
+PS1
+
   cat >"${t}/install.bat" <<'EOF'
 @echo off
 setlocal EnableDelayedExpansion
 set "HERE=%~dp0"
 for %%I in ("%HERE%\..") do set "ROOT=%%~fI"
 set "DEST=%USERPROFILE%\slopcode"
+echo Verifying model checksums...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%HERE%\verify-models.ps1" -ModelsDir "%ROOT%\models"
+if errorlevel 1 (
+  echo ERROR: model checksum mismatch - USB may be corrupted.
+  echo Re-run build_bundle.sh to rebuild a fresh bundle with new checksums.
+  pause
+  exit /b 1
+)
 mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\whisper.cpp" "%DEST%\meeting" "%DEST%\bin" 2>nul
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
 xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
@@ -391,7 +438,10 @@ set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
 set "WMODEL=%DEST%\models\ggml-large-v3-turbo.bin"
 >"%DEST%\run-llamacpp.bat" echo @echo off
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --reasoning on --reasoning-budget 4096 --no-context-shift --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 262144 --cache-type-k f16 --cache-type-v f16 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 --override-tensor .*ssm.*=CPU -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>"%DEST%\run-llamacpp-cpu.bat" echo @echo off
+>>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 8 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 >"%DEST%\run-whisper.bat" echo @echo off
 >>"%DEST%\run-whisper.bat" echo set "PATH=%DEST%\whisper.cpp;%%PATH%%"
 >>"%DEST%\run-whisper.bat" echo "%DEST%\whisper.cpp\whisper-server.exe" -m "%WMODEL%" --host 127.0.0.1 --port 8427 -l auto -t 4 -fa --inference-path /v1/audio/transcriptions --convert --tmp-dir "%TEMP%"
@@ -399,7 +449,7 @@ mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper.bat" echo start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
->"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4","limit":{"context":262144,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+>"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":262144,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 >"%DEST%\bin\record-meeting.cmd" echo @echo off
 >>"%DEST%\bin\record-meeting.cmd" echo start "" "%DEST%\meeting\record-meeting.html"
 >"%DEST%\bin\meeting-transcribe.cmd" echo @echo off
@@ -412,6 +462,8 @@ powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path',
 start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
 echo Installed localhost-only llama.cpp 8080, whisper 8427, opencode, and meeting tools.
+echo If you see repeated slashes in opencode thinking, run: %DEST%\run-llamacpp-cpu.bat
+echo and update the Startup shortcut to point at run-llamacpp-cpu.bat instead.
 echo Open a new terminal before running opencode or meeting-process.
 EOF
 }
@@ -442,6 +494,13 @@ Meeting commands installed to PATH:
   meeting-transcribe  local whisper.cpp transcription
   meeting-notes       local opencode note generation
   meeting-process     transcribe, then write notes
+
+Windows Intel Arc — if thinking stream shows repeated slashes:
+  run-llamacpp.bat uses Vulkan + SSM-tensor CPU pin (experimental, faster).
+  run-llamacpp-cpu.bat uses pure CPU (-ngl 0), always correct, ~10 tok/s.
+  To switch: kill slopcode-llamacpp in Task Manager, run run-llamacpp-cpu.bat,
+  update Startup shortcut to point at run-llamacpp-cpu.bat.
+  Upstream fix tracked at: https://github.com/ggml-org/llama.cpp/issues/19957
 
 No Pi, no bundled Node, no npm cache.
 EOF

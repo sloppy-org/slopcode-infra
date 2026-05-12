@@ -196,6 +196,31 @@ by more powerful hardware.
 
 Override per invocation with `LLAMACPP_PARALLEL` and `LLAMACPP_CONTEXT`.
 
+## Windows-arc USB bundle (Intel Arc iGPU, Vulkan)
+
+The USB bundle for `windows-arc` diverges from the standard launch profile above
+because `qwen3_5moe` (Qwen3.5/3.6-35B-A3B) has DeltaNet SSM layers whose Vulkan
+compute shaders are missing upstream (ggml-org/llama.cpp#19957). Without a
+workaround, the SSM ops silently fall back to CPU, corrupting the GPU↔CPU boundary
+and producing repeating-punctuation garbage (`/////`) in the reasoning stream.
+
+| Flag | Linux/Mac default | Windows-arc bundle |
+| ---- | ----------------- | ------------------ |
+| `-c` | 131072 | 262144 (iGPU shares 64 GB system RAM — no VRAM cap) |
+| `--cache-type-k/v` | q8_0/q8_0 | **f16/f16** (q8_0 + `-fa` triggers separate Arc bugs: #19276, #22275) |
+| `--override-tensor` | absent | `.*ssm.*=CPU` (pins SSM tensors explicitly to avoid silent-fallback corruption) |
+| `--reasoning-format` | deepseek | deepseek (was missing in pre-fix Windows bat) |
+| Qwen sampler block | present | present (was missing in pre-fix Windows bat) |
+
+The bundle also ships `run-llamacpp-cpu.bat` (`-ngl 0`, no mmproj, `--threads 8`)
+as a guaranteed-correct fallback. If the thinking stream still shows `////` after
+installing, kill the running service and start `run-llamacpp-cpu.bat` instead.
+Update the Startup shortcut accordingly.
+
+The Windows Vulkan release is pinned to `LLAMACPP_WIN_TAG` (default `b9095`) to
+avoid unvetted regressions. Bump it deliberately after smoke-testing on Arc.
+Remove the pin and the `--override-tensor` workaround when #19957 is resolved.
+
 ## Multi-host (slopgate)
 
 For deployments spanning more than one box, `sloppy-org/slopgate` (a private
