@@ -165,12 +165,13 @@ scripts/build_bundle.sh all --out /mnt/usb
 ```
 
 The bundle includes llama.cpp, opencode, whisper.cpp, Qwen3.6 35B A3B
-UD-Q4_K_M, the Qwen mmproj, and `ggml-large-v3-turbo.bin`. It does not include
-Pi, Node, or an npm cache. Generated installers bind llama.cpp to
-`127.0.0.1:8080` and whisper.cpp to `127.0.0.1:8427`; opencode is configured
-only against the local llama.cpp endpoint with telemetry/share/update/model
-fetch paths disabled. The installers also add the meeting commands above to
-PATH and start the llama.cpp and whisper.cpp services.
+UD-Q4_K_XL (Unsloth's recommended variant), the Qwen mmproj, and
+`ggml-large-v3-turbo.bin`. It does not include Pi, Node, or an npm cache.
+Generated installers bind llama.cpp to `127.0.0.1:8080`; opencode is
+configured only against the local llama.cpp endpoint with
+telemetry/share/update/model fetch paths disabled. Whisper.cpp and the
+meeting commands are shipped on the USB but are **not** automatically
+installed — see the per-platform README on the USB for the manual steps.
 
 ## Voxtype install (push-to-talk dictation)
 

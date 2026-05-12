@@ -7,10 +7,10 @@ Guidance for Claude Code working inside this repository.
 One blessed local coding stack, nothing else:
 
 - **Runtime**: `llama-server` from the latest upstream ggml-org/llama.cpp release.
-- **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_M` — alias
-  `qwen3.6-35b-a3b-q4`, served as `qwen`. The 27B dense profile
-  (`qwen3.6-27b-q4`) is a special mode for slopgate deployments on more
-  powerful hardware.
+- **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_XL` (Unsloth's
+  own recommended variant) — alias `qwen3.6-35b-a3b-q4`, served as
+  `qwen`. The 27B dense profile (`qwen3.6-27b-q4`) is a special mode
+  for slopgate deployments on more powerful hardware.
 - **Harness**: `opencode` CLI, title generation disabled, reasoning on.
 - **Optional load balancer**: `sloppy-org/slopgate` (fork of distantmagic/
   paddler v1.x) for multi-host deployments. See "Multi-host (slopgate)" below.
@@ -148,11 +148,19 @@ Every instance launched through `server_start_llamacpp.sh` always passes:
 ```
 
 The local offline default is single-slot 128K: `-np 1 -ub 1024 -c 131072`.
-Qwen3.6 35B-A3B is MoE: Linux/Windows add `--n-cpu-moe 35` (expert layers 0–34
-on CPU, 35–39 on GPU). Mac uses unified memory — no MoE split.
+Qwen3.6 35B-A3B is MoE. **Per-platform MoE policy diverges**:
 
-On Linux/Windows partial MoE offload replaces the old blanket `--cpu-moe`.
-Benchmark on RTX 5060 Ti 16 GB with Qwen3.6-35B-A3B UD-Q4_K_M at c=262144:
+- **Linux CUDA** uses `--n-cpu-moe 35` (expert layers 0–34 on CPU, 35–39
+  on GPU) — bench-driven on a 16 GB RTX 5060 Ti below.
+- **Windows-arc (Intel Arc)** uses `--cpu-moe` (all experts on CPU,
+  zero MoE on iGPU) for stability — see the "Windows-arc USB bundle"
+  section for the upstream Intel TDR/F16 bugs that force this.
+- **macOS** uses unified memory — no MoE split.
+
+On Linux CUDA partial MoE offload replaces the old blanket `--cpu-moe`.
+Benchmark on RTX 5060 Ti 16 GB with Qwen3.6-35B-A3B UD-Q4_K_XL at c=262144
+(same relative numbers held with UD-Q4_K_M earlier; the XL bench was not
+rerun but the layer-cost ratios are unchanged):
 
 | Config                                 | llama  | Prefill | Decode | Stack peak | Free |
 | -------------------------------------- | ------ | ------- | ------ | ---------- | ---- |
