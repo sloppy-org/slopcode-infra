@@ -171,8 +171,24 @@ UNIT
 
     BALANCER_LABEL=com.slopcode.slopgate-balancer
     AGENT_LABEL=com.slopcode.slopgate-agent
+    AGENT_27B_LABEL=com.slopcode.slopgate-agent-27b
+    AGENT_122B_LABEL=com.slopcode.slopgate-agent-122b
     BALANCER_PLIST="${AGENTS_DIR}/${BALANCER_LABEL}.plist"
     AGENT_PLIST="${AGENTS_DIR}/${AGENT_LABEL}.plist"
+    AGENT_27B_PLIST="${AGENTS_DIR}/${AGENT_27B_LABEL}.plist"
+    AGENT_122B_PLIST="${AGENTS_DIR}/${AGENT_122B_LABEL}.plist"
+
+    # Per-companion agent params. Each companion is registered automatically
+    # iff its llama-server launchd plist is present in this directory (see
+    # install_mac_launchagents.sh). Stays in sync with the llama-server ports.
+    AGENT_27B_ADDR="${SLOPGATE_AGENT_27B_ADDR:-127.0.0.1:8082}"
+    AGENT_27B_MAX_CONTEXT="${SLOPGATE_AGENT_27B_MAX_CONTEXT:-262144}"
+    AGENT_27B_MODEL_ALIAS="${SLOPGATE_AGENT_27B_MODEL_ALIAS:-qwen27b}"
+    AGENT_27B_NAME="${SLOPGATE_AGENT_27B_NAME:-leader-27b}"
+    AGENT_122B_ADDR="${SLOPGATE_AGENT_122B_ADDR:-127.0.0.1:8083}"
+    AGENT_122B_MAX_CONTEXT="${SLOPGATE_AGENT_122B_MAX_CONTEXT:-262144}"
+    AGENT_122B_MODEL_ALIAS="${SLOPGATE_AGENT_122B_MODEL_ALIAS:-qwen122b}"
+    AGENT_122B_NAME="${SLOPGATE_AGENT_122B_NAME:-leader-122b}"
 
     cat > "${BALANCER_PLIST}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -231,22 +247,78 @@ XML
     echo "wrote: ${BALANCER_PLIST}"
     echo "wrote: ${AGENT_PLIST}"
 
+    write_companion_agent() {
+      local label="$1" plist="$2" addr="$3" max_ctx="$4" alias="$5" name="$6"
+      cat > "${plist}" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>LimitLoadToSessionType</key><string>Background</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${EXEC_BIN}</string>
+    <string>agent</string>
+    <string>--management-addr</string><string>${SLOPGATE_MANAGEMENT_ADDR}</string>
+    <string>--external-llamacpp-addr</string><string>${addr}</string>
+    <string>--local-llamacpp-addr</string><string>${addr}</string>
+    <string>--llamacpp-request-timeout</string><string>${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT}</string>
+    <string>--max-context</string><string>${max_ctx}</string>
+    <string>--model-alias</string><string>${alias}</string>
+    <string>--name</string><string>${name}</string>
+  </array>
+  <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent-${alias}.log</string>
+  <key>StandardErrorPath</key><string>${RUN_DIR}/slopgate-agent-${alias}.log</string>
+</dict>
+</plist>
+XML
+      echo "wrote: ${plist}"
+    }
+
+    INSTALLED_AGENT_LABELS=("${AGENT_LABEL}")
+
+    if [[ -f "${AGENTS_DIR}/com.slopcode.llamacpp-27b.plist" ]]; then
+      write_companion_agent "${AGENT_27B_LABEL}" "${AGENT_27B_PLIST}" \
+        "${AGENT_27B_ADDR}" "${AGENT_27B_MAX_CONTEXT}" \
+        "${AGENT_27B_MODEL_ALIAS}" "${AGENT_27B_NAME}"
+      INSTALLED_AGENT_LABELS+=("${AGENT_27B_LABEL}")
+    else
+      rm -f "${AGENT_27B_PLIST}"
+    fi
+
+    if [[ -f "${AGENTS_DIR}/com.slopcode.llamacpp-122b.plist" ]]; then
+      write_companion_agent "${AGENT_122B_LABEL}" "${AGENT_122B_PLIST}" \
+        "${AGENT_122B_ADDR}" "${AGENT_122B_MAX_CONTEXT}" \
+        "${AGENT_122B_MODEL_ALIAS}" "${AGENT_122B_NAME}"
+      INSTALLED_AGENT_LABELS+=("${AGENT_122B_LABEL}")
+    else
+      rm -f "${AGENT_122B_PLIST}"
+    fi
+
     if [[ "${DRY_RUN}" == "true" ]]; then
       echo "INSTALL_DRY_RUN=true; skipping launchctl bootstrap."
       exit 0
     fi
 
-    for label in "${BALANCER_LABEL}" "${AGENT_LABEL}"; do
+    for label in "${BALANCER_LABEL}" "${INSTALLED_AGENT_LABELS[@]}"; do
       launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
       launchctl bootout "user/$(id -u)/${label}" 2>/dev/null || true
     done
     launchctl bootstrap "user/$(id -u)" "${BALANCER_PLIST}"
-    launchctl bootstrap "user/$(id -u)" "${AGENT_PLIST}"
     launchctl enable "user/$(id -u)/${BALANCER_LABEL}" 2>/dev/null || true
-    launchctl enable "user/$(id -u)/${AGENT_LABEL}" 2>/dev/null || true
     launchctl kickstart -k "user/$(id -u)/${BALANCER_LABEL}"
-    launchctl kickstart -k "user/$(id -u)/${AGENT_LABEL}"
-    echo "loaded ${BALANCER_LABEL} + ${AGENT_LABEL}"
+    for label in "${INSTALLED_AGENT_LABELS[@]}"; do
+      plist_path="${AGENTS_DIR}/${label}.plist"
+      launchctl bootstrap "user/$(id -u)" "${plist_path}"
+      launchctl enable "user/$(id -u)/${label}" 2>/dev/null || true
+      launchctl kickstart -k "user/$(id -u)/${label}"
+    done
+    echo "loaded ${BALANCER_LABEL} + ${INSTALLED_AGENT_LABELS[*]}"
     ;;
 
   *)
@@ -259,3 +331,8 @@ echo "balancer reverse-proxy:  ${SLOPGATE_REVERSEPROXY_ADDR:-(see env file)}"
 echo "balancer management:     ${SLOPGATE_MANAGEMENT_ADDR:-(see env file)}"
 echo "remember to run scripts/server_start_llamacpp.sh (or restart its service)"
 echo "so llama-server flips to the loopback port that the proxy expects."
+echo
+echo "macOS companion agents (qwen27b on :8082, qwen122b on :8083) are installed"
+echo "automatically when the corresponding com.slopcode.llamacpp-{27b,122b}"
+echo "launchd plist is present. Run scripts/install_mac_launchagents.sh first"
+echo "with INSTALL_QWEN27B=true / INSTALL_QWEN122B=true to enable them."

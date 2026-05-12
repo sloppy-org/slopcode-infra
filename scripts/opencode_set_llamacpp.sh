@@ -100,7 +100,8 @@ providers_block() {
   cat <<EOF
   "provider": {
 $(provider_block "llamacpp" "llama.cpp 35B-A3B (Local)" "qwen" "Qwen3.6 35B A3B Q4 + KV-Q8 (Local)" "qwen" "${sid}"),
-$(provider_block "llamacpp-27b" "llama.cpp 27B (Slopgate)" "qwen27b" "Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Slopgate)" "qwen27b" "${sid}")
+$(provider_block "llamacpp-27b" "llama.cpp 27B (Slopgate)" "qwen27b" "Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Slopgate)" "qwen27b" "${sid}"),
+$(provider_block "llamacpp-122b" "llama.cpp 122B-A10B (Slopgate)" "qwen122b" "Qwen3.5 122B-A10B UD-Q4 + KV-Q8 (Slopgate)" "qwen122b" "${sid}")
   }
 EOF
 }
