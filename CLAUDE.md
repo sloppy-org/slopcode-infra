@@ -199,16 +199,18 @@ Override per invocation with `LLAMACPP_PARALLEL` and `LLAMACPP_CONTEXT`.
 ## Windows-arc USB bundle (Intel Arc iGPU, Vulkan)
 
 The USB bundle for `windows-arc` diverges from the standard launch profile above
-because `qwen3_5moe` (Qwen3.5/3.6-35B-A3B) has DeltaNet SSM layers whose Vulkan
-compute shaders are missing upstream (ggml-org/llama.cpp#19957). Without a
-workaround, the SSM ops silently fall back to CPU, corrupting the GPU↔CPU boundary
-and producing repeating-punctuation garbage (`/////`) in the reasoning stream.
+due to a stack of Intel Arc Vulkan-specific bugs. Root cause of the `/////` reasoning
+storm: `q8_0` KV-cache quantisation combined with `-fa on` on Intel Arc Vulkan
+produces deterministic garbage output (ggml-org/llama.cpp#21888, #19276, #22275).
+Switching to `f16` KV cache eliminates the corruption. Additionally, the original
+Windows `.bat` was missing `--reasoning-format deepseek` and the Qwen sampler block
+that the Linux launcher always passes; those are now aligned.
 
 | Flag | Linux/Mac default | Windows-arc bundle |
 | ---- | ----------------- | ------------------ |
 | `-c` | 131072 | 262144 (iGPU shares 64 GB system RAM — no VRAM cap) |
 | `--cache-type-k/v` | q8_0/q8_0 | **f16/f16** (q8_0 + `-fa` triggers separate Arc bugs: #19276, #22275) |
-| `--override-tensor` | absent | `.*ssm.*=CPU` (pins SSM tensors explicitly to avoid silent-fallback corruption) |
+| `--override-tensor` | absent | absent (SSM tensor names are weight storage, not op-routing handles; flag had no effect on correctness) |
 | `--reasoning-format` | deepseek | deepseek (was missing in pre-fix Windows bat) |
 | Qwen sampler block | present | present (was missing in pre-fix Windows bat) |
 
@@ -219,7 +221,7 @@ Update the Startup shortcut accordingly.
 
 The Windows Vulkan release is pinned to `LLAMACPP_WIN_TAG` (default `b9095`) to
 avoid unvetted regressions. Bump it deliberately after smoke-testing on Arc.
-Remove the pin and the `--override-tensor` workaround when #19957 is resolved.
+Remove the pin when Intel Arc Vulkan KV-quant + FA bugs are fixed upstream (tracked via #21888, #22275).
 
 ## Multi-host (slopgate)
 

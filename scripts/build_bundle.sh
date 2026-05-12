@@ -438,7 +438,7 @@ set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
 set "WMODEL=%DEST%\models\ggml-large-v3-turbo.bin"
 >"%DEST%\run-llamacpp.bat" echo @echo off
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 262144 --cache-type-k f16 --cache-type-v f16 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 --override-tensor .*ssm.*=CPU -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 262144 --cache-type-k f16 --cache-type-v f16 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
 >>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 8 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
