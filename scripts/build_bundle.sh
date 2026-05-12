@@ -203,7 +203,7 @@ exec "${HERE}/llama.cpp/llama-server" \
 EOF
   chmod +x "${t}/start.sh"
 
-  cat >"${t}/README.txt" <<'EOF'
+  cat >"${t}/README.md" <<'EOF'
 slopcode for Linux (NVIDIA CUDA)
 ================================
 
@@ -501,7 +501,7 @@ write_mac() {
   fetch_whisper_source "${t}/whisper.cpp" "${WHISPER_TAG}"
   write_common_unix_files "${t}"
 
-  cat >"${t}/README.txt" <<'EOF'
+  cat >"${t}/README.md" <<'EOF'
 slopcode for macOS (Apple Silicon)
 ==================================
 
@@ -825,7 +825,7 @@ Get-ChildItem "$ModelsDir\*.sha256" | ForEach-Object {
 if (-not $ok) { exit 1 }
 PS1
 
-  cat >"${t}/README.txt" <<'EOF'
+  cat >"${t}/README.md" <<'EOF'
 slopcode for Windows (Intel Arc, Vulkan)
 ========================================
 
@@ -1119,19 +1119,19 @@ for target in "${TARGETS[@]}"; do
   esac
 done
 
-cat >"${OUT}/README.txt" <<'EOF'
+cat >"${OUT}/README.md" <<'EOF'
 slopcode USB bundle
 ===================
 
 A local AI coding assistant. Everything runs on your computer, on
 localhost only. No cloud, no account, no data leaves the machine.
 
-Find your platform's folder and open its README.txt for full
+Find your platform's folder and open its README.md for full
 instructions (automatic and manual install):
 
-  Windows (Intel Arc):     windows-arc/README.txt
-  macOS (Apple Silicon):   mac-m1/README.txt
-  Linux (NVIDIA CUDA):     linux-cuda/README.txt
+  Windows (Intel Arc):     windows-arc/README.md
+  macOS (Apple Silicon):   mac-m1/README.md
+  Linux (NVIDIA CUDA):     linux-cuda/README.md
 EOF
 
 echo "bundle ready at ${OUT}"
