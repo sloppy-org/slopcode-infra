@@ -198,8 +198,14 @@ Override per invocation with `LLAMACPP_PARALLEL` and `LLAMACPP_CONTEXT`.
 
 ## Windows-arc USB bundle (Intel Arc iGPU, Vulkan)
 
+Target hardware: Intel Arc iGPU on Windows 11, 64 GB unified system RAM
+shared with the iGPU. `--cpu-moe` (all 40 MoE expert layers on CPU) is
+**mandatory** here, not a tuning choice. See "Why `--cpu-moe` is mandatory
+on Arc" below.
+
 The `windows-arc` bundle uses the era-1 single-slot Vulkan profile that ships
-all 40 MoE expert layers to CPU and only puts KV + attention on the iGPU:
+all 40 MoE expert layers to CPU and only puts KV + attention + DeltaNet/SSM
+blocks on the iGPU:
 
 ```
 -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 \
@@ -213,9 +219,37 @@ all 40 MoE expert layers to CPU and only puts KV + attention on the iGPU:
 
 This deliberately does *not* mirror the Linux/Mac profile. The Linux profile
 (`-c 262144 --n-cpu-moe 35 -ub 1024`) was tuned for a 16 GB CUDA discrete GPU
-benchmark and routinely worked on Arc in Apr 2026 when the bundle still used
-`--cpu-moe`. The `/////` slash-storm symptom on Arc tracked back to two
-issues the original bundle did not have:
+benchmark; copying it onto Windows-arc reliably TDR-crashes the host (see below).
+
+### Why `--cpu-moe` is mandatory on Arc
+
+Tracked upstream as **ggml-org/llama.cpp#19327** (still open). The Intel `xe`
+kernel driver enforces a hard-coded 10 second job timeout on every GPU
+submission. The `MUL_MAT_ID` shader (the MoE expert gather + matmul over 128
+experts × `-ub` tokens) routinely exceeds this on Arc iGPUs once it runs even
+on a small number of MoE layers. Behaviour:
+
+- Linux: `vk::DeviceLostError`, llama-server crashes.
+- Windows: Timeout Detection and Recovery (TDR). If the driver fails to
+  reset the GPU cleanly the host BSODs with "your device ran into a problem
+  and needs to restart" (commonly `VIDEO_TDR_FAILURE`/`DPC_WATCHDOG_VIOLATION`).
+
+`--cpu-moe` keeps all MUL_MAT_ID expert ops off the iGPU, so only dense ops
+(attention, DeltaNet SSM, embeddings) run on Vulkan. Those are well under the
+TDR threshold and have been working on Arc since ggml-org/llama.cpp#19957
+shipped the SSM/DeltaNet shaders. Do not:
+
+- Use `--n-cpu-moe N` with N < 40 on windows-arc — any expert layer on the
+  iGPU brings #19327 back.
+- Raise `-ub` past 512 — bigger ub means longer single-shader runtime, which
+  is exactly what trips TDR.
+- Raise `-c` past 131072 without re-checking GPU memory headroom (UMA shares
+  with the OS; large KV competes with system RAM for the same pool).
+
+### Slash-storm history (May 2026)
+
+The bundle briefly ran the Linux profile on Arc (commits ac47a6d→bbfcf9e).
+Two of the regressions were genuine output-quality issues:
 
 1. `--reasoning-format deepseek` was missing in the Windows bat, so the Qwen
    `<think>…</think>` template wasn't being split into `reasoning_content` and
@@ -223,20 +257,23 @@ issues the original bundle did not have:
 2. The Qwen sampler block (`--temp 0.6 --top-p 0.95 --top-k 20 --min-p 0`)
    was missing, so degenerate tails on the thinking stream weren't dampened.
 
-Both are now passed. Switching `q8_0` KV → `f16` KV is *not* part of the fix
-and was reverted: the upstream issues that previously justified it
-(ggml-org/llama.cpp#19957, #19276, #21888, #22275) either resolved, were
-about SYCL not Vulkan, were retracted by the reporter as non-reproducible,
-or were unrelated `prompt_save` crashes. f16 KV doubles the per-token KV
-bandwidth on a UMA system shared with the OS and made the bundle slower
-without addressing the actual symptom.
+Both are now passed. A third change in that period — switching `q8_0` KV →
+`f16` KV citing #19957, #19276, #21888, #22275 — was a misdiagnosis: those
+issues either resolved on master, were about SYCL not Vulkan, were retracted
+by the reporter as non-reproducible, or were unrelated `prompt_save` crashes.
+f16 KV doubled per-token KV bandwidth on UMA and made the bundle slower
+without addressing any real bug. Reverted.
+
+### Release pin
 
 The Windows Vulkan release is no longer pinned. Re-pin via `LLAMACPP_TAG`
-if a future upstream release introduces a regression on Arc.
+if a future upstream release introduces an Arc-specific regression.
+
+### CPU fallback
 
 `run-llamacpp-cpu.bat` (`-ngl 0`, no mmproj, `--threads 8`) ships as a
-guaranteed-correct fallback. If the thinking stream still shows `////`
-after installing, kill the running service and start `run-llamacpp-cpu.bat`
+guaranteed-correct fallback. If the Vulkan path produces garbage or any sign
+of GPU instability, kill the running service and start `run-llamacpp-cpu.bat`
 instead; update the Startup shortcut accordingly.
 
 ## Multi-host (slopgate)
@@ -394,7 +431,10 @@ enable` flag (it leaks per-slot prompt content), TCP/HTTP MCP daemons for
 helpy or sloptools (they're stdio-only on purpose so no co-tenant can
 reach them), bundled Node/Pi/offline-npm-cache distribution (assume system
 `npm` and a checkout of this repo on every target — see
-`scripts/pi_install.sh`), or anything
+`scripts/pi_install.sh`), `--n-cpu-moe N` with N < 40 on `windows-arc`
+(any MoE expert layer on the Arc iGPU re-triggers ggml-org/llama.cpp#19327
+MUL_MAT_ID TDR → host BSOD), `-ub > 512` on `windows-arc` (longer
+per-shader runtime trips the same 10 s job timeout), or anything
 that auto-downloads another model family beyond the small manual alias
 list in `scripts/llamacpp_models.py`. If one of those becomes useful
 again, add it deliberately and update this file.
