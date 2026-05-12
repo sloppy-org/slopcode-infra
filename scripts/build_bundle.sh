@@ -858,8 +858,16 @@ OPTION 2 - MANUAL INSTALL
    "All Files" so Notepad does not append .txt.
 
        @echo off
+       REM Disable Vulkan cooperative-matrix path on Intel Arc; ggml-org/llama.cpp#20554
+       REM (KHR_coopmat + recent Intel Arc drivers cause GPU TDR / Windows BSOD).
+       set "GGML_VK_DISABLE_COOPMAT=1"
+       set "GGML_VK_DISABLE_COOPMAT2=1"
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on --cpu-moe -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+
+   On Arc 140V (Lunar Lake, 4P + 4LP = 8 physical cores) --threads 6 is
+   the right value (physical - 2). On other Arc hosts substitute
+   physical-cores - 2 (min 2).
 
 7. Create the CPU fallback launcher
    %USERPROFILE%\slopcode\run-llamacpp-cpu.bat with this exact
@@ -867,7 +875,7 @@ OPTION 2 - MANUAL INSTALL
 
        @echo off
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 8 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 
 8. Create the whisper launcher %USERPROFILE%\slopcode\run-whisper.bat
    with this exact content:
@@ -882,7 +890,7 @@ OPTION 2 - MANUAL INSTALL
 
    Then open Notepad and paste this exact content (one long line):
 
-       {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+       {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":262144,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 
    Save as opencode.json in %USERPROFILE%\.config\opencode\
    (set "Save as type" to "All Files").
@@ -931,21 +939,39 @@ The background service runs as a visible Command Prompt window.
 Close it via Task Manager (Ctrl-Shift-Esc) or by closing the
 black window.
 
-run-llamacpp.bat       Vulkan GPU build, --cpu-moe (all 40 MoE
-                       expert layers run on CPU; only KV and
-                       attention layers ride the Arc iGPU).
+run-llamacpp.bat       Vulkan GPU build, --n-cpu-moe 35 (35 of 40
+                       MoE expert layers on CPU, 5 on the Arc iGPU).
+                       Sets GGML_VK_DISABLE_COOPMAT=1 / COOPMAT2=1
+                       to dodge the Intel Arc TDR / BSOD bug
+                       documented at ggml-org/llama.cpp#20554.
+                       -c 262144, -ub 1024, q8_0 KV.
 run-llamacpp-cpu.bat   Pure CPU fallback (-ngl 0). Always correct
                        output but only ~10 tokens per second.
 
 WHEN TO SWITCH TO CPU FALLBACK
 If the Vulkan path produces garbage (repeated slashes "/////" in
-opencode's thinking stream, or broken characters in the answer):
+opencode's thinking stream, or broken characters in the answer), or
+if Windows BSODs with "your device ran into a problem and needs to
+restart" (VIDEO_TDR_FAILURE):
 
 1. Open Task Manager, find the "slopcode-llamacpp" window (or
    llama-server.exe) and end it.
 2. Double-click %USERPROFILE%\slopcode\run-llamacpp-cpu.bat instead.
 3. Update the startup shortcut to point at run-llamacpp-cpu.bat
    (Option A: edit the shortcut target; Option B: edit the .bat).
+
+OPTIONAL SAFETY NET — raise Windows TDR timeout
+Default Windows TDR fires at 2 seconds, which is tight for big MoE
+dispatches on Intel Arc. To give the GPU more room before Windows
+resets the driver, add these DWORD values under
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\GraphicsDrivers
+(open regedit, navigate, right-click empty area, New > DWORD 32-bit):
+
+    TdrDelay     = 60     (seconds; default 2)
+    TdrDdiDelay  = 60     (seconds; default 5)
+
+Then reboot. This does not fix hangs, it just lets longer dispatches
+finish before Windows kills the driver.
 EOF
 
   cat >"${t}/install.bat" <<'EOF'
@@ -974,19 +1000,33 @@ setx OPENCODE_DISABLE_DEFAULT_PLUGINS 1 >nul
 setx OPENCODE_DISABLE_EMBEDDED_WEB_UI 1 >nul
 set "MODEL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
+REM Detect physical cores; --threads = physical - 2 (min 2). Lunar Lake Arc 140V
+REM has 4P + 4LP = 8 physical cores, so this lands on --threads 6.
+set THREADS=
+powershell -NoProfile -Command "try { [Math]::Max(2, (Get-CimInstance Win32_Processor | Measure-Object -Sum NumberOfCores).Sum - 2) } catch { [Math]::Max(2, [int]($env:NUMBER_OF_PROCESSORS) / 2 - 1) }" > "%TEMP%\slopcode_threads.txt" 2>nul
+if exist "%TEMP%\slopcode_threads.txt" (
+  set /p THREADS=<"%TEMP%\slopcode_threads.txt"
+  del "%TEMP%\slopcode_threads.txt"
+)
+if "!THREADS!"=="" set /a THREADS=%NUMBER_OF_PROCESSORS%/2 - 1
+if !THREADS! LSS 2 set THREADS=2
 >"%DEST%\run-llamacpp.bat" echo @echo off
+>>"%DEST%\run-llamacpp.bat" echo REM Disable Vulkan cooperative-matrix path on Intel Arc; ggml-org/llama.cpp#20554
+>>"%DEST%\run-llamacpp.bat" echo REM (KHR_coopmat + recent Intel drivers cause GPU TDR / Windows BSOD).
+>>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
+>>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on --cpu-moe -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 8 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
->"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+>"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":262144,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); $add='%DEST%\opencode'; if (($p -split ';') -notcontains $add) { [Environment]::SetEnvironmentVariable('Path', ($add+';'+$p), 'User') }"
 start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
-echo Installed localhost-only llama.cpp 8080 and opencode.
+echo Installed localhost-only llama.cpp 8080 and opencode (--threads !THREADS!).
 echo (whisper/meeting tools are shipped on the USB but not auto-installed.)
 echo If you see repeated slashes in opencode thinking, run: %DEST%\run-llamacpp-cpu.bat
 echo and update the Startup shortcut to point at run-llamacpp-cpu.bat instead.

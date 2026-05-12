@@ -198,53 +198,80 @@ Override per invocation with `LLAMACPP_PARALLEL` and `LLAMACPP_CONTEXT`.
 
 ## Windows-arc USB bundle (Intel Arc iGPU, Vulkan)
 
-Target hardware: Intel Arc iGPU on Windows 11, 64 GB unified system RAM
-shared with the iGPU. `--cpu-moe` (all 40 MoE expert layers on CPU) is
-**mandatory** here, not a tuning choice. See "Why `--cpu-moe` is mandatory
-on Arc" below.
+Target hardware: Intel Arc 140V iGPU (Lunar Lake, Xe2) on Windows 11,
+64 GB unified system RAM shared with the iGPU. Other Arc generations
+(MTL, ARL-H, dGPU B-series) should also work with the same flags but
+have not been validated end-to-end.
 
-The `windows-arc` bundle uses the era-1 single-slot Vulkan profile that ships
-all 40 MoE expert layers to CPU and only puts KV + attention + DeltaNet/SSM
-blocks on the iGPU:
+The `windows-arc` bundle uses the era-cdd0121 "first slopcode" profile
+with the upstream-documented coopmat TDR workaround layered on:
 
 ```
--c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 \
--ngl 99 -fa on --cpu-moe -np 1 --threads 4 --threads-http 4 \
---alias qwen --jinja \
---temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
---presence-penalty 0 --repeat-penalty 1 \
---reasoning-format deepseek --reasoning on --reasoning-budget 4096 \
---no-context-shift --no-webui --host 127.0.0.1 --port 8080
+GGML_VK_DISABLE_COOPMAT=1 \
+GGML_VK_DISABLE_COOPMAT2=1 \
+llama-server.exe -m <model> --mmproj <mmproj> \
+  -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 \
+  -ngl 99 -fa on --n-cpu-moe 35 \
+  -np 1 --threads <physical_cores - 2> --threads-http 4 \
+  --alias qwen --jinja \
+  --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
+  --presence-penalty 0 --repeat-penalty 1 \
+  --reasoning-format deepseek --reasoning on --reasoning-budget 4096 \
+  --no-context-shift --no-webui --host 127.0.0.1 --port 8080
 ```
 
-This deliberately does *not* mirror the Linux/Mac profile. The Linux profile
-(`-c 262144 --n-cpu-moe 35 -ub 1024`) was tuned for a 16 GB CUDA discrete GPU
-benchmark; copying it onto Windows-arc reliably TDR-crashes the host (see below).
+`install.bat` detects physical cores via PowerShell `Get-CimInstance
+Win32_Processor` and emits the literal value into `run-llamacpp.bat`
+(140V: 4P + 4LP = 8 → `--threads 6`).
 
-### Why `--cpu-moe` is mandatory on Arc
+### Why the GGML_VK_DISABLE_COOPMAT env vars are mandatory on Arc
 
-Tracked upstream as **ggml-org/llama.cpp#19327** (still open). The Intel `xe`
-kernel driver enforces a hard-coded 10 second job timeout on every GPU
-submission. The `MUL_MAT_ID` shader (the MoE expert gather + matmul over 128
-experts × `-ub` tokens) routinely exceeds this on Arc iGPUs once it runs even
-on a small number of MoE layers. Behaviour:
+Tracked upstream as **ggml-org/llama.cpp#20554** (closed-as-workaround,
+Mar 2026, exact hardware match: Arc 140V on Windows 11). The Vulkan
+`VK_KHR_cooperative_matrix` path uses Intel's XMX matrix engines; on
+Intel Arc drivers 101.8509 / 101.8531 and later it produces deterministic
+GPU hangs that trip Windows TDR. When TDR fails to recover the driver
+cleanly the host BSODs with `VIDEO_TDR_FAILURE` or `DPC_WATCHDOG_VIOLATION`
+("your device ran into a problem and needs to restart"). The reporter
+tried raising Windows `TdrDelay` to 60 s and the laptop simply froze
+for 60 s before the driver was reset — the timeout knob doesn't fix
+anything, only delays the symptom.
 
-- Linux: `vk::DeviceLostError`, llama-server crashes.
-- Windows: Timeout Detection and Recovery (TDR). If the driver fails to
-  reset the GPU cleanly the host BSODs with "your device ran into a problem
-  and needs to restart" (commonly `VIDEO_TDR_FAILURE`/`DPC_WATCHDOG_VIOLATION`).
+The documented fix is to set the two env vars *before* invoking
+`llama-server.exe`, which switches Vulkan back to the regular FP16
+matmul path:
 
-`--cpu-moe` keeps all MUL_MAT_ID expert ops off the iGPU, so only dense ops
-(attention, DeltaNet SSM, embeddings) run on Vulkan. Those are well under the
-TDR threshold and have been working on Arc since ggml-org/llama.cpp#19957
-shipped the SSM/DeltaNet shaders. Do not:
+```bat
+set "GGML_VK_DISABLE_COOPMAT=1"
+set "GGML_VK_DISABLE_COOPMAT2=1"
+```
 
-- Use `--n-cpu-moe N` with N < 40 on windows-arc — any expert layer on the
-  iGPU brings #19327 back.
-- Raise `-ub` past 512 — bigger ub means longer single-shader runtime, which
-  is exactly what trips TDR.
-- Raise `-c` past 131072 without re-checking GPU memory headroom (UMA shares
-  with the OS; large KV competes with system RAM for the same pool).
+After this, `llama-server`'s startup banner reports `matrix cores: none`
+(instead of `KHR_coopmat`). A separate Arc 140V owner in #19957 confirmed
+Qwen3-30B-A3B working at ~27 t/s after the same env-var workaround.
+
+### Sibling concern: MUL_MAT_ID 10 s job timeout (#19327)
+
+A second class of Arc-Vulkan-MoE TDR is tracked separately as
+**ggml-org/llama.cpp#19327**: the Intel `xe` kernel driver enforces a
+hard 10 s timeout per GPU submission, and `MUL_MAT_ID` over 128 Qwen3
+experts can exceed it when many MoE layers are on the iGPU. That issue's
+reporter did **not** test with `GGML_VK_DISABLE_COOPMAT=1` set, so it's
+unclear whether the same workaround also covers it. The bundle leaves
+`--n-cpu-moe 35` (5 of 40 MoE layers on iGPU) as a calculated bet:
+small enough that single-shader runtime stays well under 10 s on 140V,
+big enough to get back the ~2× prefill and 1.2× decode the
+RTX-5060-Ti-on-CUDA bench measured.
+
+If the bundle TDRs anyway, the recovery sequence (in order, escalating):
+1. Confirm the env vars are actually in `run-llamacpp.bat` (check
+   `matrix cores: none` in llama-server startup output).
+2. Drop `-ub 1024 → 768 → 512` (shorter per-shader dispatch).
+3. Drop `--n-cpu-moe 35 → 38 → 40` (less iGPU expert load; 40 ≡ `--cpu-moe`).
+4. Raise Windows `TdrDelay` / `TdrDdiDelay` to 60 in registry as a
+   defensive net (HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers).
+5. Switch the Startup shortcut to `run-llamacpp-cpu.bat` (pure CPU,
+   guaranteed-correct, ~10 t/s).
 
 ### Slash-storm history (May 2026)
 
@@ -431,13 +458,13 @@ enable` flag (it leaks per-slot prompt content), TCP/HTTP MCP daemons for
 helpy or sloptools (they're stdio-only on purpose so no co-tenant can
 reach them), bundled Node/Pi/offline-npm-cache distribution (assume system
 `npm` and a checkout of this repo on every target — see
-`scripts/pi_install.sh`), `--n-cpu-moe N` with N < 40 on `windows-arc`
-(any MoE expert layer on the Arc iGPU re-triggers ggml-org/llama.cpp#19327
-MUL_MAT_ID TDR → host BSOD), `-ub > 512` on `windows-arc` (longer
-per-shader runtime trips the same 10 s job timeout), or anything
-that auto-downloads another model family beyond the small manual alias
-list in `scripts/llamacpp_models.py`. If one of those becomes useful
-again, add it deliberately and update this file.
+`scripts/pi_install.sh`), the Vulkan KHR_coopmat path on `windows-arc`
+(set `GGML_VK_DISABLE_COOPMAT=1` and `GGML_VK_DISABLE_COOPMAT2=1` before
+every llama-server invocation; ggml-org/llama.cpp#20554 documents the
+Arc 140V TDR/BSOD bug), or anything that auto-downloads another model
+family beyond the small manual alias list in
+`scripts/llamacpp_models.py`. If one of those becomes useful again,
+add it deliberately and update this file.
 
 ## Distribution model
 
