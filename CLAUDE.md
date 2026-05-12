@@ -198,30 +198,46 @@ Override per invocation with `LLAMACPP_PARALLEL` and `LLAMACPP_CONTEXT`.
 
 ## Windows-arc USB bundle (Intel Arc iGPU, Vulkan)
 
-The USB bundle for `windows-arc` diverges from the standard launch profile above
-due to a stack of Intel Arc Vulkan-specific bugs. Root cause of the `/////` reasoning
-storm: `q8_0` KV-cache quantisation combined with `-fa on` on Intel Arc Vulkan
-produces deterministic garbage output (ggml-org/llama.cpp#21888, #19276, #22275).
-Switching to `f16` KV cache eliminates the corruption. Additionally, the original
-Windows `.bat` was missing `--reasoning-format deepseek` and the Qwen sampler block
-that the Linux launcher always passes; those are now aligned.
+The `windows-arc` bundle uses the era-1 single-slot Vulkan profile that ships
+all 40 MoE expert layers to CPU and only puts KV + attention on the iGPU:
 
-| Flag | Linux/Mac default | Windows-arc bundle |
-| ---- | ----------------- | ------------------ |
-| `-c` | 131072 | 262144 (iGPU shares 64 GB system RAM — no VRAM cap) |
-| `--cache-type-k/v` | q8_0/q8_0 | **f16/f16** (q8_0 + `-fa` triggers separate Arc bugs: #19276, #22275) |
-| `--override-tensor` | absent | absent (SSM tensor names are weight storage, not op-routing handles; flag had no effect on correctness) |
-| `--reasoning-format` | deepseek | deepseek (was missing in pre-fix Windows bat) |
-| Qwen sampler block | present | present (was missing in pre-fix Windows bat) |
+```
+-c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 \
+-ngl 99 -fa on --cpu-moe -np 1 --threads 4 --threads-http 4 \
+--alias qwen --jinja \
+--temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
+--presence-penalty 0 --repeat-penalty 1 \
+--reasoning-format deepseek --reasoning on --reasoning-budget 4096 \
+--no-context-shift --no-webui --host 127.0.0.1 --port 8080
+```
 
-The bundle also ships `run-llamacpp-cpu.bat` (`-ngl 0`, no mmproj, `--threads 8`)
-as a guaranteed-correct fallback. If the thinking stream still shows `////` after
-installing, kill the running service and start `run-llamacpp-cpu.bat` instead.
-Update the Startup shortcut accordingly.
+This deliberately does *not* mirror the Linux/Mac profile. The Linux profile
+(`-c 262144 --n-cpu-moe 35 -ub 1024`) was tuned for a 16 GB CUDA discrete GPU
+benchmark and routinely worked on Arc in Apr 2026 when the bundle still used
+`--cpu-moe`. The `/////` slash-storm symptom on Arc tracked back to two
+issues the original bundle did not have:
 
-The Windows Vulkan release is pinned to `LLAMACPP_WIN_TAG` (default `b9095`) to
-avoid unvetted regressions. Bump it deliberately after smoke-testing on Arc.
-Remove the pin when Intel Arc Vulkan KV-quant + FA bugs are fixed upstream (tracked via #21888, #22275).
+1. `--reasoning-format deepseek` was missing in the Windows bat, so the Qwen
+   `<think>…</think>` template wasn't being split into `reasoning_content` and
+   opencode saw broken thinking streams.
+2. The Qwen sampler block (`--temp 0.6 --top-p 0.95 --top-k 20 --min-p 0`)
+   was missing, so degenerate tails on the thinking stream weren't dampened.
+
+Both are now passed. Switching `q8_0` KV → `f16` KV is *not* part of the fix
+and was reverted: the upstream issues that previously justified it
+(ggml-org/llama.cpp#19957, #19276, #21888, #22275) either resolved, were
+about SYCL not Vulkan, were retracted by the reporter as non-reproducible,
+or were unrelated `prompt_save` crashes. f16 KV doubles the per-token KV
+bandwidth on a UMA system shared with the OS and made the bundle slower
+without addressing the actual symptom.
+
+The Windows Vulkan release is no longer pinned. Re-pin via `LLAMACPP_TAG`
+if a future upstream release introduces a regression on Arc.
+
+`run-llamacpp-cpu.bat` (`-ngl 0`, no mmproj, `--threads 8`) ships as a
+guaranteed-correct fallback. If the thinking stream still shows `////`
+after installing, kill the running service and start `run-llamacpp-cpu.bat`
+instead; update the Startup shortcut accordingly.
 
 ## Multi-host (slopgate)
 
