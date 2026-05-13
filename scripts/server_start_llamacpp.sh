@@ -13,6 +13,9 @@
 #   LLAMACPP_SERVER_BIN   explicit llama-server binary
 #   LLAMACPP_MODEL        explicit GGUF path (else resolved via llamacpp_models.py)
 #   LLAMACPP_MMPROJ       explicit multimodal projector path; "off" disables
+#   LLAMACPP_MMPROJ_OFFLOAD
+#                         true/false to force multimodal projector GPU offload
+#                         (default false on Macs with <64 GiB RAM, true elsewhere)
 #   LLAMACPP_MODEL_ALIAS  alias from the model registry (default: blessed)
 #   LLAMACPP_INSTANCE     name suffix for pid/port/log files (default: empty -> .run/llamacpp.*)
 #   LLAMACPP_SERVED_ALIAS --alias served in /v1/models (default: qwen)
@@ -99,6 +102,16 @@ elif [[ -z "${MMPROJ_PATH}" && "${MODEL_ALIAS}" == "${DEFAULT_ALIAS}" ]]; then
 fi
 [[ -z "${MMPROJ_PATH}" || -f "${MMPROJ_PATH}" || "${LLAMACPP_DRY_RUN:-false}" == "true" ]] \
   || die "mmproj file missing: ${MMPROJ_PATH}"
+
+MMPROJ_OFFLOAD_DEFAULT="true"
+if [[ "$(detect_platform)" == "mac" && "$(detect_total_ram_gb)" -lt 64 ]]; then
+  MMPROJ_OFFLOAD_DEFAULT="false"
+fi
+MMPROJ_OFFLOAD="${LLAMACPP_MMPROJ_OFFLOAD:-${MMPROJ_OFFLOAD_DEFAULT}}"
+case "${MMPROJ_OFFLOAD}" in
+  true|false) ;;
+  *) die "LLAMACPP_MMPROJ_OFFLOAD must be true or false" ;;
+esac
 
 # --- Runtime parameters ---
 slopgate_present() {
@@ -407,6 +420,11 @@ if [[ -n "${CACHE_REUSE}" ]]; then
 fi
 if [[ -n "${MMPROJ_PATH}" ]]; then
   CMD+=(--mmproj "${MMPROJ_PATH}")
+  if [[ "${MMPROJ_OFFLOAD}" == "false" ]]; then
+    CMD+=(--no-mmproj-offload)
+  else
+    CMD+=(--mmproj-offload)
+  fi
 fi
 CMD+=("${SAMPLER_ARGS[@]}")
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
@@ -421,6 +439,7 @@ echo "- binary:  ${LLAMA_SERVER}"
 "${LLAMA_SERVER}" --version 2>&1 | awk '/^version: / || /^built with /{print "- " $0}' || true
 echo "- model:   ${MODEL_PATH}"
 [[ -n "${MMPROJ_PATH}" ]] && echo "- mmproj:  ${MMPROJ_PATH}"
+[[ -n "${MMPROJ_PATH}" ]] && echo "- mmproj offload: ${MMPROJ_OFFLOAD}"
 echo "- alias:   ${MODEL_ALIAS} (served as ${SERVED_ALIAS})"
 echo "- bind:    ${HOST}:${PORT}"
 echo "- context: ${CONTEXT}"
@@ -449,24 +468,81 @@ fi
 
 wait_until_ready() {
   local server_pid="$1" probe_host="$2"
-  echo "waiting for /v1/models (timeout ${START_TIMEOUT}s)..."
+  echo "waiting for llama.cpp readiness (timeout ${START_TIMEOUT}s)..."
   local deadline
   deadline=$(( $(date +%s) + START_TIMEOUT ))
   while : ; do
-    if ! kill -0 "${server_pid}" 2>/dev/null; then
+    if readiness_probe "${probe_host}"; then
+      break
+    fi
+    if ! kill -0 "${server_pid}" 2>/dev/null && ! llamacpp_process_running; then
       [[ -f "${LOG_FILE}" ]] && tail -n 40 "${LOG_FILE}" >&2 || true
       die "llama-server exited before becoming ready"
-    fi
-    if curl -fsS \
-        --connect-timeout "${START_CONNECT_TIMEOUT}" \
-        --max-time "${START_PROBE_TIMEOUT}" \
-        "http://${probe_host}:${PORT}/v1/models" >/dev/null 2>&1; then
-      break
     fi
     [[ $(date +%s) -ge ${deadline} ]] && die "timed out waiting for llama-server"
     sleep 2
   done
   echo "server is ready on http://${probe_host}:${PORT}/v1"
+}
+
+readiness_probe() {
+  local probe_host="$1" health_status
+  health_status="$(curl -sS \
+    -o /dev/null \
+    -w "%{http_code}" \
+    --connect-timeout "${START_CONNECT_TIMEOUT}" \
+    --max-time "${START_PROBE_TIMEOUT}" \
+    "http://${probe_host}:${PORT}/health" 2>/dev/null || echo 000)"
+  case "${health_status}" in
+    200)
+      return 0
+      ;;
+    404)
+      curl -fsS \
+        --connect-timeout "${START_CONNECT_TIMEOUT}" \
+        --max-time "${START_PROBE_TIMEOUT}" \
+        "http://${probe_host}:${PORT}/v1/models" >/dev/null 2>&1
+      return
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+llamacpp_listener_pid() {
+  local pid cmd
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] || continue
+    cmd="$(pid_command "${pid}")"
+    if [[ "${cmd}" == *"llama-server"* ]]; then
+      echo "${pid}"
+      return 0
+    fi
+  done < <(port_listener_pids "${PORT}")
+  return 1
+}
+
+llamacpp_process_running() {
+  local pid cmd
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] || continue
+    cmd="$(pid_command "${pid}")"
+    if [[ "${cmd}" == *"llama-server"* && "${cmd}" == *"--port ${PORT}"* ]]; then
+      return 0
+    fi
+  done < <(pgrep -f "llama-server" 2>/dev/null || true)
+  return 1
+}
+
+record_listener_pid() {
+  local actual_pid
+  if actual_pid="$(llamacpp_listener_pid)"; then
+    if [[ "${actual_pid}" != "$(cat "${PID_FILE}" 2>/dev/null || true)" ]]; then
+      echo "${actual_pid}" > "${PID_FILE}"
+      echo "- listener pid: ${actual_pid}"
+    fi
+  fi
 }
 
 # Foreground mode for systemd/launchd ExecStart: replace the shell with
@@ -493,19 +569,34 @@ probe_host="${HOST}"
 [[ "${probe_host}" == "0.0.0.0" ]] && probe_host="127.0.0.1"
 
 wait_until_ready "${SERVER_PID}" "${probe_host}"
+record_listener_pid
 
 if [[ "${SMOKE_TEST}" == "true" ]]; then
   echo "running chat smoke test..."
-  resp="$(curl -fsS \
+  smoke_body="$(mktemp /tmp/llamacpp-smoke.XXXXXX)"
+  smoke_status="$(curl -sS \
+    -o "${smoke_body}" \
+    -w "%{http_code}" \
     --connect-timeout "${START_CONNECT_TIMEOUT}" \
     --max-time "${SMOKE_TEST_TIMEOUT}" \
     "http://${probe_host}:${PORT}/v1/chat/completions" \
     -H "content-type: application/json" \
-    -d "{\"model\":\"${SERVED_ALIAS}\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly READY.\"}],\"max_tokens\":16}")"
+    -d "{\"model\":\"${SERVED_ALIAS}\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly READY.\"}],\"max_tokens\":16}")" \
+    || {
+      rm -f "${smoke_body}"
+      die "smoke test request failed"
+    }
+  resp="$(cat "${smoke_body}")"
+  rm -f "${smoke_body}"
+  if [[ "${smoke_status}" != 2* ]]; then
+    echo "${resp}" >&2
+    die "smoke test failed with HTTP ${smoke_status}"
+  fi
   if [[ "${resp}" == *'"content"'* ]]; then
     echo "smoke test OK"
   else
     echo "${resp}" >&2
     die "smoke test did not return a chat completion"
   fi
+  record_listener_pid
 fi

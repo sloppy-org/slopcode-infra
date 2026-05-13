@@ -72,6 +72,13 @@ EOF
     [[ "${output}" == *"--threads-http 4"* ]] || threads_ok=0
   fi
 
+  local mmproj_offload_ok=1
+  if [[ "${platform}" == "Darwin" && "$(detect_total_ram_gb)" -lt 64 ]]; then
+    [[ "${output}" == *"--no-mmproj-offload"* ]] || mmproj_offload_ok=0
+  else
+    [[ "${output}" == *"--mmproj-offload"* ]] || mmproj_offload_ok=0
+  fi
+
   local context_expected="-c 131072"
   local np_expected="-np 1"
 
@@ -90,10 +97,11 @@ EOF
         "${output}" == *"-ub 1024"* && \
         "${output}" == *"Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"* && \
         "${moe_ok}" == "1" && \
-        "${threads_ok}" == "1" ]]; then
+        "${threads_ok}" == "1" && \
+        "${mmproj_offload_ok}" == "1" ]]; then
     echo "PASS: launcher emits the blessed profile for $(uname -s) (${np_expected}, ${context_expected})"
   else
-    echo "FAIL: launcher profile mismatch (moe_ok=${moe_ok} threads_ok=${threads_ok})"
+    echo "FAIL: launcher profile mismatch (moe_ok=${moe_ok} threads_ok=${threads_ok} mmproj_offload_ok=${mmproj_offload_ok})"
     echo "${output}"
     return 1
   fi
@@ -145,6 +153,43 @@ EOF
       echo "${output}"
       return 1
     fi
+  fi
+}
+
+test_server_start_mmproj_offload_override() {
+  echo "TEST: launcher honors LLAMACPP_MMPROJ_OFFLOAD override"
+  local home_dir="${TMPDIR}/home-mmproj-offload"
+  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+  local mmproj_path="${TMPDIR}/mmproj-offload.gguf"
+  mkdir -p "${home_dir}/.local/llama.cpp"
+  cat > "${home_dir}/.local/llama.cpp/llama-server" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${home_dir}/.local/llama.cpp/llama-server"
+  : > "${model_path}"
+  : > "${mmproj_path}"
+
+  local output port
+  port="$(free_port)"
+  output="$(
+    HOME="${home_dir}" \
+    LLAMACPP_HOME="${home_dir}/.local/llama.cpp" \
+    LLAMACPP_MODEL="${model_path}" \
+    LLAMACPP_MMPROJ="${mmproj_path}" \
+    LLAMACPP_MMPROJ_OFFLOAD=false \
+    LLAMACPP_PORT="${port}" \
+    LLAMACPP_SMOKE_TEST=false \
+    LLAMACPP_DRY_RUN=true \
+    bash "${REPO_ROOT}/scripts/server_start_llamacpp.sh"
+  )"
+
+  if [[ "${output}" == *"--no-mmproj-offload"* && "${output}" != *"--mmproj-offload "* ]]; then
+    echo "PASS: LLAMACPP_MMPROJ_OFFLOAD=false disables projector GPU offload"
+  else
+    echo "FAIL: mmproj offload override did not propagate"
+    echo "${output}"
+    return 1
   fi
 }
 
@@ -625,6 +670,7 @@ test_install_linux_systemd_dry_run() {
 test_server_start_dry_run || FAILED=$((FAILED + 1))
 test_server_start_instance_overrides || FAILED=$((FAILED + 1))
 test_server_start_thread_override || FAILED=$((FAILED + 1))
+test_server_start_mmproj_offload_override || FAILED=$((FAILED + 1))
 test_server_start_loopback_slopgate || FAILED=$((FAILED + 1))
 test_server_exec_mode || FAILED=$((FAILED + 1))
 test_server_legacy_cpu_moe_fallback || FAILED=$((FAILED + 1))
