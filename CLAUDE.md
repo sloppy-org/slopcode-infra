@@ -84,8 +84,6 @@ scripts/
                                 Flips to 127.0.0.1:8081 when slopgate is locally
                                 installed; LLAMACPP_BIND_LOOPBACK=true forces it
                                 without slopgate detection (followers).
-                                Restores LLAMACPP_RESTORE_SLOT_FILE from
-                                LLAMACPP_SLOT_SAVE_PATH after /v1/models is ready.
   server_start_qwen27b.sh       slopgate/powerful-machine special mode:
                                 Qwen3.6 27B Q4_K_M, Q8 KV, 128K context,
                                 loopback :8080. Not the standard local default.
@@ -106,10 +104,6 @@ scripts/
   opencode_set_llamacpp.sh      write ~/.config/opencode/opencode.json. SLOPGATE_LEADER
                                 points baseURL at the proxy + emits
                                 x-session-affinity header for sticky routing.
-  llamacpp_prewarm_opencode.sh  run one OpenCode prompt and save the current
-                                slot to LLAMACPP_RESTORE_SLOT_FILE.
-  slopgate_prewarm_opencode.sh  slopgate/mac helper: refresh qwen, qwen27b,
-                                and qwen122b slot files for enabled services.
   install_mcp_servers.sh        wire `helpy mcp-stdio` and `sloptools mcp-server`
                                 into claude/codex/opencode/qwen as stdio MCP
                                 servers. Pure stdio: no listening port, no

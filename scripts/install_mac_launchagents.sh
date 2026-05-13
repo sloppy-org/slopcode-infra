@@ -145,13 +145,16 @@ if launchctl list 2>/dev/null | awk '{print $3}' | grep -qx 'com.slopcode.slopga
 fi
 LLAMACPP_HOST_BIND="${LLAMACPP_HOST:-${LLAMACPP_HOST_DEFAULT}}"
 LLAMACPP_PORT_BIND="${LLAMACPP_PORT:-${LLAMACPP_PORT_DEFAULT}}"
-LLAMACPP_SLOT_SAVE_PATH_MAC="${LLAMACPP_SLOT_SAVE_PATH:-${LLAMACPP_CACHE_ROOT}/slots}"
-LLAMACPP_LAUNCHD_PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-SERVER_START="${SCRIPT_DIR}/server_start_llamacpp.sh"
 
-write_llamacpp_service_plist() {
-  local label="$1" alias="$2" served_alias="$3" host="$4" port="$5" instance="$6" restore_file="$7" log="$8"
+write_llamacpp_plist() {
+  local label="com.slopcode.llamacpp"
   local plist="${AGENTS_DIR}/${label}.plist"
+  local log="${LOG_DIR_ABS}/llamacpp.log"
+  local mmproj_xml=""
+  if [[ -n "${MMPROJ_PATH}" ]]; then
+    mmproj_xml="    <string>--mmproj</string><string>${MMPROJ_PATH}</string>
+"
+  fi
   cat > "${plist}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -163,29 +166,34 @@ write_llamacpp_service_plist() {
   <key>KeepAlive</key><true/>
   <key>ProgramArguments</key>
   <array>
-    <string>${SERVER_START}</string>
+    <string>${SERVER_BIN}</string>
+    <string>-m</string><string>${MODEL_PATH}</string>
+${mmproj_xml}    <string>-c</string><string>1048576</string>
+    <string>-b</string><string>2048</string>
+    <string>-ub</string><string>1024</string>
+    <string>-ngl</string><string>99</string>
+    <string>-fa</string><string>on</string>
+    <string>-np</string><string>4</string>
+    <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
+    <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
+    <string>--alias</string><string>qwen</string>
+    <string>--jinja</string>
+    <string>--temp</string><string>0.6</string>
+    <string>--top-p</string><string>0.95</string>
+    <string>--top-k</string><string>20</string>
+    <string>--min-p</string><string>0</string>
+    <string>--presence-penalty</string><string>0.0</string>
+    <string>--repeat-penalty</string><string>1.0</string>
+    <string>--reasoning-format</string><string>deepseek</string>
+    <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
+    <string>--no-context-shift</string>
+    <string>--no-webui</string>
+    <string>--host</string><string>${LLAMACPP_HOST_BIND}</string>
+    <string>--port</string><string>${LLAMACPP_PORT_BIND}</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>${LLAMACPP_LAUNCHD_PATH}</string>
     <key>DYLD_LIBRARY_PATH</key><string>${SERVER_DIR}</string>
-    <key>LLAMACPP_SERVER_BIN</key><string>${SERVER_BIN}</string>
-    <key>LLAMACPP_MODEL_ALIAS</key><string>${alias}</string>
-    <key>LLAMACPP_SERVED_ALIAS</key><string>${served_alias}</string>
-    <key>LLAMACPP_INSTANCE</key><string>${instance}</string>
-    <key>LLAMACPP_CONTEXT</key><string>1048576</string>
-    <key>LLAMACPP_BATCH</key><string>2048</string>
-    <key>LLAMACPP_UBATCH</key><string>1024</string>
-    <key>LLAMACPP_NGL</key><string>99</string>
-    <key>LLAMACPP_PARALLEL</key><string>4</string>
-    <key>LLAMACPP_CACHE_TYPE_K</key><string>${KV_TYPE_K}</string>
-    <key>LLAMACPP_CACHE_TYPE_V</key><string>${KV_TYPE_V}</string>
-    <key>LLAMACPP_REASONING_BUDGET</key><string>${REASONING_BUDGET}</string>
-    <key>LLAMACPP_HOST</key><string>${host}</string>
-    <key>LLAMACPP_PORT</key><string>${port}</string>
-    <key>LLAMACPP_EXEC</key><string>true</string>
-    <key>LLAMACPP_SLOT_SAVE_PATH</key><string>${LLAMACPP_SLOT_SAVE_PATH_MAC}</string>
-    <key>LLAMACPP_RESTORE_SLOT_FILE</key><string>${restore_file}</string>
   </dict>
   <key>StandardOutPath</key><string>${log}</string>
   <key>StandardErrorPath</key><string>${log}</string>
@@ -195,19 +203,11 @@ XML
   launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
   wait_gone "${label}" || die "failed to unload existing ${label}"
   launchctl bootstrap "gui/$(id -u)" "${plist}"
-  echo "loaded ${label} (${host}:${port}, alias ${served_alias}, -np 4 -c 1048576, restore ${restore_file})"
-}
-
-write_llamacpp_plist() {
-  write_llamacpp_service_plist \
-    "com.slopcode.llamacpp" \
-    "qwen3.6-35b-a3b-q4" \
-    "qwen" \
-    "${LLAMACPP_HOST_BIND}" \
-    "${LLAMACPP_PORT_BIND}" \
-    "qwen" \
-    "opencode-prewarm-qwen.bin" \
-    "${LOG_DIR_ABS}/llamacpp.log"
+  if [[ -n "${MMPROJ_PATH}" ]]; then
+    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 1048576, mmproj $(basename "${MMPROJ_PATH}"))"
+  else
+    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 1048576)"
+  fi
 }
 
 write_llamacpp_plist
@@ -223,15 +223,59 @@ write_llamacpp_27b_plist() {
     return 0
   }
 
-  write_llamacpp_service_plist \
-    "com.slopcode.llamacpp-27b" \
-    "qwen3.6-27b-q4" \
-    "qwen27b" \
-    "127.0.0.1" \
-    "8082" \
-    "qwen27b" \
-    "opencode-prewarm-qwen27b.bin" \
-    "${LOG_DIR_ABS}/llamacpp-27b.log"
+  local label="com.slopcode.llamacpp-27b"
+  local plist="${AGENTS_DIR}/${label}.plist"
+  local log="${LOG_DIR_ABS}/llamacpp-27b.log"
+  cat > "${plist}" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${SERVER_BIN}</string>
+    <string>-m</string><string>${MODEL_27B_PATH}</string>
+    <string>--mmproj</string><string>${MMPROJ_27B_PATH}</string>
+    <string>-c</string><string>1048576</string>
+    <string>-b</string><string>2048</string>
+    <string>-ub</string><string>1024</string>
+    <string>-ngl</string><string>99</string>
+    <string>-fa</string><string>on</string>
+    <string>-np</string><string>4</string>
+    <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
+    <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
+    <string>--alias</string><string>qwen27b</string>
+    <string>--jinja</string>
+    <string>--temp</string><string>0.6</string>
+    <string>--top-p</string><string>0.95</string>
+    <string>--top-k</string><string>20</string>
+    <string>--min-p</string><string>0</string>
+    <string>--presence-penalty</string><string>0.0</string>
+    <string>--repeat-penalty</string><string>1.0</string>
+    <string>--reasoning-format</string><string>deepseek</string>
+    <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
+    <string>--no-context-shift</string>
+    <string>--no-webui</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8082</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DYLD_LIBRARY_PATH</key><string>${SERVER_DIR}</string>
+  </dict>
+  <key>StandardOutPath</key><string>${log}</string>
+  <key>StandardErrorPath</key><string>${log}</string>
+</dict>
+</plist>
+XML
+  launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
+  wait_gone "${label}" || die "failed to unload existing ${label}"
+  launchctl bootstrap "gui/$(id -u)" "${plist}"
+  echo "loaded ${label} (127.0.0.1:8082, alias qwen27b, -np 4 -c 1048576, mmproj $(basename "${MMPROJ_27B_PATH}"))"
 }
 
 write_llamacpp_27b_plist
@@ -243,15 +287,68 @@ write_llamacpp_122b_plist() {
     return 0
   }
 
-  write_llamacpp_service_plist \
-    "com.slopcode.llamacpp-122b" \
-    "qwen3.5-122b-a10b-ud-q4" \
-    "qwen122b" \
-    "127.0.0.1" \
-    "8083" \
-    "qwen122b" \
-    "opencode-prewarm-qwen122b.bin" \
-    "${LOG_DIR_ABS}/llamacpp-122b.log"
+  local mmproj_xml=""
+  if [[ -n "${MMPROJ_122B_PATH}" ]]; then
+    mmproj_xml="    <string>--mmproj</string><string>${MMPROJ_122B_PATH}</string>
+"
+  fi
+
+  local label="com.slopcode.llamacpp-122b"
+  local plist="${AGENTS_DIR}/${label}.plist"
+  local log="${LOG_DIR_ABS}/llamacpp-122b.log"
+  cat > "${plist}" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${SERVER_BIN}</string>
+    <string>-m</string><string>${MODEL_122B_PATH}</string>
+${mmproj_xml}    <string>-c</string><string>1048576</string>
+    <string>-b</string><string>2048</string>
+    <string>-ub</string><string>1024</string>
+    <string>-ngl</string><string>99</string>
+    <string>-fa</string><string>on</string>
+    <string>-np</string><string>4</string>
+    <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
+    <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
+    <string>--alias</string><string>qwen122b</string>
+    <string>--jinja</string>
+    <string>--temp</string><string>0.6</string>
+    <string>--top-p</string><string>0.95</string>
+    <string>--top-k</string><string>20</string>
+    <string>--min-p</string><string>0</string>
+    <string>--presence-penalty</string><string>0.0</string>
+    <string>--repeat-penalty</string><string>1.0</string>
+    <string>--reasoning-format</string><string>deepseek</string>
+    <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
+    <string>--no-context-shift</string>
+    <string>--no-webui</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8083</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DYLD_LIBRARY_PATH</key><string>${SERVER_DIR}</string>
+  </dict>
+  <key>StandardOutPath</key><string>${log}</string>
+  <key>StandardErrorPath</key><string>${log}</string>
+</dict>
+</plist>
+XML
+  launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
+  wait_gone "${label}" || die "failed to unload existing ${label}"
+  launchctl bootstrap "gui/$(id -u)" "${plist}"
+  if [[ -n "${MMPROJ_122B_PATH}" ]]; then
+    echo "loaded ${label} (127.0.0.1:8083, alias qwen122b, -np 4 -c 1048576, mmproj $(basename "${MMPROJ_122B_PATH}"))"
+  else
+    echo "loaded ${label} (127.0.0.1:8083, alias qwen122b, -np 4 -c 1048576)"
+  fi
 }
 
 write_llamacpp_122b_plist
