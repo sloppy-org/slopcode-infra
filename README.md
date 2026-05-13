@@ -41,10 +41,14 @@ opencode                                      # go
 
 ### OpenCode startup prewarm
 
-`scripts/server_start_llamacpp.sh` launches one non-editing `opencode run`
-after `llama-server` is ready, so OpenCode's startup prompt is warmed without
-using llama.cpp slot save/restore. Disable it with `LLAMACPP_START_PREWARM=false`
-or by commenting out the prewarm line in generated startup scripts.
+`scripts/server_start_llamacpp.sh` only starts `llama-server`.
+`scripts/llamacpp_prewarm_opencode.sh` only waits for an existing server and
+runs one non-editing `opencode run`; it never starts llama.cpp. To run both in
+order, use:
+
+```
+scripts/start_slopcode_llamacpp.sh
+```
 
 Run the same prewarm manually with:
 

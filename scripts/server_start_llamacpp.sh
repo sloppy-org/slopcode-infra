@@ -46,9 +46,6 @@
 #   LLAMACPP_FIT          explicit value passed to -fit (for example: off)
 #   LLAMACPP_CACHE_RAM    explicit value passed to --cache-ram; 0 disables the
 #                         prompt cache
-#   LLAMACPP_START_PREWARM
-#                         false to skip the automatic one-shot OpenCode
-#                         startup prewarm (default: true)
 #   LLAMACPP_DRY_RUN      true to print the command and exit
 #   LLAMACPP_EXEC         true to exec llama-server in the foreground (for
 #                         systemd/launchd ExecStart); skips nohup, pid files,
@@ -188,8 +185,6 @@ REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
 NO_MMAP="${LLAMACPP_NO_MMAP:-false}"
 FIT="${LLAMACPP_FIT:-}"
 CACHE_RAM="${LLAMACPP_CACHE_RAM:-}"
-START_PREWARM="${LLAMACPP_START_PREWARM:-true}"
-
 SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-qwen}"
 INSTANCE="${LLAMACPP_INSTANCE:-}"
 if [[ -n "${INSTANCE}" ]]; then
@@ -415,7 +410,6 @@ echo "- KV:      ${CACHE_TYPE_K} / ${CACHE_TYPE_V}"
 [[ "${NO_MMAP}" == "true" ]] && echo "- mmap:    off"
 [[ -n "${FIT}" ]] && echo "- fit:     ${FIT}"
 [[ -n "${CACHE_RAM}" ]] && echo "- cache-ram: ${CACHE_RAM}"
-[[ "${START_PREWARM}" == "true" ]] && echo "- startup prewarm: OpenCode one-shot"
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   echo "- n-cpu-moe: ${N_CPU_MOE} (first N expert layers on CPU; rest on GPU)"
 else
@@ -432,17 +426,6 @@ if [[ "${DRY_RUN}" == "true" ]]; then
   echo
   exit 0
 fi
-
-start_opencode_prewarm() {
-  local probe_host="$1"
-  [[ "${START_PREWARM}" == "true" ]] || return 0
-  [[ -x "${SCRIPT_DIR}/llamacpp_prewarm_opencode.sh" ]] || return 0
-  have opencode || return 0
-  echo "starting OpenCode prewarm in background..."
-  LLAMACPP_HOST="${probe_host}" LLAMACPP_PORT="${PORT}" \
-    "${SCRIPT_DIR}/llamacpp_prewarm_opencode.sh" --no-start \
-    >/tmp/slopcode-opencode-prewarm.log 2>&1 &
-}
 
 wait_until_ready() {
   local server_pid="$1" probe_host="$2"
@@ -470,9 +453,6 @@ wait_until_ready() {
 # llama-server so the supervisor tracks the real process, captures stdout/
 # stderr through its own logging, and applies Restart=on-failure directly.
 if [[ "${LLAMACPP_EXEC:-false}" == "true" ]]; then
-  probe_host="${HOST}"
-  [[ "${probe_host}" == "0.0.0.0" ]] && probe_host="127.0.0.1"
-  start_opencode_prewarm "${probe_host}"
   exec "${CMD[@]}"
 fi
 
@@ -493,7 +473,6 @@ probe_host="${HOST}"
 [[ "${probe_host}" == "0.0.0.0" ]] && probe_host="127.0.0.1"
 
 wait_until_ready "${SERVER_PID}" "${probe_host}"
-start_opencode_prewarm "${probe_host}"
 
 if [[ "${SMOKE_TEST}" == "true" ]]; then
   echo "running chat smoke test..."

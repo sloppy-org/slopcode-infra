@@ -1,14 +1,13 @@
 @echo off
 setlocal
 REM Run one non-editing OpenCode request against local llama.cpp.
-REM Startup scripts launch this once in the background; comment that line to disable.
+REM Passive helper: waits for an existing llama-server and never starts one.
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='Stop';" ^
   "$ArgsList=@($args);" ^
   "$Check=$ArgsList -contains '--check';" ^
   "$Print=$ArgsList -contains '--print-fingerprint';" ^
-  "$NoStart=$ArgsList -contains '--no-start';" ^
   "if($ArgsList -contains '-h' -or $ArgsList -contains '--help'){Write-Host 'Usage: llamacpp_prewarm_opencode.bat [--force] [--check] [--no-start] [--print-fingerprint]'; exit 0};" ^
   "$Port=if($env:LLAMACPP_PORT){$env:LLAMACPP_PORT}else{'8080'};" ^
   "$HostName=if($env:LLAMACPP_HOST -and $env:LLAMACPP_HOST -ne '0.0.0.0'){$env:LLAMACPP_HOST}else{'127.0.0.1'};" ^
@@ -16,6 +15,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$CacheRoot=if($env:LLAMACPP_CACHE_ROOT){$env:LLAMACPP_CACHE_ROOT} elseif(Test-Path (Join-Path $env:USERPROFILE 'slopcode')){Join-Path $env:USERPROFILE 'slopcode\cache'} else {Join-Path $env:LOCALAPPDATA 'llama.cpp'};" ^
   "$Manifest=Join-Path $CacheRoot 'opencode-prewarm.json';" ^
   "New-Item -ItemType Directory -Force -Path $CacheRoot | Out-Null;" ^
+  "$Mutex=New-Object Threading.Mutex($false,'Local\slopcode-opencode-prewarm'); if(-not $Mutex.WaitOne(0)){Write-Host 'prewarm already running'; exit 0};" ^
   "$Opencode=(Get-Command opencode -ErrorAction SilentlyContinue).Source;" ^
   "if(-not $Opencode){$Candidate=Join-Path $env:USERPROFILE 'slopcode\opencode\opencode.exe'; if(Test-Path $Candidate){$Opencode=$Candidate}};" ^
   "if(-not $Opencode){throw 'opencode not found on PATH or under %USERPROFILE%\slopcode\opencode'};" ^
@@ -31,7 +31,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$Old=''; if(Test-Path $Manifest){try{$Old=(Get-Content $Manifest -Raw | ConvertFrom-Json).fingerprint}catch{}};" ^
   "if($Check){if($Old -eq $Hash){Write-Host ('fresh: '+$Manifest); exit 0}else{Write-Host ('stale: '+$Manifest); exit 1}};" ^
   "$Ready=$false; try{Invoke-RestMethod -Uri ($Base+'/v1/models') -TimeoutSec 5 | Out-Null; $Ready=$true}catch{};" ^
-  "if(-not $Ready -and -not $NoStart){$Run=Join-Path $env:USERPROFILE 'slopcode\run-llamacpp.bat'; if(Test-Path $Run){Start-Process -FilePath $Run}};" ^
   "$WaitSeconds=if($env:SLOPCODE_PREWARM_WAIT_TIMEOUT){[int]$env:SLOPCODE_PREWARM_WAIT_TIMEOUT}else{900};" ^
   "$Deadline=(Get-Date).AddSeconds($WaitSeconds);" ^
   "while(-not $Ready -and (Get-Date) -lt $Deadline){Start-Sleep -Seconds 2; try{Invoke-RestMethod -Uri ($Base+'/v1/models') -TimeoutSec 5 | Out-Null; $Ready=$true}catch{}};" ^

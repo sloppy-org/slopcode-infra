@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run one non-editing OpenCode request against local llama.cpp.
 #
-# Startup scripts launch this helper once in the background. Comment out that
-# launcher line to disable automatic prewarm.
+# This helper is passive: it never starts llama-server. The orchestrator starts
+# the server first, waits for readiness, then runs this script.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,13 +14,12 @@ have python3 || die "python3 is required"
 have opencode || die "opencode is required"
 
 CHECK_ONLY=false
-START_SERVER=true
 PRINT_FINGERPRINT=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --force) shift ;;
     --check) CHECK_ONLY=true; shift ;;
-    --no-start) START_SERVER=false; shift ;;
+    --no-start) shift ;;
     --print-fingerprint) PRINT_FINGERPRINT=true; shift ;;
     -h|--help)
       sed -n '1,22p' "$0"
@@ -36,14 +35,10 @@ HOST="${LLAMACPP_HOST:-127.0.0.1}"
 BASE_URL="http://${HOST}:${PORT}"
 MANIFEST="${LLAMACPP_CACHE_ROOT}/opencode-prewarm.json"
 
-if ! LLAMA_SERVER="$(resolve_llamacpp_server_bin)"; then
-  die "llama-server not installed. Run: scripts/setup_llamacpp.sh"
-fi
-
 WATCH_PATHS_DEFAULT="${HOME}/AGENTS.md:${HOME}/.config/opencode/AGENTS.md:${HOME}/.config/opencode/opencode.json:${HOME}/.config/opencode/plugin:${HOME}/.config/opencode/plugins:${HOME}/.config/opencode/mcp:${HOME}/.config/opencode/mcp.json:${HOME}/.config/helpy/mcp.env:${REPO_ROOT}/.sloptools"
 WATCH_PATHS="${SLOPCODE_PREWARM_WATCH_PATHS:-${WATCH_PATHS_DEFAULT}}"
 OPENCODE_VERSION="$(opencode --version 2>/dev/null || true)"
-LLAMA_VERSION="$("${LLAMA_SERVER}" --version 2>/dev/null | sed -n '1,2p' || true)"
+LLAMA_VERSION=""
 
 fingerprint() {
   python3 - "${OPENCODE_VERSION}" "${LLAMA_VERSION}" "${WATCH_PATHS}" <<'PY'
@@ -123,14 +118,7 @@ wait_for_server() {
   done
 }
 
-if ! server_ready; then
-  if [[ "${START_SERVER}" == "true" ]]; then
-    echo "starting llama-server for prewarm..."
-    LLAMACPP_START_PREWARM=false LLAMACPP_SMOKE_TEST=false \
-      bash "${SCRIPT_DIR}/server_start_llamacpp.sh"
-  fi
-  wait_for_server
-fi
+server_ready || wait_for_server
 
 TMP_PROJECT="$(mktemp -d /tmp/slopcode-opencode-prewarm.XXXXXX)"
 trap 'rm -rf "${TMP_PROJECT}"' EXIT

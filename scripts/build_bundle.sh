@@ -482,9 +482,9 @@ point it at the local llama.cpp server.
 
 ## Startup prewarm
 
-The llama.cpp startup script launches one non-editing OpenCode request after
-the server is ready. To disable it, comment out the prewarm line in the startup
-script. To run it manually:
+The server launcher only starts llama.cpp. The prewarm helper only waits for
+an existing server. The combined startup script runs them in order. To run the
+prewarm manually after the server is ready:
 
 \`\`\`sh
 ${prewarm}
@@ -499,6 +499,7 @@ EOF
 
 write_common_unix_files() {
   local t="$1"
+  install -m 644 "${SCRIPT_DIR}/_common.sh" "${t}/_common.sh"
   install -m 755 "${SCRIPT_DIR}/opencode_privacy.sh" "${t}/opencode_privacy.sh"
   install -m 755 "${SCRIPT_DIR}/llamacpp_prewarm_opencode.sh" "${t}/prewarm-opencode.sh"
   sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
@@ -524,8 +525,6 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="${HERE}/opencode:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/llama.cpp${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-# Comment the next line to disable startup OpenCode prewarm.
-"${HERE}/prewarm-opencode.sh" --no-start >/tmp/slopcode-opencode-prewarm.log 2>&1 &
 exec "${HERE}/llama.cpp/llama-server" \
   -m "${HERE}/../models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" \
   --mmproj "${HERE}/../models/mmproj-BF16.gguf" \
@@ -752,6 +751,7 @@ mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${HOME}/.local
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
 cp "${HERE}/prewarm-opencode.sh" "${DEST}/prewarm-opencode.sh"
+cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
 bash "${HERE}/opencode_privacy.sh"
@@ -760,17 +760,34 @@ cat >"${DEST}/run-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
 export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
-# Comment the next line to disable startup OpenCode prewarm.
-"${DEST}/prewarm-opencode.sh" --no-start >/tmp/slopcode-opencode-prewarm.log 2>&1 &
 exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 RUN
-chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/prewarm-opencode.sh"
+cat >"${DEST}/start-slopcode.sh" <<RUN
+#!/usr/bin/env bash
+set -euo pipefail
+"${DEST}/run-llamacpp.sh" &
+server_pid="\$!"
+trap 'kill "\${server_pid}" 2>/dev/null || true' INT TERM EXIT
+deadline=\$(( \$(date +%s) + \${SLOPCODE_START_TIMEOUT:-900} ))
+until curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/v1/models >/dev/null 2>&1; do
+  if ! kill -0 "\${server_pid}" 2>/dev/null; then
+    wait "\${server_pid}"
+  fi
+  [[ \$(date +%s) -lt \${deadline} ]] || exit 1
+  sleep 2
+done
+if [[ "\${SLOPCODE_START_PREWARM:-true}" == "true" ]]; then
+  "${DEST}/prewarm-opencode.sh" >/tmp/slopcode-opencode-prewarm.log 2>&1 &
+fi
+wait "\${server_pid}"
+RUN
+chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/start-slopcode.sh" "${DEST}/prewarm-opencode.sh"
 
 cat >"${HOME}/.config/systemd/user/slopcode-llamacpp.service" <<UNIT
 [Unit]
 Description=slopcode llama.cpp localhost
 [Service]
-ExecStart=${DEST}/run-llamacpp.sh
+ExecStart=${DEST}/start-slopcode.sh
 Restart=on-failure
 [Install]
 WantedBy=default.target
@@ -1014,6 +1031,7 @@ mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${LOGS}" "${AG
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
 cp "${HERE}/prewarm-opencode.sh" "${DEST}/prewarm-opencode.sh"
+cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
 bash "${HERE}/opencode_privacy.sh"
@@ -1022,11 +1040,28 @@ cat >"${DEST}/run-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
 export PATH="${DEST}/opencode:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:\${PATH}"
 export DYLD_LIBRARY_PATH="${DEST}/llama.cpp\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
-# Comment the next line to disable startup OpenCode prewarm.
-"${DEST}/prewarm-opencode.sh" --no-start >/tmp/slopcode-opencode-prewarm.log 2>&1 &
 exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --reasoning on --reasoning-budget 4096 --no-context-shift --no-webui --host 127.0.0.1 --port 8080
 RUN
-chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/prewarm-opencode.sh"
+cat >"${DEST}/start-slopcode.sh" <<RUN
+#!/usr/bin/env bash
+set -euo pipefail
+"${DEST}/run-llamacpp.sh" &
+server_pid="\$!"
+trap 'kill "\${server_pid}" 2>/dev/null || true' INT TERM EXIT
+deadline=\$(( \$(date +%s) + \${SLOPCODE_START_TIMEOUT:-900} ))
+until curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/v1/models >/dev/null 2>&1; do
+  if ! kill -0 "\${server_pid}" 2>/dev/null; then
+    wait "\${server_pid}"
+  fi
+  [[ \$(date +%s) -lt \${deadline} ]] || exit 1
+  sleep 2
+done
+if [[ "\${SLOPCODE_START_PREWARM:-true}" == "true" ]]; then
+  "${DEST}/prewarm-opencode.sh" >/tmp/slopcode-opencode-prewarm.log 2>&1 &
+fi
+wait "\${server_pid}"
+RUN
+chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/start-slopcode.sh" "${DEST}/prewarm-opencode.sh"
 
 LLAMA_PLIST="${AGENTS}/com.slopcode.llamacpp.plist"
 cat >"${LLAMA_PLIST}" <<XML
@@ -1035,7 +1070,7 @@ cat >"${LLAMA_PLIST}" <<XML
 <plist version="1.0"><dict>
 <key>Label</key><string>com.slopcode.llamacpp</string>
 <key>ProgramArguments</key><array>
-<string>${DEST}/run-llamacpp.sh</string>
+<string>${DEST}/start-slopcode.sh</string>
 </array>
 <key>EnvironmentVariables</key><dict><key>DYLD_LIBRARY_PATH</key><string>${DEST}/llama.cpp</string></dict>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
@@ -1207,6 +1242,7 @@ OPTION 2 - MANUAL INSTALL
        > xcopy /E /I /Y opencode    "%USERPROFILE%\slopcode\opencode"
        > xcopy /E /I /Y whisper.cpp "%USERPROFILE%\slopcode\whisper.cpp"
        > xcopy /E /I /Y meeting     "%USERPROFILE%\slopcode\meeting"
+       > copy prewarm-opencode.bat   "%USERPROFILE%\slopcode\bin\"
 
    And copy the models from the USB bundle root (the parent folder):
 
@@ -1292,14 +1328,31 @@ OPTION 2 - MANUAL INSTALL
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
        "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 
-8. Create the whisper launcher %USERPROFILE%\slopcode\run-whisper.bat
+8. Create the ordered startup launcher
+   %USERPROFILE%\slopcode\start-slopcode.bat with this exact content:
+
+       @echo off
+       setlocal EnableExtensions
+       set "LOCK=%TEMP%\slopcode-start.lock"
+       2>nul mkdir "%LOCK%" || (echo slopcode startup already running & exit /b 0)
+       powershell -NoProfile -Command "try { Invoke-RestMethod -Uri 'http://127.0.0.1:8080/v1/models' -TimeoutSec 5 | Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
+       if errorlevel 1 start "slopcode-llamacpp" /MIN "%USERPROFILE%\slopcode\run-llamacpp.bat"
+       powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(900); do { try { Invoke-RestMethod -Uri 'http://127.0.0.1:8080/v1/models' -TimeoutSec 5 | Out-Null; exit 0 } catch { Start-Sleep -Seconds 2 } } while ((Get-Date) -lt $deadline); exit 1"
+       if errorlevel 1 (rd "%LOCK%" 2>nul & exit /b 1)
+       start "slopcode-opencode-prewarm" /MIN "%USERPROFILE%\slopcode\bin\prewarm-opencode.bat"
+       rd "%LOCK%" 2>nul
+
+   This script is the only autostart target. It starts the server first,
+   waits for /v1/models, then starts the passive prewarm helper.
+
+9. Create the whisper launcher %USERPROFILE%\slopcode\run-whisper.bat
    with this exact content:
 
        @echo off
        set "PATH=%USERPROFILE%\slopcode\whisper.cpp;%PATH%"
        "%USERPROFILE%\slopcode\whisper.cpp\whisper-server.exe" -m "%USERPROFILE%\slopcode\models\ggml-large-v3-turbo.bin" --host 127.0.0.1 --port 8427 -l auto -t 4 -fa --inference-path /v1/audio/transcriptions --convert --tmp-dir "%TEMP%"
 
-9. Create the opencode config. In Command Prompt:
+10. Create the opencode config. In Command Prompt:
 
        > mkdir "%USERPROFILE%\.config\opencode"
 
@@ -1310,7 +1363,7 @@ OPTION 2 - MANUAL INSTALL
    Save as opencode.json in %USERPROFILE%\.config\opencode\
    (set "Save as type" to "All Files").
 
-10. Auto-start at login. Two options - pick one.
+11. Auto-start at login. Two options - pick one.
 
     Option A (recommended for non-technical users): create shortcut
     files inside the Startup folder.
@@ -1320,15 +1373,15 @@ OPTION 2 - MANUAL INSTALL
     (paste that into the address bar). Right-click an empty area,
     "New" -> "Shortcut", and create one shortcut:
 
-      target: %USERPROFILE%\slopcode\run-llamacpp.bat
+      target: %USERPROFILE%\slopcode\start-slopcode.bat
 
     Option B (one-liner .bat file): in the same Startup folder
     create slopcode-llamacpp.bat containing exactly:
 
-        start "slopcode-llamacpp" /MIN "%USERPROFILE%\slopcode\run-llamacpp.bat"
+        start "slopcode" /MIN "%USERPROFILE%\slopcode\start-slopcode.bat"
 
-11. Start the service now without waiting for the next login.
-    Double-click %USERPROFILE%\slopcode\run-llamacpp.bat. A black
+12. Start the service now without waiting for the next login.
+    Double-click %USERPROFILE%\slopcode\start-slopcode.bat. A black
     window opens. Minimise it - it has to stay running for opencode
     to work.
 
@@ -1448,6 +1501,7 @@ del /Q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper
 echo Removing old launchers and opencode config...
 del /Q "%DEST%\run-llamacpp.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-cpu.bat" 2>nul
+del /Q "%DEST%\start-slopcode.bat" 2>nul
 del /Q "%DEST%\run-whisper.bat" 2>nul
 del /Q "%USERPROFILE%\.config\opencode\opencode.json" 2>nul
 echo Removing old llama.cpp + opencode dirs...
@@ -1491,20 +1545,26 @@ if !THREADS! LSS 2 set THREADS=2
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo REM Comment the next line to disable startup OpenCode prewarm.
->>"%DEST%\run-llamacpp.bat" echo start "slopcode-opencode-prewarm" /MIN "%DEST%\bin\prewarm-opencode.bat" --no-start
 >>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo REM Comment the next line to disable startup OpenCode prewarm.
->>"%DEST%\run-llamacpp-cpu.bat" echo start "slopcode-opencode-prewarm" /MIN "%DEST%\bin\prewarm-opencode.bat" --no-start
 >>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>"%DEST%\start-slopcode.bat" echo @echo off
+>>"%DEST%\start-slopcode.bat" echo setlocal EnableExtensions
+>>"%DEST%\start-slopcode.bat" echo set "LOCK=%%TEMP%%\slopcode-start.lock"
+>>"%DEST%\start-slopcode.bat" echo 2^>nul mkdir "%%LOCK%%" ^|^| ^(echo slopcode startup already running ^& exit /b 0^)
+>>"%DEST%\start-slopcode.bat" echo powershell -NoProfile -Command "try { Invoke-RestMethod -Uri 'http://127.0.0.1:8080/v1/models' -TimeoutSec 5 ^| Out-Null; exit 0 } catch { exit 1 }" ^>nul 2^>nul
+>>"%DEST%\start-slopcode.bat" echo if errorlevel 1 start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
+>>"%DEST%\start-slopcode.bat" echo powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(900); do { try { Invoke-RestMethod -Uri 'http://127.0.0.1:8080/v1/models' -TimeoutSec 5 ^| Out-Null; exit 0 } catch { Start-Sleep -Seconds 2 } } while ((Get-Date) -lt $deadline); exit 1"
+>>"%DEST%\start-slopcode.bat" echo if errorlevel 1 ^(rd "%%LOCK%%" 2^>nul ^& exit /b 1^)
+>>"%DEST%\start-slopcode.bat" echo start "slopcode-opencode-prewarm" /MIN "%DEST%\bin\prewarm-opencode.bat"
+>>"%DEST%\start-slopcode.bat" echo rd "%%LOCK%%" 2^>nul
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
->"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
+>"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode" /MIN "%DEST%\start-slopcode.bat"
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
 >"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); $adds=@('%DEST%\opencode','%DEST%\bin'); foreach($add in $adds){ if (($p -split ';') -notcontains $add) { $p=($add+';'+$p) } }; [Environment]::SetEnvironmentVariable('Path', $p, 'User')"
-start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
+start "slopcode" /MIN "%DEST%\start-slopcode.bat"
 echo Installed localhost-only llama.cpp 8080 and opencode (--threads !THREADS!).
 echo (whisper/meeting tools are shipped on the USB but not auto-installed.)
 echo If you see repeated slashes in opencode thinking, run: %DEST%\run-llamacpp-cpu.bat
@@ -1520,12 +1580,12 @@ for target in "${TARGETS[@]}"; do
     linux-cuda)
       write_linux
       write_simple_platform_readme "${OUT}/linux-cuda" "slopcode for Linux (NVIDIA CUDA)" "bash install.sh" "./prewarm-opencode.sh"
-      prune_dir_entries "${OUT}/linux-cuda" llama.cpp opencode whisper.cpp opencode_privacy.sh prewarm-opencode.sh meeting start.sh README.md install.sh
+      prune_dir_entries "${OUT}/linux-cuda" llama.cpp opencode whisper.cpp _common.sh opencode_privacy.sh prewarm-opencode.sh meeting start.sh README.md install.sh
       ;;
     mac-m1)
       write_mac
       write_simple_platform_readme "${OUT}/mac-m1" "slopcode for macOS (Apple Silicon)" "bash install.sh" "./prewarm-opencode.sh"
-      prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp opencode_privacy.sh prewarm-opencode.sh meeting README.md install.sh
+      prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp _common.sh opencode_privacy.sh prewarm-opencode.sh meeting README.md install.sh
       ;;
     windows-arc)
       write_windows
