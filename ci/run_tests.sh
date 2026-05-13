@@ -29,6 +29,7 @@ echo "---- USB Scripts ----"
 if bash -n "${SCRIPT_DIR}/../scripts/build_bundle.sh" \
    && bash -n "${SCRIPT_DIR}/../scripts/usb_format.sh" \
    && bash -n "${SCRIPT_DIR}/../scripts/llamacpp_prewarm_opencode.sh" \
+   && bash -n "${SCRIPT_DIR}/../scripts/slopgate_prewarm_opencode.sh" \
    && "${SCRIPT_DIR}/../scripts/build_bundle.sh" --help >/dev/null; then
   echo
 else
