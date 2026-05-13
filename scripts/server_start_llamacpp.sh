@@ -46,6 +46,8 @@
 #   LLAMACPP_FIT          explicit value passed to -fit (for example: off)
 #   LLAMACPP_CACHE_RAM    explicit value passed to --cache-ram; 0 disables the
 #                         prompt cache
+#   LLAMACPP_CACHE_REUSE  N tokens for --cache-reuse (default empty; 256 is the
+#                         FIM-recommended value for Qwen3-Coder)
 #   LLAMACPP_DRY_RUN      true to print the command and exit
 #   LLAMACPP_EXEC         true to exec llama-server in the foreground (for
 #                         systemd/launchd ExecStart); skips nohup, pid files,
@@ -185,6 +187,7 @@ REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
 NO_MMAP="${LLAMACPP_NO_MMAP:-false}"
 FIT="${LLAMACPP_FIT:-}"
 CACHE_RAM="${LLAMACPP_CACHE_RAM:-}"
+CACHE_REUSE="${LLAMACPP_CACHE_REUSE:-}"
 SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-qwen}"
 INSTANCE="${LLAMACPP_INSTANCE:-}"
 if [[ -n "${INSTANCE}" ]]; then
@@ -322,7 +325,22 @@ case "${MODEL_ALIAS}" in
       --no-context-shift
     )
     ;;
-  qwen3-coder-*|qwen3-235b-*)
+  qwen3-coder-*)
+    # Qwen3-Coder is non-reasoning. Do NOT pass --reasoning-format or
+    # --reasoning-budget here; the model emits raw code completions and
+    # llama-server's deepseek splitter would chop them. Sampler block is
+    # the upstream Qwen3-Coder Best Practices recipe.
+    SAMPLER_ARGS+=(
+      --temp 0.7
+      --top-p 0.8
+      --top-k 20
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.05
+      --no-context-shift
+    )
+    ;;
+  qwen3-235b-*)
     SAMPLER_ARGS+=(
       --temp 0.7
       --top-p 0.8
@@ -383,6 +401,9 @@ if [[ -n "${FIT}" ]]; then
 fi
 if [[ -n "${CACHE_RAM}" ]]; then
   CMD+=(--cache-ram "${CACHE_RAM}")
+fi
+if [[ -n "${CACHE_REUSE}" ]]; then
+  CMD+=(--cache-reuse "${CACHE_REUSE}")
 fi
 if [[ -n "${MMPROJ_PATH}" ]]; then
   CMD+=(--mmproj "${MMPROJ_PATH}")

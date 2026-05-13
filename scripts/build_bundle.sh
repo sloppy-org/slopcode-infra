@@ -234,11 +234,14 @@ copy_models() {
   prune_dir_entries "${OUT}/models" \
     Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
     Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf.sha256 \
+    Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf \
+    Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf.sha256 \
     mmproj-BF16.gguf \
     mmproj-BF16.gguf.sha256 \
     ggml-large-v3-turbo.bin \
     ggml-large-v3-turbo.bin.partial
   copy_model_alias qwen3.6-35b-a3b-q4 true
+  copy_model_alias qwen3-coder-30b-a3b-q4 false
   local model="${OUT}/models/ggml-large-v3-turbo.bin"
   if [[ ! -f "${model}" ]]; then
     download_file \
@@ -333,13 +336,23 @@ write_vscode_helpers() {
     configure-llama-vscode.sh \
     configure-llama-vscode.bat \
     README.md
+  # FIM-tuned settings from the Qwen3-Coder Best Practices + llama.vscode
+  # package.json. Same :8080 for chat and FIM because the user swaps the
+  # underlying server (chat <-> coder), not the URL.
   cat >"${d}/settings.llamacpp.json" <<'EOF'
 {
   "llama-vscode.endpoint": "http://127.0.0.1:8080",
   "llama-vscode.endpoint_chat": "http://127.0.0.1:8080",
   "llama-vscode.endpoint_tools": "http://127.0.0.1:8080",
   "llama-vscode.ai_api_version": "v1",
-  "llama-vscode.ai_model": "qwen"
+  "llama-vscode.ai_model": "qwen",
+  "llama-vscode.api_key": "",
+  "llama-vscode.n_predict": 128,
+  "llama-vscode.t_max_prompt_ms": 500,
+  "llama-vscode.t_max_predict_ms": 500,
+  "llama-vscode.ring_n_chunks": 16,
+  "llama-vscode.n_prefix": 256,
+  "llama-vscode.n_suffix": 64
 }
 EOF
   cat >"${d}/configure-llama-vscode.sh" <<'EOF'
@@ -370,6 +383,8 @@ with open(settings_path, "w", encoding="utf-8") as f:
     f.write("\n")
 PY
 echo "configured llama.vscode for http://127.0.0.1:8080"
+echo "note: autocomplete works only when the FIM server is running."
+echo "  run llama-coder.sh to swap to Qwen3-Coder; run llama-chat.sh to swap back."
 EOF
   chmod +x "${d}/configure-llama-vscode.sh"
   cat >"${d}/configure-llama-vscode.bat" <<'EOF'
@@ -384,32 +399,34 @@ where py >nul 2>&1 && (set "PYEXE=py -3") || (set "PYEXE=python")
 %PYEXE% -c "import json,os,sys;p=sys.argv[1];q=sys.argv[2];s=json.load(open(p,encoding='utf-8')) if os.path.exists(p) else {};s.update(json.load(open(q,encoding='utf-8')));open(p,'w',encoding='utf-8').write(json.dumps(s,indent=2)+'\n')" "%SETTINGS%" "%HERE%settings.llamacpp.json"
 if errorlevel 1 exit /b 1
 echo configured llama.vscode for http://127.0.0.1:8080
+echo note: autocomplete works only when the FIM server is running.
+echo   double-click llama-coder.bat to swap to Qwen3-Coder, llama-chat.bat to swap back.
 endlocal
 EOF
   cat >"${d}/README.md" <<'EOF'
 # VS Code llama.vscode
 
-Install the bundled extension:
+Install the bundled extension and apply the localhost settings:
 
 ```sh
-code --install-extension llama-vscode-latest.vsix
+bash configure-llama-vscode.sh        # Linux / macOS
+configure-llama-vscode.bat            # Windows
 ```
 
-Then apply the localhost settings:
+The settings point chat, tools, and autocomplete at the same local
+llama.cpp server on `http://127.0.0.1:8080`. The same server cannot answer
+both kinds of request well at the same time, so the bundle ships TWO
+launchers and you pick one at a time:
 
-```sh
-bash configure-llama-vscode.sh
-```
+- `llama-chat.{sh,bat}` — Qwen3.6-35B-A3B-Instruct (the default). Best for
+  agentic OpenCode and the chat panel. Autocomplete will be junk because
+  the model is not FIM-trained.
+- `llama-coder.{sh,bat}` — Qwen3-Coder-30B-A3B-Instruct (~17.7 GB, FIM-
+  trained, matches the same memory budget). Best for `<Tab>` autocomplete
+  and short fill-in-the-middle edits. The chat panel works but is weaker
+  than the chat-tuned 35B for long agentic reasoning.
 
-Windows:
-
-```bat
-configure-llama-vscode.bat
-```
-
-The settings point chat, tools, and completion requests at the bundled
-llama.cpp server on `http://127.0.0.1:8080`; the extension appends `/v1`
-for OpenAI-compatible chat calls.
+To swap: run the stop helper, then the launcher you want.
 EOF
 }
 
@@ -453,10 +470,12 @@ provider config.
 Open \`../local-luna/README.md\`. That tutorial is the maintained step-by-step
 path for people who prefer LM Studio or want to configure each piece by hand.
 
-## VS Code
+## VS Code llama.vscode
 
-Open \`../vscode/README.md\` to install the bundled llama.vscode extension and
-point it at the local llama.cpp server.
+Open \`../vscode/README.md\` to install the bundled extension and point it at
+the local llama.cpp server. The autocomplete path only works when the FIM
+launcher (\`llama-coder.{sh,bat}\`) is running — see the per-platform README
+for the swap.
 
 ## LM Studio fallback
 
@@ -728,7 +747,44 @@ export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
 exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
 RUN
-chmod +x "${DEST}/run-llamacpp.sh"
+cat >"${DEST}/run-llamacpp-coder.sh" <<RUN
+#!/usr/bin/env bash
+# Foreground Qwen3-Coder-30B-A3B-Instruct FIM profile. Same hardware budget
+# as the chat 35B; loads the UD-Q4_K_XL Unsloth GGUF (~17.7 GB) with the
+# samplers from the upstream Qwen3-Coder Best Practices and --cache-reuse 256
+# from the llama-server --fim-qwen-30b-default preset.
+export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
+export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 1024 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --cache-reuse 256 --temp 0.7 --top-p 0.8 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1.05 --no-context-shift --host 127.0.0.1 --port 8080
+RUN
+cat >"${DEST}/stop-llamacpp.sh" <<RUN
+#!/usr/bin/env bash
+set -euo pipefail
+systemctl --user stop slopcode-llamacpp.service 2>/dev/null || true
+pkill -f "${DEST}/llama.cpp/llama-server" 2>/dev/null || true
+echo "stopped"
+RUN
+cat >"${DEST}/llama-chat.sh" <<RUN
+#!/usr/bin/env bash
+set -euo pipefail
+"${DEST}/stop-llamacpp.sh" >/dev/null
+systemctl --user start slopcode-llamacpp.service
+echo "chat (Qwen3.6-35B-A3B-Instruct) on http://127.0.0.1:8080"
+RUN
+cat >"${DEST}/llama-coder.sh" <<RUN
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ ! -f "${DEST}/models/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf" ]]; then
+  echo "coder model missing at ${DEST}/models/" 1>&2
+  echo "copy it from the USB bundle root (../models/) and retry." 1>&2
+  exit 1
+fi
+"${DEST}/stop-llamacpp.sh" >/dev/null
+nohup "${DEST}/run-llamacpp-coder.sh" >/tmp/slopcode-coder.log 2>&1 &
+echo "coder (Qwen3-Coder-30B-A3B-Instruct) on http://127.0.0.1:8080"
+echo "log: /tmp/slopcode-coder.log"
+RUN
+chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/run-llamacpp-coder.sh" "${DEST}/stop-llamacpp.sh" "${DEST}/llama-chat.sh" "${DEST}/llama-coder.sh"
 
 cat >"${HOME}/.config/systemd/user/slopcode-llamacpp.service" <<UNIT
 [Unit]
@@ -988,7 +1044,43 @@ export PATH="${DEST}/opencode:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/o
 export DYLD_LIBRARY_PATH="${DEST}/llama.cpp\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
 exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --reasoning on --reasoning-budget 4096 --no-context-shift --host 127.0.0.1 --port 8080
 RUN
-chmod +x "${DEST}/run-llamacpp.sh"
+cat >"${DEST}/run-llamacpp-coder.sh" <<RUN
+#!/usr/bin/env bash
+# Qwen3-Coder-30B-A3B-Instruct FIM profile for Apple Silicon. Same hardware
+# budget as the chat 35B (Metal unified memory); upstream Best Practices
+# samplers and --cache-reuse 256 from --fim-qwen-30b-default.
+export PATH="${DEST}/opencode:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:\${PATH}"
+export DYLD_LIBRARY_PATH="${DEST}/llama.cpp\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 1024 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --cache-reuse 256 --temp 0.7 --top-p 0.8 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1.05 --no-context-shift --host 127.0.0.1 --port 8080
+RUN
+cat >"${DEST}/stop-llamacpp.sh" <<RUN
+#!/usr/bin/env bash
+set -euo pipefail
+launchctl bootout "gui/\$(id -u)/com.slopcode.llamacpp" 2>/dev/null || true
+pkill -f "${DEST}/llama.cpp/llama-server" 2>/dev/null || true
+echo "stopped"
+RUN
+cat >"${DEST}/llama-chat.sh" <<RUN
+#!/usr/bin/env bash
+set -euo pipefail
+"${DEST}/stop-llamacpp.sh" >/dev/null
+launchctl bootstrap "gui/\$(id -u)" "\$HOME/Library/LaunchAgents/com.slopcode.llamacpp.plist"
+echo "chat (Qwen3.6-35B-A3B-Instruct) on http://127.0.0.1:8080"
+RUN
+cat >"${DEST}/llama-coder.sh" <<RUN
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ ! -f "${DEST}/models/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf" ]]; then
+  echo "coder model missing at ${DEST}/models/" 1>&2
+  echo "copy it from the USB bundle root (../models/) and retry." 1>&2
+  exit 1
+fi
+"${DEST}/stop-llamacpp.sh" >/dev/null
+nohup "${DEST}/run-llamacpp-coder.sh" >/tmp/slopcode-coder.log 2>&1 &
+echo "coder (Qwen3-Coder-30B-A3B-Instruct) on http://127.0.0.1:8080"
+echo "log: /tmp/slopcode-coder.log"
+RUN
+chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/run-llamacpp-coder.sh" "${DEST}/stop-llamacpp.sh" "${DEST}/llama-chat.sh" "${DEST}/llama-coder.sh"
 
 LLAMA_PLIST="${AGENTS}/com.slopcode.llamacpp.plist"
 cat >"${LLAMA_PLIST}" <<XML
@@ -1459,6 +1551,26 @@ if !THREADS! LSS 2 set THREADS=2
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
 >>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
+set "CODER_MODEL=%DEST%\models\Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf"
+>"%DEST%\run-llamacpp-coder.bat" echo @echo off
+>>"%DEST%\run-llamacpp-coder.bat" echo REM Qwen3-Coder-30B-A3B-Instruct FIM profile. Same Arc Vulkan stability env vars as chat.
+>>"%DEST%\run-llamacpp-coder.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
+>>"%DEST%\run-llamacpp-coder.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
+>>"%DEST%\run-llamacpp-coder.bat" echo set "GGML_VK_DISABLE_F16=1"
+>>"%DEST%\run-llamacpp-coder.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+>>"%DEST%\run-llamacpp-coder.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%CODER_MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 1024 -ub 1024 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --cache-reuse 256 --temp 0.7 --top-p 0.8 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1.05 --no-context-shift --host 127.0.0.1 --port 8080
+>"%DEST%\stop-llamacpp.bat" echo @echo off
+>>"%DEST%\stop-llamacpp.bat" echo taskkill /F /IM llama-server.exe /T ^>nul 2^>^&1
+>>"%DEST%\stop-llamacpp.bat" echo echo stopped
+>"%DEST%\llama-chat.bat" echo @echo off
+>>"%DEST%\llama-chat.bat" echo call "%DEST%\stop-llamacpp.bat" ^>nul 2^>^&1
+>>"%DEST%\llama-chat.bat" echo start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
+>>"%DEST%\llama-chat.bat" echo echo chat ^(Qwen3.6-35B-A3B-Instruct^) on http://127.0.0.1:8080
+>"%DEST%\llama-coder.bat" echo @echo off
+>>"%DEST%\llama-coder.bat" echo if not exist "%CODER_MODEL%" ^(echo coder model missing at %CODER_MODEL% 1^>^&2 ^& exit /b 1^)
+>>"%DEST%\llama-coder.bat" echo call "%DEST%\stop-llamacpp.bat" ^>nul 2^>^&1
+>>"%DEST%\llama-coder.bat" echo start "slopcode-llamacpp-coder" /MIN "%DEST%\run-llamacpp-coder.bat"
+>>"%DEST%\llama-coder.bat" echo echo coder ^(Qwen3-Coder-30B-A3B-Instruct^) on http://127.0.0.1:8080
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
@@ -1531,10 +1643,14 @@ Open `local-luna/README.md`.
 That tutorial is copied onto this stick for people who want step-by-step setup,
 or who prefer LM Studio instead of the automatic llama.cpp scripts.
 
-## VS Code
+## VS Code llama.vscode
 
-Open `vscode/README.md` to install the bundled latest llama.vscode extension
-and apply settings for the local llama.cpp server.
+Open `vscode/README.md` to install the bundled extension. There is no
+sidecar: chat and FIM autocomplete share `127.0.0.1:8080`, and you pick
+which model is loaded by running either `llama-chat.{sh,bat}` (default,
+Qwen3.6-35B-A3B-Instruct, agentic) or `llama-coder.{sh,bat}` (Qwen3-Coder-
+30B-A3B-Instruct, FIM `<Tab>`). The chat-tuned model is not FIM-trained;
+the coder model is. Stop one before starting the other.
 
 ## LM Studio installers
 

@@ -84,6 +84,13 @@ scripts/
                                 Flips to 127.0.0.1:8081 when slopgate is locally
                                 installed; LLAMACPP_BIND_LOOPBACK=true forces it
                                 without slopgate detection (followers).
+  server_start_qwen_coder.sh    swap to Qwen3-Coder-30B-A3B-Instruct (FIM).
+                                Stops any running llama-server, then re-launches
+                                with the qwen3-coder-30b-a3b-q4 alias, Best
+                                Practices sampler block, --cache-reuse 256 (from
+                                the upstream --fim-qwen-30b-default preset).
+                                For llama.vscode autocomplete; swap back to chat
+                                with stop + server_start_llamacpp.sh.
   server_start_qwen27b.sh       slopgate/powerful-machine special mode:
                                 Qwen3.6 27B Q4_K_M, Q8 KV, 128K context,
                                 loopback :8080. Not the standard local default.
@@ -516,8 +523,11 @@ that isn't on PATH.
 ## Don't reintroduce
 
 Explicitly out of scope — do not add LM Studio, vLLM, vLLM-MLX, MLX-LM, oMLX,
-`security_harden.sh`, dual-instance local/fast servers, the macOS Qwen 27B
-dense companion as a default-installed model, intentee/paddler v2+ (the
+`security_harden.sh`, dual-instance local/fast servers, a separate FIM
+autocomplete sidecar on a second port (chat and coder share `:8080` and the
+user swaps the loaded model; see "Chat vs autocomplete" in `README.md`), the
+macOS Qwen 27B dense companion as a default-installed model, intentee/paddler
+v2+ (the
 embedded-llama.cpp rewrite — slopgate stays on the v1.x transparent-proxy
 line so we keep control of llama-server flags), llama-server bound to
 `0.0.0.0` on any cluster node (it must always bind WG-only or loopback),
