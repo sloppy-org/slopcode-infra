@@ -925,11 +925,18 @@ OPTION 2 - MANUAL INSTALL
        set "GGML_VK_DISABLE_COOPMAT2=1"
        set "GGML_VK_DISABLE_F16=1"
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on --cpu-moe -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 
    On Arc 140V (Lunar Lake, 4P + 4LP = 8 physical cores) --threads 6 is
    the right value (physical - 2). On other Arc hosts substitute
    physical-cores - 2 (min 2).
+
+   No --cpu-moe / --n-cpu-moe: all 40 MoE expert layers stay on the Arc
+   iGPU together with attention + KV + DeltaNet. On a Core Ultra 7
+   with 64 GB unified RAM and the "Shared GPU Memory Override" raised
+   to 32 GB this is meaningfully faster than --cpu-moe; if you hit
+   Vulkan OOM on a smaller host, add "--n-cpu-moe 20" (or higher up
+   to 40 = --cpu-moe) to push expert layers back to CPU.
 
 7. Create the CPU fallback launcher
    %USERPROFILE%\slopcode\run-llamacpp-cpu.bat with this exact
@@ -1002,14 +1009,19 @@ Close it via Task Manager (Ctrl-Shift-Esc) or by closing the
 black window.
 
 run-llamacpp.bat       Vulkan GPU build, era-1 safe profile
-                       (--cpu-moe: all 40 MoE expert layers on CPU,
-                       only attention + KV + DeltaNet on the Arc iGPU).
+                       (all 40 MoE expert layers on the Arc iGPU;
+                       no --cpu-moe / --n-cpu-moe). Tuned for
+                       Core Ultra 7 with 64 GB unified RAM and
+                       "Shared GPU Memory Override" raised to 32 GB.
                        Sets three stability env vars:
                          GGML_VK_DISABLE_COOPMAT/COOPMAT2 -- Arc 140V Xe2
                            KHR_coopmat TDR bug (ggml-org/llama.cpp#20554)
                          GGML_VK_DISABLE_F16             -- Intel iGPU
                            F16 accumulator NaN bug (#18969)
-                       -c 131072, -ub 512, q8_0 KV, --cpu-moe.
+                       -c 131072, -ub 512, q8_0 KV.
+                       If Vulkan OOM on a smaller host, add
+                       "--n-cpu-moe 20" (or higher, up to 40 =
+                       --cpu-moe) to push experts back to CPU.
 run-llamacpp-cpu.bat   Pure CPU fallback (-ngl 0). Always correct
                        output but only ~10 tokens per second.
 
@@ -1132,7 +1144,7 @@ if !THREADS! LSS 2 set THREADS=2
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on --cpu-moe -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
 >>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080

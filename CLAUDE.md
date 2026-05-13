@@ -152,9 +152,16 @@ Qwen3.6 35B-A3B is MoE. **Per-platform MoE policy diverges**:
 
 - **Linux CUDA** uses `--n-cpu-moe 35` (expert layers 0–34 on CPU, 35–39
   on GPU) — bench-driven on a 16 GB RTX 5060 Ti below.
-- **Windows-arc (Intel Arc)** uses `--cpu-moe` (all experts on CPU,
-  zero MoE on iGPU) for stability — see the "Windows-arc USB bundle"
-  section for the upstream Intel TDR/F16 bugs that force this.
+- **Windows-arc (Intel Arc)** runs with **no** `--cpu-moe` /
+  `--n-cpu-moe` (all 40 MoE expert layers on the iGPU). Bench-validated
+  on a Core Ultra 7 with 64 GB unified RAM and "Shared GPU Memory
+  Override" raised to 32 GB — meaningfully faster than the old
+  `--cpu-moe` default. Requires the two Vulkan stability env vars
+  (`GGML_VK_DISABLE_COOPMAT[2]=1`) and the F16 workaround
+  (`GGML_VK_DISABLE_F16=1`); see the "Windows-arc USB bundle" section
+  for the upstream Intel TDR/F16 bugs that force the env vars. Hosts
+  with less unified VRAM should fall back to `--n-cpu-moe 20` and
+  upward (40 ≡ `--cpu-moe`).
 - **macOS** uses unified memory — no MoE split.
 
 On Linux CUDA partial MoE offload replaces the old blanket `--cpu-moe`.
@@ -213,7 +220,10 @@ have not been validated end-to-end.
 
 The `windows-arc` bundle uses the era-1 "qwenstack" safe profile plus
 the three upstream-documented Intel Arc Vulkan stability env vars and
-Unsloth's recommended `UD-Q4_K_XL` quant:
+Unsloth's recommended `UD-Q4_K_XL` quant. **All 40 MoE expert layers
+stay on the Arc iGPU** (no `--cpu-moe` / `--n-cpu-moe`); validated on
+Core Ultra 7 + 64 GB unified RAM with Shared GPU Memory Override at
+32 GB:
 
 ```
 GGML_VK_DISABLE_COOPMAT=1 \
@@ -221,7 +231,7 @@ GGML_VK_DISABLE_COOPMAT2=1 \
 GGML_VK_DISABLE_F16=1 \
 llama-server.exe -m Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --mmproj mmproj-BF16.gguf \
   -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 \
-  -ngl 99 -fa on --cpu-moe \
+  -ngl 99 -fa on \
   -np 1 --threads <physical_cores - 2> --threads-http 4 \
   --alias qwen --jinja \
   --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
@@ -321,11 +331,14 @@ RTX-5060-Ti-on-CUDA bench measured.
 If the bundle TDRs anyway, the recovery sequence (in order, escalating):
 1. Confirm the env vars are actually in `run-llamacpp.bat` (check
    `matrix cores: none` in llama-server startup output).
-2. Drop `-ub 1024 → 768 → 512` (shorter per-shader dispatch).
-3. Drop `--n-cpu-moe 35 → 38 → 40` (less iGPU expert load; 40 ≡ `--cpu-moe`).
-4. Raise Windows `TdrDelay` / `TdrDdiDelay` to 60 in registry as a
+2. Confirm Shared GPU Memory Override is raised (Intel Graphics
+   Software → Performance, 32 GB on a 64 GB host).
+3. Drop `-ub 512 → 384 → 256` (shorter per-shader dispatch).
+4. Add `--n-cpu-moe 20 → 30 → 40` (push expert layers back to CPU;
+   40 ≡ `--cpu-moe`, all experts on CPU).
+5. Raise Windows `TdrDelay` / `TdrDdiDelay` to 60 in registry as a
    defensive net (HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers).
-5. Switch the Startup shortcut to `run-llamacpp-cpu.bat` (pure CPU,
+6. Switch the Startup shortcut to `run-llamacpp-cpu.bat` (pure CPU,
    guaranteed-correct, ~10 t/s).
 
 The bundle's run-llamacpp.bat already sets `GGML_VK_DISABLE_F16=1` by
