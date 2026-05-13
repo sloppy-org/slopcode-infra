@@ -64,8 +64,18 @@ if [[ "${INSTALL_DRY_RUN}" == "true" ]]; then
   exit 0
 fi
 
+wait_unloaded() {
+  local domain="$1" deadline=$(( $(date +%s) + 15 ))
+  while launchctl print "${domain}/${SERVICE_LABEL}" >/dev/null 2>&1; do
+    [[ $(date +%s) -ge ${deadline} ]] && die "timed out unloading ${domain}/${SERVICE_LABEL}"
+    sleep 1
+  done
+}
+
 launchctl bootout "gui/$(id -u)/${SERVICE_LABEL}" 2>/dev/null || true
 launchctl bootout "user/$(id -u)/${SERVICE_LABEL}" 2>/dev/null || true
+wait_unloaded "gui/$(id -u)"
+wait_unloaded "user/$(id -u)"
 launchctl bootstrap "gui/$(id -u)" "${PLIST}"
 launchctl enable "gui/$(id -u)/${SERVICE_LABEL}" 2>/dev/null || true
 launchctl kickstart -k "gui/$(id -u)/${SERVICE_LABEL}"
