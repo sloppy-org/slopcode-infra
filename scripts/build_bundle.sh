@@ -132,20 +132,29 @@ fetch_whisper_source() {
 }
 
 copy_model_alias() {
-  local alias="$1" required="$2" primary src_dir
+  # Copy only the files this alias resolves to: the primary GGUF + its mmproj.
+  # Do NOT glob *.gguf in the cache dir — sibling files (e.g. older quants of
+  # the same repo we still serve from a running llama-server) must not leak
+  # onto the USB.
+  local alias="$1" required="$2" primary mmproj
   primary="$(python3 "${SCRIPT_DIR}/llamacpp_models.py" resolve "${alias}" 2>/dev/null || true)"
   if [[ -z "${primary}" || ! -f "${primary}" ]]; then
     [[ "${required}" == true ]] && die "model ${alias} missing; run: python3 scripts/llamacpp_models.py prefetch ${alias}"
     return 0
   fi
-  src_dir="$(dirname "${primary}")"
-  echo "copying ${alias}"
-  while IFS= read -r -d '' f; do
-    cp -n "${f}" "${OUT}/models/"
-    local bn
-    bn="$(basename "${f}")"
-    sha256sum "${f}" | awk '{print $1}' > "${OUT}/models/${bn}.sha256"
-  done < <(find "${src_dir}" -maxdepth 1 -type f -name '*.gguf' -print0)
+  echo "copying ${alias} ($(basename "${primary}"))"
+  cp -n "${primary}" "${OUT}/models/"
+  local pbn
+  pbn="$(basename "${primary}")"
+  sha256sum "${primary}" | awk '{print $1}' > "${OUT}/models/${pbn}.sha256"
+  mmproj="$(python3 "${SCRIPT_DIR}/llamacpp_models.py" resolve-mmproj "${alias}" 2>/dev/null || true)"
+  if [[ -n "${mmproj}" && -f "${mmproj}" ]]; then
+    local mbn
+    mbn="$(basename "${mmproj}")"
+    echo "  + mmproj ${mbn}"
+    cp -n "${mmproj}" "${OUT}/models/"
+    sha256sum "${mmproj}" | awk '{print $1}' > "${OUT}/models/${mbn}.sha256"
+  fi
 }
 
 copy_models() {
