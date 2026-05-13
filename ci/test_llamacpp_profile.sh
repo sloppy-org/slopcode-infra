@@ -99,30 +99,6 @@ EOF
   fi
 }
 
-test_windows_prewarm_separation() {
-  echo "TEST: Windows bundle keeps server and prewarm launchers separate"
-  local bundle="${REPO_ROOT}/scripts/build_bundle.sh"
-  local prewarm="${REPO_ROOT}/scripts/llamacpp_prewarm_opencode.bat"
-  local ok=1
-
-  grep -q 'start-slopcode\.bat' "${bundle}" || ok=0
-  grep -q 'Startup\\slopcode-llamacpp\.bat" echo start "slopcode" /MIN "%DEST%\\start-slopcode\.bat"' "${bundle}" || ok=0
-  grep -q 'start "slopcode-opencode-prewarm" /MIN "%DEST%\\bin\\prewarm-opencode\.bat"' "${bundle}" || ok=0
-  grep -q 'Local\\slopcode-opencode-prewarm' "${prewarm}" || ok=0
-  if grep -q 'Start-Process.*run-llamacpp' "${prewarm}" \
-      || grep -q 'run-llamacpp\.bat.*prewarm-opencode\.bat' "${bundle}" \
-      || grep -q 'run-llamacpp-cpu\.bat.*prewarm-opencode\.bat' "${bundle}"; then
-    ok=0
-  fi
-
-  if [[ "${ok}" == "1" ]]; then
-    echo "PASS: Windows autostart uses the ordered wrapper and prewarm is passive"
-  else
-    echo "FAIL: Windows prewarm/server separation regressed"
-    return 1
-  fi
-}
-
 test_server_start_thread_override() {
   echo "TEST: launcher honors LLAMACPP_THREADS override"
   local home_dir="${TMPDIR}/home-threads"
@@ -658,7 +634,6 @@ test_pi_config || FAILED=$((FAILED + 1))
 test_models_default_alias || FAILED=$((FAILED + 1))
 test_setup_backend_selection || FAILED=$((FAILED + 1))
 test_install_linux_systemd_dry_run || FAILED=$((FAILED + 1))
-test_windows_prewarm_separation || FAILED=$((FAILED + 1))
 
 if [[ "${FAILED}" -gt 0 ]]; then
   echo "${FAILED} test(s) failed"

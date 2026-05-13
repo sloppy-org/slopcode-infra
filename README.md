@@ -39,25 +39,6 @@ scripts/opencode_set_llamacpp.sh              # write ~/.config/opencode/opencod
 opencode                                      # go
 ```
 
-### OpenCode startup prewarm
-
-`scripts/server_start_llamacpp.sh` only starts `llama-server`.
-`scripts/llamacpp_prewarm_opencode.sh` only waits for an existing server and
-runs one non-editing `opencode run`; it never starts llama.cpp. To run both in
-order, use:
-
-```
-scripts/start_slopcode_llamacpp.sh
-```
-
-Run the same prewarm manually with:
-
-```
-scripts/llamacpp_prewarm_opencode.sh
-```
-
-`--check` only compares the local fingerprint manifest from the last run.
-
 ## SearXNG (local web search for Helpy)
 
 Helpy's `web_search` tool needs a SearXNG endpoint. This repo now ships a
@@ -68,7 +49,7 @@ scripts/setup_searxng.sh                      # clone/update SearXNG + venv + se
 scripts/server_start_searxng.sh               # foreground run, smoke test
 scripts/install_linux_searxng_systemd.sh      # systemd --user service (Linux)
 scripts/install_mac_searxng_launchagent.sh    # launchd background agent (macOS)
-pwsh -File scripts/install_searxng_windows.ps1  # Task Scheduler job (Windows)
+cmd /c scripts\install_searxng_windows.bat       # Task Scheduler job (Windows)
 ```
 
 What this does:
@@ -94,10 +75,10 @@ Linux:
 scripts/install_linux_searxng_systemd.sh
 ```
 
-Windows (PowerShell):
+Windows (Command Prompt):
 
-```powershell
-pwsh -File scripts/install_searxng_windows.ps1
+```bat
+scripts\install_searxng_windows.bat
 ```
 
 ### Make Helpy use it
@@ -209,7 +190,7 @@ to read the upstream README before hitting the F-key.
 ```
 scripts/install_voxtype_linux.sh              # systemd --user, deb/rpm fallback
 scripts/install_voxtype_mac.sh                # documented manual path (no Mac binary upstream)
-scripts/install_voxtype_windows.ps1           # documented manual path (no Windows binary upstream)
+scripts/install_voxtype_windows.bat           # documented manual path (no Windows binary upstream)
 ```
 
 The Linux installer detects GPU class (CUDA / Vulkan / CPU-only) and pulls

@@ -374,7 +374,6 @@ CMD=(
   --alias "${SERVED_ALIAS}"
   --jinja
   -np "${PARALLEL}"
-  --no-webui
 )
 if [[ "${NO_MMAP}" == "true" ]]; then
   CMD+=(--no-mmap)

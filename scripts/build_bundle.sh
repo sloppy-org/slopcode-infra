@@ -331,7 +331,6 @@ write_vscode_helpers() {
     llama-vscode-latest.vsix \
     settings.llamacpp.json \
     configure-llama-vscode.sh \
-    configure-llama-vscode.ps1 \
     configure-llama-vscode.bat \
     README.md
   cat >"${d}/settings.llamacpp.json" <<'EOF'
@@ -373,34 +372,19 @@ PY
 echo "configured llama.vscode for http://127.0.0.1:8080"
 EOF
   chmod +x "${d}/configure-llama-vscode.sh"
-  cat >"${d}/configure-llama-vscode.ps1" <<'EOF'
-$ErrorActionPreference = "Stop"
-$Here = Split-Path -Parent $MyInvocation.MyCommand.Path
-code --install-extension (Join-Path $Here "llama-vscode-latest.vsix")
-$Settings = Join-Path $env:APPDATA "Code\User\settings.json"
-New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Settings) | Out-Null
-function ConvertTo-Hashtable($Object) {
-  $Hash = @{}
-  if ($null -eq $Object) { return $Hash }
-  foreach ($Prop in $Object.PSObject.Properties) {
-    $Hash[$Prop.Name] = $Prop.Value
-  }
-  return $Hash
-}
-if (Test-Path $Settings) {
-  $Current = ConvertTo-Hashtable (Get-Content $Settings -Raw | ConvertFrom-Json)
-} else {
-  $Current = @{}
-}
-$Patch = ConvertTo-Hashtable (Get-Content (Join-Path $Here "settings.llamacpp.json") -Raw | ConvertFrom-Json)
-foreach ($Key in $Patch.Keys) { $Current[$Key] = $Patch[$Key] }
-$Current | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 $Settings
-Write-Host "configured llama.vscode for http://127.0.0.1:8080"
-EOF
   cat >"${d}/configure-llama-vscode.bat" <<'EOF'
 @echo off
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0configure-llama-vscode.ps1"
-exit /b %ERRORLEVEL%
+setlocal
+set "HERE=%~dp0"
+code --install-extension "%HERE%llama-vscode-latest.vsix"
+if errorlevel 1 exit /b 1
+set "SETTINGS=%APPDATA%\Code\User\settings.json"
+for %%I in ("%SETTINGS%") do mkdir "%%~dpI" 2>nul
+where py >nul 2>&1 && (set "PYEXE=py -3") || (set "PYEXE=python")
+%PYEXE% -c "import json,os,sys;p=sys.argv[1];q=sys.argv[2];s=json.load(open(p,encoding='utf-8')) if os.path.exists(p) else {};s.update(json.load(open(q,encoding='utf-8')));open(p,'w',encoding='utf-8').write(json.dumps(s,indent=2)+'\n')" "%SETTINGS%" "%HERE%settings.llamacpp.json"
+if errorlevel 1 exit /b 1
+echo configured llama.vscode for http://127.0.0.1:8080
+endlocal
 EOF
   cat >"${d}/README.md" <<'EOF'
 # VS Code llama.vscode
@@ -417,13 +401,7 @@ Then apply the localhost settings:
 bash configure-llama-vscode.sh
 ```
 
-Windows PowerShell:
-
-```powershell
-.\configure-llama-vscode.ps1
-```
-
-Windows Command Prompt:
+Windows:
 
 ```bat
 configure-llama-vscode.bat
@@ -454,7 +432,7 @@ EOF
 }
 
 write_simple_platform_readme() {
-  local target="$1" title="$2" installer="$3" prewarm="$4"
+  local target="$1" title="$2" installer="$3"
   cat >"${target}/README.md" <<EOF
 # ${title}
 
@@ -480,16 +458,6 @@ path for people who prefer LM Studio or want to configure each piece by hand.
 Open \`../vscode/README.md\` to install the bundled llama.vscode extension and
 point it at the local llama.cpp server.
 
-## Startup prewarm
-
-The server launcher only starts llama.cpp. The prewarm helper only waits for
-an existing server. The combined startup script runs them in order. To run the
-prewarm manually after the server is ready:
-
-\`\`\`sh
-${prewarm}
-\`\`\`
-
 ## LM Studio fallback
 
 Current LM Studio installers are in \`../lm-studio/\`. They are included for
@@ -501,7 +469,6 @@ write_common_unix_files() {
   local t="$1"
   install -m 644 "${SCRIPT_DIR}/_common.sh" "${t}/_common.sh"
   install -m 755 "${SCRIPT_DIR}/opencode_privacy.sh" "${t}/opencode_privacy.sh"
-  install -m 755 "${SCRIPT_DIR}/llamacpp_prewarm_opencode.sh" "${t}/prewarm-opencode.sh"
   sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
   chmod +x "${t}/meeting/"*.sh
 }
@@ -532,7 +499,7 @@ exec "${HERE}/llama.cpp/llama-server" \
   -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 \
   --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
   --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek \
-  --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui \
+  --reasoning-budget 4096 --no-context-shift --reasoning on \
   --host 127.0.0.1 --port 8080
 EOF
   chmod +x "${t}/start.sh"
@@ -653,7 +620,7 @@ Prerequisite: cmake and ninja must be installed.
          --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
          --presence-penalty 0 --repeat-penalty 1 \
          --reasoning-format deepseek --reasoning-budget 4096 \
-         --no-context-shift --reasoning on --no-webui \
+         --no-context-shift --reasoning on \
          --host 127.0.0.1 --port 8080
 
    Then:
@@ -750,7 +717,6 @@ DEST="${HOME}/.local/slopcode"
 mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${HOME}/.local/bin" "${HOME}/.config/systemd/user"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
-cp "${HERE}/prewarm-opencode.sh" "${DEST}/prewarm-opencode.sh"
 cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
@@ -760,34 +726,15 @@ cat >"${DEST}/run-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
 export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
-exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
 RUN
-cat >"${DEST}/start-slopcode.sh" <<RUN
-#!/usr/bin/env bash
-set -euo pipefail
-"${DEST}/run-llamacpp.sh" &
-server_pid="\$!"
-trap 'kill "\${server_pid}" 2>/dev/null || true' INT TERM EXIT
-deadline=\$(( \$(date +%s) + \${SLOPCODE_START_TIMEOUT:-900} ))
-until curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/v1/models >/dev/null 2>&1; do
-  if ! kill -0 "\${server_pid}" 2>/dev/null; then
-    wait "\${server_pid}"
-  fi
-  [[ \$(date +%s) -lt \${deadline} ]] || exit 1
-  sleep 2
-done
-if [[ "\${SLOPCODE_START_PREWARM:-true}" == "true" ]]; then
-  "${DEST}/prewarm-opencode.sh" >/tmp/slopcode-opencode-prewarm.log 2>&1 &
-fi
-wait "\${server_pid}"
-RUN
-chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/start-slopcode.sh" "${DEST}/prewarm-opencode.sh"
+chmod +x "${DEST}/run-llamacpp.sh"
 
 cat >"${HOME}/.config/systemd/user/slopcode-llamacpp.service" <<UNIT
 [Unit]
 Description=slopcode llama.cpp localhost
 [Service]
-ExecStart=${DEST}/start-slopcode.sh
+ExecStart=${DEST}/run-llamacpp.sh
 Restart=on-failure
 [Install]
 WantedBy=default.target
@@ -938,7 +885,7 @@ Homebrew yet, visit https://brew.sh first.
        <string>--alias</string><string>qwen</string><string>--jinja</string>
        <string>--reasoning</string><string>on</string>
        <string>--reasoning-budget</string><string>4096</string>
-       <string>--no-context-shift</string><string>--no-webui</string>
+       <string>--no-context-shift</string>
        <string>--host</string><string>127.0.0.1</string>
        <string>--port</string><string>8080</string>
        </array>
@@ -1030,7 +977,6 @@ AGENTS="${HOME}/Library/LaunchAgents"
 mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${LOGS}" "${AGENTS}" "${HOME}/.local/bin"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
-cp "${HERE}/prewarm-opencode.sh" "${DEST}/prewarm-opencode.sh"
 cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
@@ -1040,28 +986,9 @@ cat >"${DEST}/run-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
 export PATH="${DEST}/opencode:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:\${PATH}"
 export DYLD_LIBRARY_PATH="${DEST}/llama.cpp\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
-exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --reasoning on --reasoning-budget 4096 --no-context-shift --no-webui --host 127.0.0.1 --port 8080
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --reasoning on --reasoning-budget 4096 --no-context-shift --host 127.0.0.1 --port 8080
 RUN
-cat >"${DEST}/start-slopcode.sh" <<RUN
-#!/usr/bin/env bash
-set -euo pipefail
-"${DEST}/run-llamacpp.sh" &
-server_pid="\$!"
-trap 'kill "\${server_pid}" 2>/dev/null || true' INT TERM EXIT
-deadline=\$(( \$(date +%s) + \${SLOPCODE_START_TIMEOUT:-900} ))
-until curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8080/v1/models >/dev/null 2>&1; do
-  if ! kill -0 "\${server_pid}" 2>/dev/null; then
-    wait "\${server_pid}"
-  fi
-  [[ \$(date +%s) -lt \${deadline} ]] || exit 1
-  sleep 2
-done
-if [[ "\${SLOPCODE_START_PREWARM:-true}" == "true" ]]; then
-  "${DEST}/prewarm-opencode.sh" >/tmp/slopcode-opencode-prewarm.log 2>&1 &
-fi
-wait "\${server_pid}"
-RUN
-chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/start-slopcode.sh" "${DEST}/prewarm-opencode.sh"
+chmod +x "${DEST}/run-llamacpp.sh"
 
 LLAMA_PLIST="${AGENTS}/com.slopcode.llamacpp.plist"
 cat >"${LLAMA_PLIST}" <<XML
@@ -1070,7 +997,7 @@ cat >"${LLAMA_PLIST}" <<XML
 <plist version="1.0"><dict>
 <key>Label</key><string>com.slopcode.llamacpp</string>
 <key>ProgramArguments</key><array>
-<string>${DEST}/start-slopcode.sh</string>
+<string>${DEST}/run-llamacpp.sh</string>
 </array>
 <key>EnvironmentVariables</key><dict><key>DYLD_LIBRARY_PATH</key><string>${DEST}/llama.cpp</string></dict>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
@@ -1101,33 +1028,42 @@ write_windows() {
   read -r wh_tag wh_url <<<"$(github_asset ggml-org/whisper.cpp "${WHISPER_TAG}" whisper-bin-x64.zip)"
   echo "windows whisper.cpp ${wh_tag}"
   fetch_archive "${wh_url}" "${t}/whisper.cpp" whisper-server.exe
-  install -m 644 "${SCRIPT_DIR}/llamacpp_prewarm_opencode.bat" "${t}/prewarm-opencode.bat"
   sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
-  # PowerShell helper: verify model checksums before install.
-  cat >"${t}/verify-models.ps1" <<'PS1'
-param([string]$ModelsDir)
-$ok = $true
-Get-ChildItem "$ModelsDir\*.sha256" | ForEach-Object {
-    $gguf = $_.FullName -replace '\.sha256$', ''
-    if (-not (Test-Path $gguf)) {
-        Write-Error "missing model file: $gguf"
-        $ok = $false
-        return
-    }
-    $expected = (Get-Content $_.FullName -Raw).Trim().ToUpper()
-    $actual   = (Get-FileHash -Algorithm SHA256 $gguf).Hash
-    if ($expected -ne $actual) {
-        Write-Error "SHA256 mismatch: $($_.Name -replace '\.sha256$', '')"
-        Write-Error "  expected: $expected"
-        Write-Error "  actual:   $actual"
-        $ok = $false
-    } else {
-        Write-Host "OK  $($_.Name -replace '\.sha256$', '')"
-    }
-}
-if (-not $ok) { exit 1 }
-PS1
+  # verify-models.bat: certutil-based SHA256 verification, no powershell.
+  cat >"${t}/verify-models.bat" <<'BAT'
+@echo off
+setlocal EnableDelayedExpansion
+set "MODELS_DIR=%~1"
+if "%MODELS_DIR%"=="" set "MODELS_DIR=%~dp0..\models"
+set "OK=1"
+for %%S in ("%MODELS_DIR%\*.sha256") do (
+  set "SHA_FILE=%%~fS"
+  set "GGUF=%%~dpnS"
+  if not exist "!GGUF!" (
+    echo missing model file: !GGUF! 1>&2
+    set "OK=0"
+  ) else (
+    set "EXPECTED="
+    for /f "usebackq tokens=1 delims= " %%H in ("!SHA_FILE!") do if not defined EXPECTED set "EXPECTED=%%H"
+    set "ACTUAL="
+    for /f "tokens=*" %%H in ('certutil -hashfile "!GGUF!" SHA256 ^| findstr /R "^[0-9a-f][0-9a-f][0-9a-f]"') do (
+      if not defined ACTUAL set "ACTUAL=%%H"
+    )
+    set "ACTUAL=!ACTUAL: =!"
+    if /I "!EXPECTED!"=="!ACTUAL!" (
+      echo OK  %%~nxS
+    ) else (
+      echo SHA256 mismatch: %%~nxS 1>&2
+      echo   expected: !EXPECTED! 1>&2
+      echo   actual:   !ACTUAL! 1>&2
+      set "OK=0"
+    )
+  )
+)
+if "%OK%"=="0" exit /b 1
+exit /b 0
+BAT
 
   cat >"${t}/README.md" <<'EOF'
 slopcode for Windows (Intel Arc, Vulkan)
@@ -1307,7 +1243,7 @@ OPTION 2 - MANUAL INSTALL
        set "GGML_VK_DISABLE_COOPMAT2=1"
        set "GGML_VK_DISABLE_F16=1"
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
 
    On Arc 140V (Lunar Lake, 4P + 4LP = 8 physical cores) --threads 6 is
    the right value (physical - 2). On other Arc hosts substitute
@@ -1326,33 +1262,16 @@ OPTION 2 - MANUAL INSTALL
 
        @echo off
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
 
-8. Create the ordered startup launcher
-   %USERPROFILE%\slopcode\start-slopcode.bat with this exact content:
-
-       @echo off
-       setlocal EnableExtensions
-       set "LOCK=%TEMP%\slopcode-start.lock"
-       2>nul mkdir "%LOCK%" || (echo slopcode startup already running & exit /b 0)
-       powershell -NoProfile -Command "try { Invoke-RestMethod -Uri 'http://127.0.0.1:8080/v1/models' -TimeoutSec 5 | Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
-       if errorlevel 1 start "slopcode-llamacpp" /MIN "%USERPROFILE%\slopcode\run-llamacpp.bat"
-       powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(900); do { try { Invoke-RestMethod -Uri 'http://127.0.0.1:8080/v1/models' -TimeoutSec 5 | Out-Null; exit 0 } catch { Start-Sleep -Seconds 2 } } while ((Get-Date) -lt $deadline); exit 1"
-       if errorlevel 1 (rd "%LOCK%" 2>nul & exit /b 1)
-       start "slopcode-opencode-prewarm" /MIN "%USERPROFILE%\slopcode\bin\prewarm-opencode.bat"
-       rd "%LOCK%" 2>nul
-
-   This script is the only autostart target. It starts the server first,
-   waits for /v1/models, then starts the passive prewarm helper.
-
-9. Create the whisper launcher %USERPROFILE%\slopcode\run-whisper.bat
+8. Create the whisper launcher %USERPROFILE%\slopcode\run-whisper.bat
    with this exact content:
 
        @echo off
        set "PATH=%USERPROFILE%\slopcode\whisper.cpp;%PATH%"
        "%USERPROFILE%\slopcode\whisper.cpp\whisper-server.exe" -m "%USERPROFILE%\slopcode\models\ggml-large-v3-turbo.bin" --host 127.0.0.1 --port 8427 -l auto -t 4 -fa --inference-path /v1/audio/transcriptions --convert --tmp-dir "%TEMP%"
 
-10. Create the opencode config. In Command Prompt:
+9. Create the opencode config. In Command Prompt:
 
        > mkdir "%USERPROFILE%\.config\opencode"
 
@@ -1363,25 +1282,15 @@ OPTION 2 - MANUAL INSTALL
    Save as opencode.json in %USERPROFILE%\.config\opencode\
    (set "Save as type" to "All Files").
 
-11. Auto-start at login. Two options - pick one.
-
-    Option A (recommended for non-technical users): create shortcut
-    files inside the Startup folder.
-
-    In File Explorer go to
+10. Auto-start at login. In File Explorer go to
     %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\
-    (paste that into the address bar). Right-click an empty area,
-    "New" -> "Shortcut", and create one shortcut:
+    (paste that into the address bar). Create a new .bat file named
+    slopcode-llamacpp.bat containing exactly:
 
-      target: %USERPROFILE%\slopcode\start-slopcode.bat
+        start "slopcode" /MIN "%USERPROFILE%\slopcode\run-llamacpp.bat"
 
-    Option B (one-liner .bat file): in the same Startup folder
-    create slopcode-llamacpp.bat containing exactly:
-
-        start "slopcode" /MIN "%USERPROFILE%\slopcode\start-slopcode.bat"
-
-12. Start the service now without waiting for the next login.
-    Double-click %USERPROFILE%\slopcode\start-slopcode.bat. A black
+11. Start the service now without waiting for the next login.
+    Double-click %USERPROFILE%\slopcode\run-llamacpp.bat. A black
     window opens. Minimise it - it has to stay running for opencode
     to work.
 
@@ -1481,7 +1390,7 @@ set "HERE=%~dp0"
 for %%I in ("%HERE%\..") do set "ROOT=%%~fI"
 set "DEST=%USERPROFILE%\slopcode"
 echo Verifying model checksums...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%HERE%\verify-models.ps1" -ModelsDir "%ROOT%\models"
+call "%HERE%\verify-models.bat" "%ROOT%\models"
 if errorlevel 1 (
   echo ERROR: model checksum mismatch - USB may be corrupted.
   echo Re-run build_bundle.sh to rebuild a fresh bundle with new checksums.
@@ -1503,6 +1412,7 @@ del /Q "%DEST%\run-llamacpp.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-cpu.bat" 2>nul
 del /Q "%DEST%\start-slopcode.bat" 2>nul
 del /Q "%DEST%\run-whisper.bat" 2>nul
+del /Q "%DEST%\bin\prewarm-opencode.bat" 2>nul
 del /Q "%USERPROFILE%\.config\opencode\opencode.json" 2>nul
 echo Removing old llama.cpp + opencode dirs...
 rmdir /S /Q "%DEST%\llama.cpp" 2>nul
@@ -1518,7 +1428,6 @@ mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\bin" "%DEST%\
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
 xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
-copy /Y "%HERE%\prewarm-opencode.bat" "%DEST%\bin\prewarm-opencode.bat" >nul
 setx OPENCODE_DISABLE_AUTOUPDATE 1 >nul
 setx OPENCODE_DISABLE_SHARE 1 >nul
 setx OPENCODE_DISABLE_MODELS_FETCH 1 >nul
@@ -1527,15 +1436,16 @@ setx OPENCODE_DISABLE_DEFAULT_PLUGINS 1 >nul
 setx OPENCODE_DISABLE_EMBEDDED_WEB_UI 1 >nul
 set "MODEL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
 set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
-REM Detect physical cores; --threads = physical - 2 (min 2). Lunar Lake Arc 140V
-REM has 4P + 4LP = 8 physical cores, so this lands on --threads 6.
-set THREADS=
-powershell -NoProfile -Command "try { [Math]::Max(2, (Get-CimInstance Win32_Processor | Measure-Object -Sum NumberOfCores).Sum - 2) } catch { [Math]::Max(2, [int]($env:NUMBER_OF_PROCESSORS) / 2 - 1) }" > "%TEMP%\slopcode_threads.txt" 2>nul
-if exist "%TEMP%\slopcode_threads.txt" (
-  set /p THREADS=<"%TEMP%\slopcode_threads.txt"
-  del "%TEMP%\slopcode_threads.txt"
+REM Detect physical cores via wmic; --threads = physical - 2 (min 2). On Lunar
+REM Lake Arc 140V (4P + 4LP = 8 physical) this lands on --threads 6. If wmic
+REM is not installed (Windows 11 24H2+ without the optional feature) we fall
+REM back to logical cores / 2 - 1, which approximates physical on hyperthreaded
+REM hosts.
+set "PHYS="
+for /f "skip=1 tokens=*" %%C in ('wmic cpu get NumberOfCores 2^>nul') do (
+  if not defined PHYS for /f "tokens=1" %%N in ("%%C") do set "PHYS=%%N"
 )
-if "!THREADS!"=="" set /a THREADS=%NUMBER_OF_PROCESSORS%/2 - 1
+if defined PHYS (set /a THREADS=%PHYS% - 2) else (set /a THREADS=%NUMBER_OF_PROCESSORS%/2 - 1)
 if !THREADS! LSS 2 set THREADS=2
 >"%DEST%\run-llamacpp.bat" echo @echo off
 >>"%DEST%\run-llamacpp.bat" echo REM Intel Arc Vulkan stability workarounds:
@@ -1545,31 +1455,28 @@ if !THREADS! LSS 2 set THREADS=2
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
->"%DEST%\start-slopcode.bat" echo @echo off
->>"%DEST%\start-slopcode.bat" echo setlocal EnableExtensions
->>"%DEST%\start-slopcode.bat" echo set "LOCK=%%TEMP%%\slopcode-start.lock"
->>"%DEST%\start-slopcode.bat" echo 2^>nul mkdir "%%LOCK%%" ^|^| ^(echo slopcode startup already running ^& exit /b 0^)
->>"%DEST%\start-slopcode.bat" echo powershell -NoProfile -Command "try { Invoke-RestMethod -Uri 'http://127.0.0.1:8080/v1/models' -TimeoutSec 5 ^| Out-Null; exit 0 } catch { exit 1 }" ^>nul 2^>nul
->>"%DEST%\start-slopcode.bat" echo if errorlevel 1 start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
->>"%DEST%\start-slopcode.bat" echo powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(900); do { try { Invoke-RestMethod -Uri 'http://127.0.0.1:8080/v1/models' -TimeoutSec 5 ^| Out-Null; exit 0 } catch { Start-Sleep -Seconds 2 } } while ((Get-Date) -lt $deadline); exit 1"
->>"%DEST%\start-slopcode.bat" echo if errorlevel 1 ^(rd "%%LOCK%%" 2^>nul ^& exit /b 1^)
->>"%DEST%\start-slopcode.bat" echo start "slopcode-opencode-prewarm" /MIN "%DEST%\bin\prewarm-opencode.bat"
->>"%DEST%\start-slopcode.bat" echo rd "%%LOCK%%" 2^>nul
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
->"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode" /MIN "%DEST%\start-slopcode.bat"
+>"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
 >"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
-powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); $adds=@('%DEST%\opencode','%DEST%\bin'); foreach($add in $adds){ if (($p -split ';') -notcontains $add) { $p=($add+';'+$p) } }; [Environment]::SetEnvironmentVariable('Path', $p, 'User')"
-start "slopcode" /MIN "%DEST%\start-slopcode.bat"
+REM Update user PATH (HKCU\Environment) without touching system entries.
+set "USERPATH="
+for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul ^| findstr /I "Path"') do set "USERPATH=%%B"
+set "NEWPATH=%DEST%\opencode;%DEST%\bin"
+if defined USERPATH (
+  echo !USERPATH! | findstr /I /C:"%DEST%\opencode" >nul || set "NEWPATH=!NEWPATH!;!USERPATH!"
+  if "!NEWPATH:%DEST%\opencode=!"=="!NEWPATH!" set "NEWPATH=!USERPATH!"
+)
+setx Path "!NEWPATH!" >nul
+start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
 echo Installed localhost-only llama.cpp 8080 and opencode (--threads !THREADS!).
 echo (whisper/meeting tools are shipped on the USB but not auto-installed.)
 echo If you see repeated slashes in opencode thinking, run: %DEST%\run-llamacpp-cpu.bat
 echo and update the Startup shortcut to point at run-llamacpp-cpu.bat instead.
-echo To run the OpenCode startup prewarm manually: %DEST%\bin\prewarm-opencode.bat
 echo Open a new terminal before running opencode.
 EOF
 }
@@ -1590,7 +1497,7 @@ for target in "${TARGETS[@]}"; do
     windows-arc)
       write_windows
       write_simple_platform_readme "${OUT}/windows-arc" "slopcode for Windows (Intel Arc, Vulkan)" ".\\install.bat" ".\\prewarm-opencode.bat"
-      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp meeting verify-models.ps1 prewarm-opencode.bat README.md install.bat
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp meeting verify-models.bat README.md install.bat
       ;;
   esac
 done

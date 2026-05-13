@@ -38,7 +38,7 @@ source "${SCRIPT_DIR}/_common.sh"
 PLATFORM="$(detect_platform)"
 case "${PLATFORM}" in
   linux|wsl) ;;
-  *) die "install_voxtype_linux.sh is Linux-only (got ${PLATFORM}); see install_voxtype_mac.sh / install_voxtype_windows.ps1" ;;
+  *) die "install_voxtype_linux.sh is Linux-only (got ${PLATFORM}); see install_voxtype_mac.sh / install_voxtype_windows.bat" ;;
 esac
 
 REPO="${VOXTYPE_REPO:-peteonrails/voxtype}"

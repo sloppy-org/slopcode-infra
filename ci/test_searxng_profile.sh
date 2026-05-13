@@ -13,17 +13,5 @@ grep -q "keep_only:" "${REPO_ROOT}/scripts/setup_searxng.sh"
 grep -q "SearxEngineCaptcha: 21600" "${REPO_ROOT}/scripts/setup_searxng.sh"
 grep -q "autocomplete: '\${SEARXNG_AUTOCOMPLETE}'" "${REPO_ROOT}/scripts/setup_searxng.sh"
 grep -q "SEARXNG_AUTOCOMPLETE=\"\${SEARXNG_AUTOCOMPLETE:-}\"" "${REPO_ROOT}/scripts/setup_searxng.sh"
-grep -q "keep_only:" "${REPO_ROOT}/scripts/install_searxng_windows.ps1"
-grep -q "SearxEngineCaptcha: 21600" "${REPO_ROOT}/scripts/install_searxng_windows.ps1"
-
-if command -v pwsh >/dev/null 2>&1; then
-  SCRIPTS_DIR="${REPO_ROOT}/scripts" pwsh -NoProfile -Command '
-      $tokens=$null
-      $errs=$null
-      [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:SCRIPTS_DIR "install_searxng_windows.ps1"), [ref]$tokens, [ref]$errs) > $null
-      if ($errs.Count) {
-        Write-Error ($errs | Out-String)
-        exit 1
-      }
-    '
-fi
+grep -q "keep_only:" "${REPO_ROOT}/scripts/install_searxng_windows.bat"
+grep -q "SearxEngineCaptcha: 21600" "${REPO_ROOT}/scripts/install_searxng_windows.bat"

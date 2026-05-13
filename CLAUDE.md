@@ -121,7 +121,7 @@ scripts/
                                 pointed at the local whisper-server.
   install_voxtype_mac.sh        documented manual path (upstream is
                                 Linux-only).
-  install_voxtype_windows.ps1   documented manual path (upstream is
+  install_voxtype_windows.bat   documented manual path (upstream is
                                 Linux-only).
 
 config/slopgate/
@@ -237,7 +237,7 @@ llama-server.exe -m Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --mmproj mmproj-BF16.gguf \
   --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
   --presence-penalty 0 --repeat-penalty 1 \
   --reasoning-format deepseek --reasoning on --reasoning-budget 4096 \
-  --no-context-shift --no-webui --host 127.0.0.1 --port 8080
+  --no-context-shift --host 127.0.0.1 --port 8080
 ```
 
 `install.bat` detects physical cores via PowerShell `Get-CimInstance
@@ -449,12 +449,6 @@ bodies, no prompts, no chat history. Leader installs always pass
 `--management-dashboard-enable`, so `http://<leader>:8085/` serves the
 dashboard and `/api/v1/agents` serves the same status data as JSON.
 
-**Web UI off.** Every llama-server invocation includes `--no-webui` to
-disable the bundled chat UI. The web UI persists conversation history in
-the browser's localStorage and could leak prior sessions if anyone reaches
-it. The pure-API path (`/v1/chat/completions`, `/v1/audio/transcriptions`)
-is untouched.
-
 **Slots endpoint.** Slopgate's balancer rejects `GET /slots` (the
 `--slots-endpoint-enable` flag is *not* passed in `install_slopgate_
 leader.sh`). The KV-headroom routing filter keeps working because each
@@ -527,9 +521,8 @@ dense companion as a default-installed model, intentee/paddler v2+ (the
 embedded-llama.cpp rewrite — slopgate stays on the v1.x transparent-proxy
 line so we keep control of llama-server flags), llama-server bound to
 `0.0.0.0` on any cluster node (it must always bind WG-only or loopback),
-the bundled llama.cpp web UI on a network-reachable interface (always
-launch with `--no-webui`), the slopgate balancer's `--slots-endpoint-
-enable` flag (it leaks per-slot prompt content), TCP/HTTP MCP daemons for
+the slopgate balancer's `--slots-endpoint-enable` flag (it leaks per-slot
+prompt content), TCP/HTTP MCP daemons for
 helpy or sloptools (they're stdio-only on purpose so no co-tenant can
 reach them), bundled Node/Pi/offline-npm-cache distribution (assume system
 `npm` and a checkout of this repo on every target — see

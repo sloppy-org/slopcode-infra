@@ -187,7 +187,6 @@ ${mmproj_xml}    <string>-c</string><string>1048576</string>
     <string>--reasoning-format</string><string>deepseek</string>
     <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
     <string>--no-context-shift</string>
-    <string>--no-webui</string>
     <string>--host</string><string>${LLAMACPP_HOST_BIND}</string>
     <string>--port</string><string>${LLAMACPP_PORT_BIND}</string>
   </array>
@@ -259,7 +258,6 @@ write_llamacpp_27b_plist() {
     <string>--reasoning-format</string><string>deepseek</string>
     <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
     <string>--no-context-shift</string>
-    <string>--no-webui</string>
     <string>--host</string><string>127.0.0.1</string>
     <string>--port</string><string>8082</string>
   </array>
@@ -328,7 +326,6 @@ ${mmproj_xml}    <string>-c</string><string>1048576</string>
     <string>--reasoning-format</string><string>deepseek</string>
     <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
     <string>--no-context-shift</string>
-    <string>--no-webui</string>
     <string>--host</string><string>127.0.0.1</string>
     <string>--port</string><string>8083</string>
   </array>
