@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Install a macOS launchd background agent for local SearXNG.
 #
-# This uses the per-user background launchd domain (user/<uid>), not the GUI
-# session domain, so it stays user-level, loopback-only, restartable on crash,
-# and available without granting admin rights.
+# This uses the per-user GUI launchd domain. The service stays user-level,
+# loopback-only, restartable on crash, and does not need admin rights.
 #
 # Env overrides:
 #   AGENTS_DIR        launchd agents dir (default ~/Library/LaunchAgents)
@@ -39,10 +38,10 @@ cat > "${PLIST}" <<XML
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ProcessType</key><string>Background</string>
-  <key>LimitLoadToSessionType</key><string>Background</string>
   <key>WorkingDirectory</key><string>${REPO_ROOT}</string>
   <key>ProgramArguments</key>
   <array>
+    <string>/bin/bash</string>
     <string>${SCRIPT_DIR}/server_start_searxng.sh</string>
   </array>
   <key>EnvironmentVariables</key>
@@ -67,9 +66,9 @@ fi
 
 launchctl bootout "gui/$(id -u)/${SERVICE_LABEL}" 2>/dev/null || true
 launchctl bootout "user/$(id -u)/${SERVICE_LABEL}" 2>/dev/null || true
-launchctl bootstrap "user/$(id -u)" "${PLIST}"
-launchctl enable "user/$(id -u)/${SERVICE_LABEL}" 2>/dev/null || true
-launchctl kickstart -k "user/$(id -u)/${SERVICE_LABEL}"
+launchctl bootstrap "gui/$(id -u)" "${PLIST}"
+launchctl enable "gui/$(id -u)/${SERVICE_LABEL}" 2>/dev/null || true
+launchctl kickstart -k "gui/$(id -u)/${SERVICE_LABEL}"
 
 echo "waiting for SearXNG on :8888..."
 deadline=$(( $(date +%s) + 180 ))
@@ -78,7 +77,7 @@ while : ; do
     break
   fi
   if [[ $(date +%s) -ge ${deadline} ]]; then
-    launchctl print "user/$(id -u)/${SERVICE_LABEL}" | head -40 >&2 || true
+    launchctl print "gui/$(id -u)/${SERVICE_LABEL}" | head -40 >&2 || true
     die "timed out waiting for searxng on :8888"
   fi
   sleep 2

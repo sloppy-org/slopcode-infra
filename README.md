@@ -125,9 +125,8 @@ engines should be enabled explicitly per host.
 
 ### Platform notes
 
-- **macOS:** installs a `launchd` background agent in the per-user `user/<uid>`
-  domain, not the GUI-only domain, so it remains user-level and is not tied to
-  a visible terminal.
+- **macOS:** installs a `launchd` background agent in the per-user GUI domain,
+  so it remains user-level and is not tied to a visible terminal.
 - **Linux:** installs a `systemd --user` unit and attempts `loginctl
   enable-linger` so it survives logout and boot without root where polkit
   allows it.
