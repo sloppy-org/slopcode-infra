@@ -20,7 +20,7 @@
 #   SEARXNG_BASE_URL      public local URL (default http://127.0.0.1:8888)
 #   SEARXNG_METHOD        GET or POST (default GET)
 #   SEARXNG_SAFE_SEARCH   0 none, 1 moderate, 2 strict (default 0)
-#   SEARXNG_AUTOCOMPLETE  autocomplete backend (default duckduckgo)
+#   SEARXNG_AUTOCOMPLETE  autocomplete backend (default blank/off)
 #   SEARXNG_IMAGE_PROXY   true/false (default true)
 #   SEARXNG_SECRET        explicit secret key; auto-generated when omitted
 set -euo pipefail
@@ -48,7 +48,7 @@ SEARXNG_PORT="${SEARXNG_PORT:-8888}"
 SEARXNG_BASE_URL="${SEARXNG_BASE_URL:-http://127.0.0.1:${SEARXNG_PORT}}"
 SEARXNG_METHOD="${SEARXNG_METHOD:-GET}"
 SEARXNG_SAFE_SEARCH="${SEARXNG_SAFE_SEARCH:-0}"
-SEARXNG_AUTOCOMPLETE="${SEARXNG_AUTOCOMPLETE:-duckduckgo}"
+SEARXNG_AUTOCOMPLETE="${SEARXNG_AUTOCOMPLETE:-}"
 SEARXNG_IMAGE_PROXY="${SEARXNG_IMAGE_PROXY:-true}"
 
 have git || die "git is required"
@@ -95,7 +95,16 @@ if [[ -z "${SEARXNG_SECRET}" ]]; then
 fi
 
 cat > "${SEARXNG_SETTINGS_PATH}" <<EOF
-use_default_settings: true
+use_default_settings:
+  engines:
+    keep_only:
+      - aol
+      - wikipedia
+      - bing
+      - mojeek
+      - searchmysite
+      - wiby
+      - presearch
 
 general:
   debug: false
@@ -104,6 +113,12 @@ general:
 search:
   safe_search: ${SEARXNG_SAFE_SEARCH}
   autocomplete: '${SEARXNG_AUTOCOMPLETE}'
+  ban_time_on_fail: 60
+  max_ban_time_on_fail: 3600
+  suspended_times:
+    SearxEngineAccessDenied: 3600
+    SearxEngineCaptcha: 21600
+    SearxEngineTooManyRequests: 3600
   formats:
     - html
     - json
@@ -118,6 +133,23 @@ server:
   public_instance: false
   image_proxy: ${SEARXNG_IMAGE_PROXY}
   method: "${SEARXNG_METHOD}"
+
+outgoing:
+  retries: 0
+  pool_connections: 10
+  pool_maxsize: 2
+
+engines:
+  - name: bing
+    disabled: false
+  - name: mojeek
+    disabled: false
+  - name: searchmysite
+    disabled: false
+  - name: wiby
+    disabled: false
+  - name: presearch
+    disabled: false
 EOF
 
 echo "searxng ready"

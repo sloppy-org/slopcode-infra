@@ -9,6 +9,13 @@ bash -n "${REPO_ROOT}/scripts/server_start_searxng.sh"
 bash -n "${REPO_ROOT}/scripts/install_linux_searxng_systemd.sh"
 bash -n "${REPO_ROOT}/scripts/install_mac_searxng_launchagent.sh"
 
+grep -q "keep_only:" "${REPO_ROOT}/scripts/setup_searxng.sh"
+grep -q "SearxEngineCaptcha: 21600" "${REPO_ROOT}/scripts/setup_searxng.sh"
+grep -q "autocomplete: '\${SEARXNG_AUTOCOMPLETE}'" "${REPO_ROOT}/scripts/setup_searxng.sh"
+grep -q "SEARXNG_AUTOCOMPLETE=\"\${SEARXNG_AUTOCOMPLETE:-}\"" "${REPO_ROOT}/scripts/setup_searxng.sh"
+grep -q "keep_only:" "${REPO_ROOT}/scripts/install_searxng_windows.ps1"
+grep -q "SearxEngineCaptcha: 21600" "${REPO_ROOT}/scripts/install_searxng_windows.ps1"
+
 if command -v pwsh >/dev/null 2>&1; then
   SCRIPTS_DIR="${REPO_ROOT}/scripts" pwsh -NoProfile -Command '
       $tokens=$null

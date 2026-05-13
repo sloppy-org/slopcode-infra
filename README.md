@@ -72,6 +72,8 @@ What this does:
 - keeps everything in the user profile; no sudo, no admin
 - binds only `127.0.0.1:8888`
 - restarts on crash through the platform supervisor
+- keeps the default engine set small so local AI agents do not fan out every
+  query to CAPTCHA-prone upstreams
 - stays out of the USB bundle path on purpose
 
 ### Fast path
@@ -114,6 +116,12 @@ The install uses these defaults:
 | Python env | `~/.local/searxng/.venv` |
 | Config | `~/.config/searxng/settings.yml` |
 | Endpoint | `http://127.0.0.1:8888` |
+
+The generated SearXNG profile treats localhost as untrusted client traffic:
+autocomplete is off by default, engine failures trigger longer local
+suspensions, and the default engine allowlist is limited to AOL, Wikipedia,
+Bing, Mojeek, SearchMySite, Wiby, and Presearch. Broader or more fragile
+engines should be enabled explicitly per host.
 
 ### Platform notes
 

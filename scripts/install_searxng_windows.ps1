@@ -69,7 +69,16 @@ if (-not $Secret) {
 }
 
 @"
-use_default_settings: true
+use_default_settings:
+  engines:
+    keep_only:
+      - aol
+      - wikipedia
+      - bing
+      - mojeek
+      - searchmysite
+      - wiby
+      - presearch
 
 general:
   debug: false
@@ -77,7 +86,13 @@ general:
 
 search:
   safe_search: 0
-  autocomplete: 'duckduckgo'
+  autocomplete: ''
+  ban_time_on_fail: 60
+  max_ban_time_on_fail: 3600
+  suspended_times:
+    SearxEngineAccessDenied: 3600
+    SearxEngineCaptcha: 21600
+    SearxEngineTooManyRequests: 3600
   formats:
     - html
     - json
@@ -92,6 +107,23 @@ server:
   public_instance: false
   image_proxy: true
   method: "GET"
+
+outgoing:
+  retries: 0
+  pool_connections: 10
+  pool_maxsize: 2
+
+engines:
+  - name: bing
+    disabled: false
+  - name: mojeek
+    disabled: false
+  - name: searchmysite
+    disabled: false
+  - name: wiby
+    disabled: false
+  - name: presearch
+    disabled: false
 "@ | Set-Content -NoNewline -Path $SettingsPath
 
 @"
