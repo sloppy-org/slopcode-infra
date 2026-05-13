@@ -46,19 +46,9 @@
 #   LLAMACPP_FIT          explicit value passed to -fit (for example: off)
 #   LLAMACPP_CACHE_RAM    explicit value passed to --cache-ram; 0 disables the
 #                         prompt cache
-#   LLAMACPP_SLOT_CACHE   false to disable llama-server slot save/restore
-#                         support (default: true)
-#   LLAMACPP_SLOT_SAVE_PATH
-#                         directory for llama-server slot cache files
-#                         (default: $LLAMACPP_CACHE_ROOT/slots)
-#   LLAMACPP_RESTORE_SLOT_CACHE
-#                         false to skip restoring the OpenCode prewarm slot
-#                         after the server is ready (default: true)
-#   LLAMACPP_RESTORE_SLOT_FILE
-#                         slot cache filename under LLAMACPP_SLOT_SAVE_PATH
-#                         (default: opencode-prewarm-slot.bin)
-#   LLAMACPP_RESTORE_SLOT_ID
-#                         slot id to restore into (default: 0)
+#   LLAMACPP_START_PREWARM
+#                         false to skip the automatic one-shot OpenCode
+#                         startup prewarm (default: true)
 #   LLAMACPP_DRY_RUN      true to print the command and exit
 #   LLAMACPP_EXEC         true to exec llama-server in the foreground (for
 #                         systemd/launchd ExecStart); skips nohup, pid files,
@@ -198,11 +188,7 @@ REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
 NO_MMAP="${LLAMACPP_NO_MMAP:-false}"
 FIT="${LLAMACPP_FIT:-}"
 CACHE_RAM="${LLAMACPP_CACHE_RAM:-}"
-SLOT_CACHE="${LLAMACPP_SLOT_CACHE:-true}"
-SLOT_SAVE_PATH="${LLAMACPP_SLOT_SAVE_PATH:-${LLAMACPP_CACHE_ROOT}/slots}"
-RESTORE_SLOT_CACHE="${LLAMACPP_RESTORE_SLOT_CACHE:-true}"
-RESTORE_SLOT_FILE="${LLAMACPP_RESTORE_SLOT_FILE:-opencode-prewarm-slot.bin}"
-RESTORE_SLOT_ID="${LLAMACPP_RESTORE_SLOT_ID:-0}"
+START_PREWARM="${LLAMACPP_START_PREWARM:-true}"
 
 SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-qwen}"
 INSTANCE="${LLAMACPP_INSTANCE:-}"
@@ -404,10 +390,6 @@ fi
 if [[ -n "${CACHE_RAM}" ]]; then
   CMD+=(--cache-ram "${CACHE_RAM}")
 fi
-if [[ "${SLOT_CACHE}" == "true" ]]; then
-  mkdir -p "${SLOT_SAVE_PATH}"
-  CMD+=(--slot-save-path "${SLOT_SAVE_PATH}")
-fi
 if [[ -n "${MMPROJ_PATH}" ]]; then
   CMD+=(--mmproj "${MMPROJ_PATH}")
 fi
@@ -433,9 +415,7 @@ echo "- KV:      ${CACHE_TYPE_K} / ${CACHE_TYPE_V}"
 [[ "${NO_MMAP}" == "true" ]] && echo "- mmap:    off"
 [[ -n "${FIT}" ]] && echo "- fit:     ${FIT}"
 [[ -n "${CACHE_RAM}" ]] && echo "- cache-ram: ${CACHE_RAM}"
-if [[ "${SLOT_CACHE}" == "true" ]]; then
-  echo "- slot cache: ${SLOT_SAVE_PATH}"
-fi
+[[ "${START_PREWARM}" == "true" ]] && echo "- startup prewarm: OpenCode one-shot"
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   echo "- n-cpu-moe: ${N_CPU_MOE} (first N expert layers on CPU; rest on GPU)"
 else
@@ -453,28 +433,15 @@ if [[ "${DRY_RUN}" == "true" ]]; then
   exit 0
 fi
 
-restore_slot_cache() {
-  local probe_host="$1" restore_path="${SLOT_SAVE_PATH}/${RESTORE_SLOT_FILE}"
-  [[ "${SLOT_CACHE}" == "true" ]] || return 0
-  [[ "${RESTORE_SLOT_CACHE}" == "true" ]] || return 0
-  [[ -f "${restore_path}" ]] || return 0
-
-  echo "restoring slot ${RESTORE_SLOT_ID} from ${restore_path}..."
-  local resp
-  resp="$(curl -fsS \
-    --connect-timeout "${START_CONNECT_TIMEOUT}" \
-    --max-time "${SMOKE_TEST_TIMEOUT}" \
-    "http://${probe_host}:${PORT}/slots/${RESTORE_SLOT_ID}?action=restore" \
-    -H "content-type: application/json" \
-    -d "{\"filename\":\"${RESTORE_SLOT_FILE}\"}")" || {
-      warn "failed to restore slot cache ${restore_path}"
-      return 0
-    }
-  if [[ "${resp}" == *'"n_restored"'* ]]; then
-    echo "slot restore OK"
-  else
-    warn "slot restore returned an unexpected response: ${resp}"
-  fi
+start_opencode_prewarm() {
+  local probe_host="$1"
+  [[ "${START_PREWARM}" == "true" ]] || return 0
+  [[ -x "${SCRIPT_DIR}/llamacpp_prewarm_opencode.sh" ]] || return 0
+  have opencode || return 0
+  echo "starting OpenCode prewarm in background..."
+  LLAMACPP_HOST="${probe_host}" LLAMACPP_PORT="${PORT}" \
+    "${SCRIPT_DIR}/llamacpp_prewarm_opencode.sh" --no-start \
+    >/tmp/slopcode-opencode-prewarm.log 2>&1 &
 }
 
 wait_until_ready() {
@@ -503,18 +470,9 @@ wait_until_ready() {
 # llama-server so the supervisor tracks the real process, captures stdout/
 # stderr through its own logging, and applies Restart=on-failure directly.
 if [[ "${LLAMACPP_EXEC:-false}" == "true" ]]; then
-  if [[ "${SLOT_CACHE}" == "true" && "${RESTORE_SLOT_CACHE}" == "true" \
-        && -f "${SLOT_SAVE_PATH}/${RESTORE_SLOT_FILE}" ]]; then
-    probe_host="${HOST}"
-    [[ "${probe_host}" == "0.0.0.0" ]] && probe_host="127.0.0.1"
-    "${CMD[@]}" &
-    SERVER_PID=$!
-    trap 'kill "${SERVER_PID}" 2>/dev/null || true' INT TERM
-    wait_until_ready "${SERVER_PID}" "${probe_host}"
-    restore_slot_cache "${probe_host}"
-    wait "${SERVER_PID}"
-    exit $?
-  fi
+  probe_host="${HOST}"
+  [[ "${probe_host}" == "0.0.0.0" ]] && probe_host="127.0.0.1"
+  start_opencode_prewarm "${probe_host}"
   exec "${CMD[@]}"
 fi
 
@@ -535,7 +493,7 @@ probe_host="${HOST}"
 [[ "${probe_host}" == "0.0.0.0" ]] && probe_host="127.0.0.1"
 
 wait_until_ready "${SERVER_PID}" "${probe_host}"
-restore_slot_cache "${probe_host}"
+start_opencode_prewarm "${probe_host}"
 
 if [[ "${SMOKE_TEST}" == "true" ]]; then
   echo "running chat smoke test..."

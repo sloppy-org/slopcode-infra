@@ -39,20 +39,20 @@ scripts/opencode_set_llamacpp.sh              # write ~/.config/opencode/opencod
 opencode                                      # go
 ```
 
-### OpenCode prompt cache
+### OpenCode startup prewarm
 
-`llama-server` starts with a slot-save directory. After OpenCode, AGENTS.md, or
-MCP plugin changes, refresh the saved startup slot:
+`scripts/server_start_llamacpp.sh` launches one non-editing `opencode run`
+after `llama-server` is ready, so OpenCode's startup prompt is warmed without
+using llama.cpp slot save/restore. Disable it with `LLAMACPP_START_PREWARM=false`
+or by commenting out the prewarm line in generated startup scripts.
+
+Run the same prewarm manually with:
 
 ```
-scripts/llamacpp_prewarm_opencode.sh --force
+scripts/llamacpp_prewarm_opencode.sh
 ```
 
-The script runs one non-editing `opencode run`, saves slot 0 to disk, and
-writes a fingerprint manifest. On later starts, `scripts/server_start_llamacpp.sh`
-restores that slot automatically when the cache file exists. Use
-`scripts/llamacpp_prewarm_opencode.sh --check` to test whether the cache is
-fresh.
+`--check` only compares the local fingerprint manifest from the last run.
 
 ## SearXNG (local web search for Helpy)
 

@@ -110,7 +110,7 @@ cat > "${PLIST}" <<XML
     <key>LLAMACPP_UBATCH</key><string>1024</string>
     <key>LLAMACPP_REASONING_BUDGET</key><string>${REASONING_BUDGET}</string>
     <key>DYLD_LIBRARY_PATH</key><string>${SERVER_DIR}</string>
-    <key>PATH</key><string>${SERVER_DIR}:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin</string>
+    <key>PATH</key><string>${SERVER_DIR}:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin</string>
   </dict>
   <key>StandardOutPath</key><string>${LOG}</string>
   <key>StandardErrorPath</key><string>${LOG}</string>

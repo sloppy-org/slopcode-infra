@@ -83,7 +83,7 @@ EOF
         "${output}" == *"--jinja"* && \
         "${output}" == *"--reasoning-format deepseek"* && \
         "${output}" == *"--reasoning-budget ${reasoning_budget}"* && \
-        "${output}" == *"--slot-save-path"* && \
+        "${output}" == *"startup prewarm: OpenCode one-shot"* && \
         "${output}" == *"--top-p 0.95"* && \
         "${output}" == *"--top-k 20"* && \
         "${output}" == *"--port ${port}"* && \

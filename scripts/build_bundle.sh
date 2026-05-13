@@ -480,9 +480,11 @@ path for people who prefer LM Studio or want to configure each piece by hand.
 Open \`../vscode/README.md\` to install the bundled llama.vscode extension and
 point it at the local llama.cpp server.
 
-## Prompt cache prewarm
+## Startup prewarm
 
-After AGENTS.md, OpenCode, or MCP plugin changes, re-run the prewarm helper:
+The llama.cpp startup script launches one non-editing OpenCode request after
+the server is ready. To disable it, comment out the prewarm line in the startup
+script. To run it manually:
 
 \`\`\`sh
 ${prewarm}
@@ -498,6 +500,7 @@ EOF
 write_common_unix_files() {
   local t="$1"
   install -m 755 "${SCRIPT_DIR}/opencode_privacy.sh" "${t}/opencode_privacy.sh"
+  install -m 755 "${SCRIPT_DIR}/llamacpp_prewarm_opencode.sh" "${t}/prewarm-opencode.sh"
   sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
   chmod +x "${t}/meeting/"*.sh
 }
@@ -519,7 +522,10 @@ write_linux() {
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="${HERE}/opencode:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/llama.cpp${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+# Comment the next line to disable startup OpenCode prewarm.
+"${HERE}/prewarm-opencode.sh" --no-start >/tmp/slopcode-opencode-prewarm.log 2>&1 &
 exec "${HERE}/llama.cpp/llama-server" \
   -m "${HERE}/../models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" \
   --mmproj "${HERE}/../models/mmproj-BF16.gguf" \
@@ -745,16 +751,20 @@ DEST="${HOME}/.local/slopcode"
 mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${HOME}/.local/bin" "${HOME}/.config/systemd/user"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
+cp "${HERE}/prewarm-opencode.sh" "${DEST}/prewarm-opencode.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
 bash "${HERE}/opencode_privacy.sh"
 
 cat >"${DEST}/run-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
+export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+# Comment the next line to disable startup OpenCode prewarm.
+"${DEST}/prewarm-opencode.sh" --no-start >/tmp/slopcode-opencode-prewarm.log 2>&1 &
 exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 RUN
-chmod +x "${DEST}/run-llamacpp.sh"
+chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/prewarm-opencode.sh"
 
 cat >"${HOME}/.config/systemd/user/slopcode-llamacpp.service" <<UNIT
 [Unit]
@@ -1003,9 +1013,20 @@ AGENTS="${HOME}/Library/LaunchAgents"
 mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${LOGS}" "${AGENTS}" "${HOME}/.local/bin"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
+cp "${HERE}/prewarm-opencode.sh" "${DEST}/prewarm-opencode.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
 bash "${HERE}/opencode_privacy.sh"
+
+cat >"${DEST}/run-llamacpp.sh" <<RUN
+#!/usr/bin/env bash
+export PATH="${DEST}/opencode:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:\${PATH}"
+export DYLD_LIBRARY_PATH="${DEST}/llama.cpp\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
+# Comment the next line to disable startup OpenCode prewarm.
+"${DEST}/prewarm-opencode.sh" --no-start >/tmp/slopcode-opencode-prewarm.log 2>&1 &
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --reasoning on --reasoning-budget 4096 --no-context-shift --no-webui --host 127.0.0.1 --port 8080
+RUN
+chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/prewarm-opencode.sh"
 
 LLAMA_PLIST="${AGENTS}/com.slopcode.llamacpp.plist"
 cat >"${LLAMA_PLIST}" <<XML
@@ -1014,7 +1035,7 @@ cat >"${LLAMA_PLIST}" <<XML
 <plist version="1.0"><dict>
 <key>Label</key><string>com.slopcode.llamacpp</string>
 <key>ProgramArguments</key><array>
-<string>${DEST}/llama.cpp/llama-server</string><string>-m</string><string>${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf</string><string>--mmproj</string><string>${DEST}/models/mmproj-BF16.gguf</string><string>-c</string><string>131072</string><string>--cache-type-k</string><string>q8_0</string><string>--cache-type-v</string><string>q8_0</string><string>-b</string><string>2048</string><string>-ub</string><string>1024</string><string>-ngl</string><string>99</string><string>-fa</string><string>on</string><string>-np</string><string>1</string><string>--alias</string><string>qwen</string><string>--jinja</string><string>--reasoning</string><string>on</string><string>--reasoning-budget</string><string>4096</string><string>--no-context-shift</string><string>--no-webui</string><string>--host</string><string>127.0.0.1</string><string>--port</string><string>8080</string>
+<string>${DEST}/run-llamacpp.sh</string>
 </array>
 <key>EnvironmentVariables</key><dict><key>DYLD_LIBRARY_PATH</key><string>${DEST}/llama.cpp</string></dict>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
@@ -1046,29 +1067,6 @@ write_windows() {
   echo "windows whisper.cpp ${wh_tag}"
   fetch_archive "${wh_url}" "${t}/whisper.cpp" whisper-server.exe
   install -m 644 "${SCRIPT_DIR}/llamacpp_prewarm_opencode.bat" "${t}/prewarm-opencode.bat"
-  cat >"${t}/restore-llamacpp-slot.ps1" <<'PS1'
-param(
-  [string]$BaseUrl = "http://127.0.0.1:8080",
-  [string]$SlotDir = "$env:USERPROFILE\slopcode\cache\slots",
-  [string]$SlotFile = "opencode-prewarm-slot.bin",
-  [int]$SlotId = 0
-)
-$ErrorActionPreference = "SilentlyContinue"
-$SlotPath = Join-Path $SlotDir $SlotFile
-if (-not (Test-Path $SlotPath)) { exit 0 }
-$Ready = $false
-for ($i = 0; $i -lt 180 -and -not $Ready; $i++) {
-  try {
-    Invoke-RestMethod -Uri "$BaseUrl/v1/models" -TimeoutSec 5 | Out-Null
-    $Ready = $true
-  } catch {
-    Start-Sleep -Seconds 2
-  }
-}
-if (-not $Ready) { exit 0 }
-$Body = @{ filename = $SlotFile } | ConvertTo-Json -Compress
-Invoke-RestMethod -Method Post -Uri "$BaseUrl/slots/$SlotId?action=restore" -ContentType "application/json" -Body $Body -TimeoutSec 120 | Out-Null
-PS1
   sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
   # PowerShell helper: verify model checksums before install.
@@ -1462,12 +1460,11 @@ echo Clearing Intel shader cache...
 rmdir /S /Q "%LOCALAPPDATA%\Intel\ShaderCache" 2>nul
 echo === Cleanup done; installing fresh ===
 echo.
-mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\bin" "%DEST%\cache\slots" 2>nul
+mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\bin" "%DEST%\cache" 2>nul
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
 xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
 copy /Y "%HERE%\prewarm-opencode.bat" "%DEST%\bin\prewarm-opencode.bat" >nul
-copy /Y "%HERE%\restore-llamacpp-slot.ps1" "%DEST%\bin\restore-llamacpp-slot.ps1" >nul
 setx OPENCODE_DISABLE_AUTOUPDATE 1 >nul
 setx OPENCODE_DISABLE_SHARE 1 >nul
 setx OPENCODE_DISABLE_MODELS_FETCH 1 >nul
@@ -1494,14 +1491,14 @@ if !THREADS! LSS 2 set THREADS=2
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo mkdir "%DEST%\cache\slots" 2^>nul
->>"%DEST%\run-llamacpp.bat" echo start "slopcode-slot-restore" /MIN powershell -NoProfile -ExecutionPolicy Bypass -File "%DEST%\bin\restore-llamacpp-slot.ps1" -BaseUrl "http://127.0.0.1:8080" -SlotDir "%DEST%\cache\slots"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --slot-save-path "%DEST%\cache\slots" --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo REM Comment the next line to disable startup OpenCode prewarm.
+>>"%DEST%\run-llamacpp.bat" echo start "slopcode-opencode-prewarm" /MIN "%DEST%\bin\prewarm-opencode.bat" --no-start
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo mkdir "%DEST%\cache\slots" 2^>nul
->>"%DEST%\run-llamacpp-cpu.bat" echo start "slopcode-slot-restore" /MIN powershell -NoProfile -ExecutionPolicy Bypass -File "%DEST%\bin\restore-llamacpp-slot.ps1" -BaseUrl "http://127.0.0.1:8080" -SlotDir "%DEST%\cache\slots"
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --slot-save-path "%DEST%\cache\slots" --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo REM Comment the next line to disable startup OpenCode prewarm.
+>>"%DEST%\run-llamacpp-cpu.bat" echo start "slopcode-opencode-prewarm" /MIN "%DEST%\bin\prewarm-opencode.bat" --no-start
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
@@ -1512,7 +1509,7 @@ echo Installed localhost-only llama.cpp 8080 and opencode (--threads !THREADS!).
 echo (whisper/meeting tools are shipped on the USB but not auto-installed.)
 echo If you see repeated slashes in opencode thinking, run: %DEST%\run-llamacpp-cpu.bat
 echo and update the Startup shortcut to point at run-llamacpp-cpu.bat instead.
-echo To refresh the OpenCode prompt cache, run: %DEST%\bin\prewarm-opencode.bat --force
+echo To run the OpenCode startup prewarm manually: %DEST%\bin\prewarm-opencode.bat
 echo Open a new terminal before running opencode.
 EOF
 }
@@ -1522,18 +1519,18 @@ for target in "${TARGETS[@]}"; do
   case "${target}" in
     linux-cuda)
       write_linux
-      write_simple_platform_readme "${OUT}/linux-cuda" "slopcode for Linux (NVIDIA CUDA)" "bash install.sh" "scripts/llamacpp_prewarm_opencode.sh --force"
-      prune_dir_entries "${OUT}/linux-cuda" llama.cpp opencode whisper.cpp opencode_privacy.sh meeting start.sh README.md install.sh
+      write_simple_platform_readme "${OUT}/linux-cuda" "slopcode for Linux (NVIDIA CUDA)" "bash install.sh" "./prewarm-opencode.sh"
+      prune_dir_entries "${OUT}/linux-cuda" llama.cpp opencode whisper.cpp opencode_privacy.sh prewarm-opencode.sh meeting start.sh README.md install.sh
       ;;
     mac-m1)
       write_mac
-      write_simple_platform_readme "${OUT}/mac-m1" "slopcode for macOS (Apple Silicon)" "bash install.sh" "scripts/llamacpp_prewarm_opencode.sh --force"
-      prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp opencode_privacy.sh meeting README.md install.sh
+      write_simple_platform_readme "${OUT}/mac-m1" "slopcode for macOS (Apple Silicon)" "bash install.sh" "./prewarm-opencode.sh"
+      prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp opencode_privacy.sh prewarm-opencode.sh meeting README.md install.sh
       ;;
     windows-arc)
       write_windows
-      write_simple_platform_readme "${OUT}/windows-arc" "slopcode for Windows (Intel Arc, Vulkan)" ".\\install.bat" "prewarm-opencode.bat --force"
-      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp meeting verify-models.ps1 restore-llamacpp-slot.ps1 prewarm-opencode.bat README.md install.bat
+      write_simple_platform_readme "${OUT}/windows-arc" "slopcode for Windows (Intel Arc, Vulkan)" ".\\install.bat" ".\\prewarm-opencode.bat"
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp meeting verify-models.ps1 prewarm-opencode.bat README.md install.bat
       ;;
   esac
 done
