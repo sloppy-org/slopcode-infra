@@ -23,6 +23,7 @@ have curl || die "curl is required"
 have unzip || die "unzip is required"
 have tar || die "tar is required"
 have python3 || die "python3 is required"
+have rsync || die "rsync is required"
 
 TARGETS=()
 OUT=""
@@ -32,6 +33,7 @@ WHISPER_TAG="${WHISPER_TAG:-}"
 SKIP_MODEL="${SKIP_MODEL:-false}"
 SKIP_LMSTUDIO="${SKIP_LMSTUDIO:-false}"
 LOCAL_LUNA_SOURCE="${LOCAL_LUNA_SOURCE:-${HOME}/code/computor-dev/local-luna}"
+BUNDLE_CACHE_DIR="${BUNDLE_CACHE_DIR:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -52,6 +54,10 @@ done
 [[ -n "${OUT}" ]] || die "--out is required"
 [[ "${#TARGETS[@]}" -gt 0 ]] || die "target required: linux-cuda|mac-m1|windows-arc|all"
 mkdir -p "${OUT}/models"
+if [[ -z "${BUNDLE_CACHE_DIR}" ]]; then
+  BUNDLE_CACHE_DIR="${OUT}/.slopcode-build-cache"
+fi
+mkdir -p "${BUNDLE_CACHE_DIR}/downloads"
 
 CURL_OPTS=(-fsSL --connect-timeout 30 --max-time 1800 --retry 3 --retry-delay 5)
 if [[ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]]; then
@@ -103,18 +109,74 @@ raise SystemExit(1)
 ' "${flavor}"
 }
 
+sync_dir() {
+  local src="$1" dest="$2"
+  mkdir -p "${dest}"
+  rsync -aL --delete "${src%/}/" "${dest%/}/"
+}
+
+prune_dir_entries() {
+  local dir="$1"; shift
+  [[ -d "${dir}" ]] || return 0
+  local entry base keep allowed
+  for entry in "${dir}"/* "${dir}"/.[!.]* "${dir}"/..?*; do
+    [[ -e "${entry}" ]] || continue
+    base="$(basename "${entry}")"
+    keep=false
+    for allowed in "$@"; do
+      if [[ "${base}" == "${allowed}" ]]; then
+        keep=true
+        break
+      fi
+    done
+    [[ "${keep}" == true ]] || rm -rf "${entry}"
+  done
+}
+
+cache_path_for_url() {
+  python3 - "$1" "${BUNDLE_CACHE_DIR}/downloads" <<'PY'
+import hashlib
+import os
+import sys
+from urllib.parse import urlparse
+
+url, cache_dir = sys.argv[1:]
+path = urlparse(url).path
+base = os.path.basename(path) or "download"
+digest = hashlib.sha256(url.encode()).hexdigest()[:16]
+print(os.path.join(cache_dir, f"{digest}-{base}"))
+PY
+}
+
+download_cached() {
+  local url="$1" label="$2" cache
+  cache="$(cache_path_for_url "${url}")"
+  if [[ -f "${cache}" ]]; then
+    echo "using cached ${label}" >&2
+    printf '%s\n' "${cache}"
+    return 0
+  fi
+  echo "downloading ${label}" >&2
+  if [[ -f "${cache}.partial" ]]; then
+    curl "${CURL_OPTS[@]}" -L -C - -o "${cache}.partial" "${url}"
+  else
+    curl "${CURL_OPTS[@]}" -L -o "${cache}.partial" "${url}"
+  fi
+  mv "${cache}.partial" "${cache}"
+  printf '%s\n' "${cache}"
+}
+
 fetch_archive() {
   local url="$1" dest="$2" marker="${3:-}"
-  local tmp inner
+  local tmp inner archive
   tmp="$(mktemp -d)"
-  rm -rf "${dest}"
   mkdir -p "${dest}" "${tmp}/unpacked"
-  curl "${CURL_OPTS[@]}" -o "${tmp}/pkg" "${url}"
-  case "${url}" in
-    *.tar.gz|*.tgz) tar -xzf "${tmp}/pkg" -C "${tmp}/unpacked" ;;
-    *.tar.xz)       tar -xJf "${tmp}/pkg" -C "${tmp}/unpacked" ;;
-    *.zip)          unzip -q -o "${tmp}/pkg" -d "${tmp}/unpacked" ;;
-    *) die "unknown archive: ${url}" ;;
+  archive="$(download_cached "${url}" "$(basename "${dest}") archive")"
+  case "${archive}" in
+    *.tar.gz|*.tgz) tar -xzf "${archive}" -C "${tmp}/unpacked" ;;
+    *.tar.xz)       tar -xJf "${archive}" -C "${tmp}/unpacked" ;;
+    *.zip)          unzip -q -o "${archive}" -d "${tmp}/unpacked" ;;
+    *) die "unknown archive: ${archive}" ;;
   esac
   if [[ -n "${marker}" ]]; then
     inner="$(find "${tmp}/unpacked" -type f -name "${marker}" -print -quit | xargs -r dirname)"
@@ -122,13 +184,12 @@ fetch_archive() {
     inner="$(find "${tmp}/unpacked" -mindepth 1 -maxdepth 1 -type d -print -quit)"
   fi
   [[ -n "${inner}" && -d "${inner}" ]] || inner="${tmp}/unpacked"
-  cp -RL "${inner}/." "${dest}/"
+  sync_dir "${inner}" "${dest}"
   rm -rf "${tmp}"
 }
 
 fetch_whisper_source() {
   local dest="$1" tag="$2" url
-  rm -rf "${dest}"
   mkdir -p "${dest}"
   if [[ -z "${tag}" ]]; then
     tag="$(curl "${CURL_OPTS[@]}" https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest | python3 -c 'import json,sys;print(json.load(sys.stdin)["tag_name"])')"
@@ -150,7 +211,9 @@ copy_model_alias() {
     return 0
   fi
   echo "copying ${alias} ($(basename "${primary}"))"
-  cp -n "${primary}" "${OUT}/models/"
+  if [[ ! -f "${OUT}/models/$(basename "${primary}")" ]]; then
+    rsync -a --ignore-existing "${primary}" "${OUT}/models/"
+  fi
   local pbn
   pbn="$(basename "${primary}")"
   sha256sum "${primary}" | awk '{print $1}' > "${OUT}/models/${pbn}.sha256"
@@ -159,29 +222,53 @@ copy_model_alias() {
     local mbn
     mbn="$(basename "${mmproj}")"
     echo "  + mmproj ${mbn}"
-    cp -n "${mmproj}" "${OUT}/models/"
+    if [[ ! -f "${OUT}/models/${mbn}" ]]; then
+      rsync -a --ignore-existing "${mmproj}" "${OUT}/models/"
+    fi
     sha256sum "${mmproj}" | awk '{print $1}' > "${OUT}/models/${mbn}.sha256"
   fi
 }
 
 copy_models() {
   [[ "${SKIP_MODEL}" == true ]] && return 0
+  prune_dir_entries "${OUT}/models" \
+    Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
+    Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf.sha256 \
+    mmproj-BF16.gguf \
+    mmproj-BF16.gguf.sha256 \
+    ggml-large-v3-turbo.bin \
+    ggml-large-v3-turbo.bin.partial
   copy_model_alias qwen3.6-35b-a3b-q4 true
   local model="${OUT}/models/ggml-large-v3-turbo.bin"
   if [[ ! -f "${model}" ]]; then
-    echo "downloading whisper large-v3-turbo"
-    curl "${CURL_OPTS[@]}" -o "${model}.partial" \
-      https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin
-    mv "${model}.partial" "${model}"
+    download_file \
+      https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin \
+      "${model}" "whisper large-v3-turbo"
   fi
 }
 
 download_file() {
   local url="$1" dest="$2" label="$3"
   mkdir -p "$(dirname "${dest}")"
+  if [[ -f "${dest}" ]]; then
+    local status
+    echo "checking ${label}"
+    rm -f "${dest}.partial"
+    status="$(curl "${CURL_OPTS[@]}" -L -z "${dest}" -w '%{http_code}' -o "${dest}.partial" "${url}")"
+    if [[ "${status}" == "304" || ! -s "${dest}.partial" ]]; then
+      rm -f "${dest}.partial"
+      echo "up to date: ${label}"
+      return 0
+    fi
+    mv "${dest}.partial" "${dest}"
+    return 0
+  fi
   echo "downloading ${label}"
-  rm -f "${dest}.partial"
-  curl "${CURL_OPTS[@]}" -L -o "${dest}.partial" "${url}"
+  if [[ -f "${dest}.partial" ]]; then
+    curl "${CURL_OPTS[@]}" -L -C - -o "${dest}.partial" "${url}"
+  else
+    curl "${CURL_OPTS[@]}" -L -o "${dest}.partial" "${url}"
+  fi
   mv "${dest}.partial" "${dest}"
 }
 
@@ -189,6 +276,14 @@ download_lmstudio_installers() {
   [[ "${SKIP_LMSTUDIO}" == true ]] && return 0
   local d="${OUT}/lm-studio"
   mkdir -p "${d}"
+  prune_dir_entries "${d}" \
+    LM-Studio-mac-arm64-latest.dmg \
+    LM-Studio-windows-x64-latest.exe \
+    LM-Studio-windows-arm64-latest.exe \
+    LM-Studio-linux-x64-latest.AppImage \
+    LM-Studio-linux-x64-latest.deb \
+    LM-Studio-linux-arm64-latest.AppImage \
+    SHA256SUMS
   download_file "https://lmstudio.ai/download/latest/darwin/arm64" \
     "${d}/LM-Studio-mac-arm64-latest.dmg" "LM Studio macOS arm64"
   download_file "https://lmstudio.ai/download/latest/win32/x64" \
@@ -207,18 +302,38 @@ download_lmstudio_installers() {
 
 download_llama_vscode() {
   local d="${OUT}/vscode"
+  local dest="${d}/llama-vscode-latest.vsix"
   mkdir -p "${d}"
-  echo "downloading latest llama.vscode VSIX"
-  rm -f "${d}/llama-vscode-latest.vsix.partial"
-  curl "${CURL_OPTS[@]}" --compressed -L \
-    -o "${d}/llama-vscode-latest.vsix.partial" \
-    "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ggml-org/vsextensions/llama-vscode/latest/vspackage"
-  mv "${d}/llama-vscode-latest.vsix.partial" "${d}/llama-vscode-latest.vsix"
+  echo "checking latest llama.vscode VSIX"
+  rm -f "${dest}.partial"
+  if [[ -f "${dest}" ]]; then
+    local status
+    status="$(curl "${CURL_OPTS[@]}" --compressed -L -z "${dest}" -w '%{http_code}' \
+      -o "${dest}.partial" \
+      "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ggml-org/vsextensions/llama-vscode/latest/vspackage")"
+    if [[ "${status}" == "304" || ! -s "${dest}.partial" ]]; then
+      rm -f "${dest}.partial"
+      echo "up to date: llama.vscode VSIX"
+      return 0
+    fi
+  else
+    curl "${CURL_OPTS[@]}" --compressed -L \
+      -o "${dest}.partial" \
+      "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ggml-org/vsextensions/llama-vscode/latest/vspackage"
+  fi
+  mv "${dest}.partial" "${dest}"
 }
 
 write_vscode_helpers() {
   local d="${OUT}/vscode"
   mkdir -p "${d}"
+  prune_dir_entries "${d}" \
+    llama-vscode-latest.vsix \
+    settings.llamacpp.json \
+    configure-llama-vscode.sh \
+    configure-llama-vscode.ps1 \
+    configure-llama-vscode.bat \
+    README.md
   cat >"${d}/settings.llamacpp.json" <<'EOF'
 {
   "llama-vscode.endpoint": "http://127.0.0.1:8080",
@@ -335,7 +450,7 @@ EOF
     return 0
   fi
   mkdir -p "${d}"
-  (cd "${LOCAL_LUNA_SOURCE}" && tar --exclude .git -cf - .) | (cd "${d}" && tar -xf -)
+  rsync -a --delete --exclude .git "${LOCAL_LUNA_SOURCE%/}/" "${d}/"
 }
 
 write_simple_platform_readme() {
@@ -383,8 +498,7 @@ EOF
 write_common_unix_files() {
   local t="$1"
   install -m 755 "${SCRIPT_DIR}/opencode_privacy.sh" "${t}/opencode_privacy.sh"
-  rm -rf "${t}/meeting"
-  cp -R "${SCRIPT_DIR}/../meeting" "${t}/meeting"
+  sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
   chmod +x "${t}/meeting/"*.sh
 }
 
@@ -955,8 +1069,7 @@ if (-not $Ready) { exit 0 }
 $Body = @{ filename = $SlotFile } | ConvertTo-Json -Compress
 Invoke-RestMethod -Method Post -Uri "$BaseUrl/slots/$SlotId?action=restore" -ContentType "application/json" -Body $Body -TimeoutSec 120 | Out-Null
 PS1
-  rm -rf "${t}/meeting"
-  cp -R "${SCRIPT_DIR}/../meeting" "${t}/meeting"
+  sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
   # PowerShell helper: verify model checksums before install.
   cat >"${t}/verify-models.ps1" <<'PS1'
@@ -1410,14 +1523,17 @@ for target in "${TARGETS[@]}"; do
     linux-cuda)
       write_linux
       write_simple_platform_readme "${OUT}/linux-cuda" "slopcode for Linux (NVIDIA CUDA)" "bash install.sh" "scripts/llamacpp_prewarm_opencode.sh --force"
+      prune_dir_entries "${OUT}/linux-cuda" llama.cpp opencode whisper.cpp opencode_privacy.sh meeting start.sh README.md install.sh
       ;;
     mac-m1)
       write_mac
       write_simple_platform_readme "${OUT}/mac-m1" "slopcode for macOS (Apple Silicon)" "bash install.sh" "scripts/llamacpp_prewarm_opencode.sh --force"
+      prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp opencode_privacy.sh meeting README.md install.sh
       ;;
     windows-arc)
       write_windows
       write_simple_platform_readme "${OUT}/windows-arc" "slopcode for Windows (Intel Arc, Vulkan)" ".\\install.bat" "prewarm-opencode.bat --force"
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp meeting verify-models.ps1 restore-llamacpp-slot.ps1 prewarm-opencode.bat README.md install.bat
       ;;
   esac
 done
