@@ -243,15 +243,17 @@ JSON
   grep -q '"/bin/helpy"' "${config_path}" || common_ok=0
 
   local platform_ok=1
-  local context_expected=131072
-  grep -q '"model": "llamacpp/qwen"' "${config_path}" || platform_ok=0
-  grep -q '"small_model": "llamacpp/qwen"' "${config_path}" || platform_ok=0
+  local context_expected=262144
+  grep -q '"model": "slopgate/qwen122b"' "${config_path}" || platform_ok=0
+  grep -q '"small_model": "slopgate/qwen"' "${config_path}" || platform_ok=0
   grep -q "\"context\": ${context_expected}" "${config_path}" || platform_ok=0
   grep -q 'http://127.0.0.1:8080/v1' "${config_path}" || platform_ok=0
-  grep -q '"x-model": "qwen"' "${config_path}" || platform_ok=0
-  grep -q '"x-model": "qwen27b"' "${config_path}" || platform_ok=0
-  grep -q 'Qwen3.6 35B A3B Q4 + KV-Q8 (Local)' "${config_path}" || platform_ok=0
-  grep -q 'Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Slopgate)' "${config_path}" || platform_ok=0
+  grep -q '"slopgate"' "${config_path}" || platform_ok=0
+  grep -q '"qwen122b"' "${config_path}" || platform_ok=0
+  grep -q '"qwen"' "${config_path}" || platform_ok=0
+  grep -q '"qwen27b"' "${config_path}" || platform_ok=0
+  grep -q '"model": "slopgate/qwen122b"' "${config_path}" || platform_ok=0
+  grep -q '"model": "slopgate/qwen"' "${config_path}" || platform_ok=0
   [[ -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || platform_ok=0
 
   if [[ "${common_ok}" == "1" && "${platform_ok}" == "1" ]]; then
@@ -278,6 +280,9 @@ test_opencode_config_slopgate() {
   local ok=1
   grep -q '"baseURL": "http://10.0.0.99:8080/v1"' "${config_path}" || ok=0
   grep -q '"x-session-affinity"' "${config_path}" || ok=0
+  grep -q '"model": "slopgate/qwen122b"' "${config_path}" || ok=0
+  grep -q '"small_model": "slopgate/qwen"' "${config_path}" || ok=0
+  grep -q '"qwen27b"' "${config_path}" || ok=0
   [[ -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || ok=0
 
   local explicit_path="${TMPDIR}/opencode-slopgate-explicit.json"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Configure OpenCode for llama.cpp routing. The 35B-A3B MoE provider is the
-# default coding model; the dense 27B provider is a secondary option for
-# slopgate deployments running on more powerful hardware.
+# Configure OpenCode for slopgate llama.cpp routing. The 122B-A10B MoE model
+# is the default coding model; the 35B-A3B MoE model is the fast/agent model;
+# the dense 27B model stays available as an explicit option.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,7 +24,7 @@ else
   HOST="${LLAMACPP_HOST:-127.0.0.1}"
   BASE_URL="http://${HOST}:8080/v1"
 fi
-CONTEXT_SIZE_DEFAULT=131072
+CONTEXT_SIZE_DEFAULT=262144
 CONTEXT_SIZE="${OPENCODE_LOCAL_CONTEXT:-${CONTEXT_SIZE_DEFAULT}}"
 OUTPUT_LIMIT="${OPENCODE_LOCAL_OUTPUT:-16384}"
 THINKING_BUDGET="${OPENCODE_LOCAL_THINKING_BUDGET:-$(default_reasoning_budget)}"
@@ -80,34 +80,27 @@ session_id() {
   printf '%s' "${id}"
 }
 
-provider_block() {
-  local provider="$1" provider_name="$2" id="$3" model_name="$4" route_model="$5" sid="$6"
-  cat <<EOF
-    "${provider}": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "${provider_name}",
-      "options": {"baseURL": "${BASE_URL}", "headers": {"x-session-affinity": "${sid}", "x-model": "${route_model}"}},
-      "models": {
-$(model_block "${id}" "${model_name}")
-      }
-    }
-EOF
-}
-
 providers_block() {
   local sid
   sid="$(session_id)"
   cat <<EOF
   "provider": {
-$(provider_block "llamacpp" "llama.cpp 35B-A3B (Local)" "qwen" "Qwen3.6 35B A3B Q4 + KV-Q8 (Local)" "qwen" "${sid}"),
-$(provider_block "llamacpp-27b" "llama.cpp 27B (Slopgate)" "qwen27b" "Qwen3.6 27B Dense Q4_K_M + KV-Q8 (Slopgate)" "qwen27b" "${sid}"),
-$(provider_block "llamacpp-122b" "llama.cpp 122B-A10B (Slopgate)" "qwen122b" "Qwen3.5 122B-A10B UD-Q4 + KV-Q8 (Slopgate)" "qwen122b" "${sid}")
+    "slopgate": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "slopgate",
+      "options": {"baseURL": "${BASE_URL}", "headers": {"x-session-affinity": "${sid}"}},
+      "models": {
+$(model_block "qwen122b" "qwen122b"),
+$(model_block "qwen" "qwen"),
+$(model_block "qwen27b" "qwen27b")
+      }
+    }
   }
 EOF
 }
 
-DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-llamacpp/qwen}"
-SMALL_MODEL="${OPENCODE_LOCAL_SMALL_MODEL:-llamacpp/qwen}"
+DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-slopgate/qwen122b}"
+SMALL_MODEL="${OPENCODE_LOCAL_SMALL_MODEL:-slopgate/qwen}"
 PROVIDER_BLOCK="$(providers_block)"
 DISABLED='"disabled_providers": ["exa", "opencode", "llmgateway", "github-copilot", "copilot", "openai", "anthropic", "google", "mistral", "groq", "xai", "ollama"]'
 
@@ -117,6 +110,30 @@ cat > "${CONFIG_PATH}" <<EOF
   "model": "${DEFAULT_MODEL}",
   "small_model": "${SMALL_MODEL}",
   "agent": {
+    "folder-note": {
+      "description": "Text-only folder-note synthesis from attached payloads. All tools are disabled so source context comes only from the prompt.",
+      "mode": "primary",
+      "model": "${DEFAULT_MODEL}",
+      "prompt": "You are a text-only Markdown synthesis agent. Use only the user message and attached files as context. Do not call tools. The confidential local-only subtree ~/Nextcloud/personal/ must not be summarized into shared brain notes or mentioned unless the user explicitly asks for a local-only Qwen task.",
+      "permission": {"*": "deny"}
+    },
+    "explore": {
+      "description": "Fast read-only codebase exploration. Search and locate; never edit.",
+      "mode": "subagent",
+      "model": "${SMALL_MODEL}"
+    },
+    "scout": {
+      "description": "Read-only external docs and dependency research.",
+      "mode": "subagent",
+      "model": "${SMALL_MODEL}"
+    },
+    "brain-evidence-scout": {
+      "description": "Bounded evidence discovery for Markdown brain notes. MCP tools may be used, but the agent writes only an evidence report.",
+      "mode": "primary",
+      "model": "${SMALL_MODEL}",
+      "prompt": "You are an evidence scout for Christopher Albert's Markdown brain. Use the requested source classes only. Keep work and private spheres separate. Use sloppy only for mail, contacts, calendars, and tasks. Use helpy for web, TUGonline, ICS, office, and SAP-style sources. Do not edit files. Do not update canonical notes. Do not inspect or mention ~/Nextcloud/personal/ unless the user explicitly requests a local-only Qwen task; never write its contents or metadata into shared brain outputs. Return only a Markdown evidence report with source type, query, date or timestamp when available, stable identifier or URL/path, short finding, and open gaps. If evidence is weak or conflicting, say so explicitly.",
+      "permission": {"*": "allow"}
+    },
     "title": {"disable": true}
   },
   "share": "disabled",
