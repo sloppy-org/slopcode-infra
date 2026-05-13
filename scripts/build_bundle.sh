@@ -7,6 +7,9 @@
 #   <target>/whisper.cpp/    whisper source (Linux/macOS) or Windows binaries
 #   <target>/install.*       localhost-only user install
 #   <target>/start.*         foreground localhost-only launchers
+#   local-luna/              concise manual LM Studio / llama.cpp tutorial
+#   vscode/                  latest llama.vscode VSIX + settings helpers
+#   lm-studio/               latest LM Studio desktop installers
 #   models/                  Qwen GGUF, mmproj, ggml-large-v3-turbo.bin
 #
 # No Pi, no Node, no npm cache. Do not add them here.
@@ -27,6 +30,8 @@ LLAMACPP_TAG="${LLAMACPP_TAG:-}"
 OPENCODE_TAG="${OPENCODE_TAG:-}"
 WHISPER_TAG="${WHISPER_TAG:-}"
 SKIP_MODEL="${SKIP_MODEL:-false}"
+SKIP_LMSTUDIO="${SKIP_LMSTUDIO:-false}"
+LOCAL_LUNA_SOURCE="${LOCAL_LUNA_SOURCE:-${HOME}/code/computor-dev/local-luna}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,6 +40,8 @@ while [[ $# -gt 0 ]]; do
     --opencode-tag) OPENCODE_TAG="$2"; shift 2 ;;
     --whisper-tag) WHISPER_TAG="$2"; shift 2 ;;
     --skip-model) SKIP_MODEL=true; shift ;;
+    --skip-lmstudio) SKIP_LMSTUDIO=true; shift ;;
+    --local-luna-source) LOCAL_LUNA_SOURCE="$2"; shift 2 ;;
     all) TARGETS=(linux-cuda mac-m1 windows-arc); shift ;;
     linux-cuda|mac-m1|windows-arc) TARGETS+=("$1"); shift ;;
     -h|--help) sed -n '1,36p' "$0"; exit 0 ;;
@@ -167,6 +174,210 @@ copy_models() {
       https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin
     mv "${model}.partial" "${model}"
   fi
+}
+
+download_file() {
+  local url="$1" dest="$2" label="$3"
+  mkdir -p "$(dirname "${dest}")"
+  echo "downloading ${label}"
+  rm -f "${dest}.partial"
+  curl "${CURL_OPTS[@]}" -L -o "${dest}.partial" "${url}"
+  mv "${dest}.partial" "${dest}"
+}
+
+download_lmstudio_installers() {
+  [[ "${SKIP_LMSTUDIO}" == true ]] && return 0
+  local d="${OUT}/lm-studio"
+  mkdir -p "${d}"
+  download_file "https://lmstudio.ai/download/latest/darwin/arm64" \
+    "${d}/LM-Studio-mac-arm64-latest.dmg" "LM Studio macOS arm64"
+  download_file "https://lmstudio.ai/download/latest/win32/x64" \
+    "${d}/LM-Studio-windows-x64-latest.exe" "LM Studio Windows x64"
+  download_file "https://lmstudio.ai/download/latest/win32/arm64" \
+    "${d}/LM-Studio-windows-arm64-latest.exe" "LM Studio Windows arm64"
+  download_file "https://lmstudio.ai/download/latest/linux/x64?format=AppImage" \
+    "${d}/LM-Studio-linux-x64-latest.AppImage" "LM Studio Linux x64 AppImage"
+  download_file "https://lmstudio.ai/download/latest/linux/x64?format=deb" \
+    "${d}/LM-Studio-linux-x64-latest.deb" "LM Studio Linux x64 deb"
+  download_file "https://lmstudio.ai/download/latest/linux/arm64?format=AppImage" \
+    "${d}/LM-Studio-linux-arm64-latest.AppImage" "LM Studio Linux arm64 AppImage"
+  rm -f "${d}/SHA256SUMS"
+  sha256sum "${d}"/* > "${d}/SHA256SUMS"
+}
+
+download_llama_vscode() {
+  local d="${OUT}/vscode"
+  mkdir -p "${d}"
+  echo "downloading latest llama.vscode VSIX"
+  rm -f "${d}/llama-vscode-latest.vsix.partial"
+  curl "${CURL_OPTS[@]}" --compressed -L \
+    -o "${d}/llama-vscode-latest.vsix.partial" \
+    "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ggml-org/vsextensions/llama-vscode/latest/vspackage"
+  mv "${d}/llama-vscode-latest.vsix.partial" "${d}/llama-vscode-latest.vsix"
+}
+
+write_vscode_helpers() {
+  local d="${OUT}/vscode"
+  mkdir -p "${d}"
+  cat >"${d}/settings.llamacpp.json" <<'EOF'
+{
+  "llama-vscode.endpoint": "http://127.0.0.1:8080",
+  "llama-vscode.endpoint_chat": "http://127.0.0.1:8080",
+  "llama-vscode.endpoint_tools": "http://127.0.0.1:8080",
+  "llama-vscode.ai_api_version": "v1",
+  "llama-vscode.ai_model": "qwen"
+}
+EOF
+  cat >"${d}/configure-llama-vscode.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+code --install-extension "${HERE}/llama-vscode-latest.vsix"
+case "$(uname -s)" in
+  Darwin) SETTINGS="${HOME}/Library/Application Support/Code/User/settings.json" ;;
+  *) SETTINGS="${XDG_CONFIG_HOME:-${HOME}/.config}/Code/User/settings.json" ;;
+esac
+mkdir -p "$(dirname "${SETTINGS}")"
+python3 - "${SETTINGS}" "${HERE}/settings.llamacpp.json" <<'PY'
+import json
+import os
+import sys
+
+settings_path, patch_path = sys.argv[1:]
+try:
+    with open(settings_path, encoding="utf-8") as f:
+        settings = json.load(f)
+except Exception:
+    settings = {}
+with open(patch_path, encoding="utf-8") as f:
+    settings.update(json.load(f))
+with open(settings_path, "w", encoding="utf-8") as f:
+    json.dump(settings, f, indent=2)
+    f.write("\n")
+PY
+echo "configured llama.vscode for http://127.0.0.1:8080"
+EOF
+  chmod +x "${d}/configure-llama-vscode.sh"
+  cat >"${d}/configure-llama-vscode.ps1" <<'EOF'
+$ErrorActionPreference = "Stop"
+$Here = Split-Path -Parent $MyInvocation.MyCommand.Path
+code --install-extension (Join-Path $Here "llama-vscode-latest.vsix")
+$Settings = Join-Path $env:APPDATA "Code\User\settings.json"
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Settings) | Out-Null
+function ConvertTo-Hashtable($Object) {
+  $Hash = @{}
+  if ($null -eq $Object) { return $Hash }
+  foreach ($Prop in $Object.PSObject.Properties) {
+    $Hash[$Prop.Name] = $Prop.Value
+  }
+  return $Hash
+}
+if (Test-Path $Settings) {
+  $Current = ConvertTo-Hashtable (Get-Content $Settings -Raw | ConvertFrom-Json)
+} else {
+  $Current = @{}
+}
+$Patch = ConvertTo-Hashtable (Get-Content (Join-Path $Here "settings.llamacpp.json") -Raw | ConvertFrom-Json)
+foreach ($Key in $Patch.Keys) { $Current[$Key] = $Patch[$Key] }
+$Current | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 $Settings
+Write-Host "configured llama.vscode for http://127.0.0.1:8080"
+EOF
+  cat >"${d}/configure-llama-vscode.bat" <<'EOF'
+@echo off
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0configure-llama-vscode.ps1"
+exit /b %ERRORLEVEL%
+EOF
+  cat >"${d}/README.md" <<'EOF'
+# VS Code llama.vscode
+
+Install the bundled extension:
+
+```sh
+code --install-extension llama-vscode-latest.vsix
+```
+
+Then apply the localhost settings:
+
+```sh
+bash configure-llama-vscode.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\configure-llama-vscode.ps1
+```
+
+Windows Command Prompt:
+
+```bat
+configure-llama-vscode.bat
+```
+
+The settings point chat, tools, and completion requests at the bundled
+llama.cpp server on `http://127.0.0.1:8080`; the extension appends `/v1`
+for OpenAI-compatible chat calls.
+EOF
+}
+
+copy_local_luna() {
+  local d="${OUT}/local-luna"
+  rm -rf "${d}"
+  if [[ ! -d "${LOCAL_LUNA_SOURCE}" ]]; then
+    warn "local-luna source not found: ${LOCAL_LUNA_SOURCE}"
+    mkdir -p "${d}"
+    cat >"${d}/README.md" <<'EOF'
+# Local Luna
+
+The local-luna tutorial was not available on this build host. Use the bundled
+llama.cpp installer scripts, or rebuild with `--local-luna-source PATH`.
+EOF
+    return 0
+  fi
+  mkdir -p "${d}"
+  (cd "${LOCAL_LUNA_SOURCE}" && tar --exclude .git -cf - .) | (cd "${d}" && tar -xf -)
+}
+
+write_simple_platform_readme() {
+  local target="$1" title="$2" installer="$3" prewarm="$4"
+  cat >"${target}/README.md" <<EOF
+# ${title}
+
+## Automatic llama.cpp install
+
+Run the installer in this folder:
+
+\`\`\`sh
+${installer}
+\`\`\`
+
+It copies the bundled llama.cpp, OpenCode, and model files into your user
+profile, binds llama.cpp to \`127.0.0.1:8080\`, and writes the OpenCode local
+provider config.
+
+## Manual or LM Studio path
+
+Open \`../local-luna/README.md\`. That tutorial is the maintained step-by-step
+path for people who prefer LM Studio or want to configure each piece by hand.
+
+## VS Code
+
+Open \`../vscode/README.md\` to install the bundled llama.vscode extension and
+point it at the local llama.cpp server.
+
+## Prompt cache prewarm
+
+After AGENTS.md, OpenCode, or MCP plugin changes, re-run the prewarm helper:
+
+\`\`\`sh
+${prewarm}
+\`\`\`
+
+## LM Studio fallback
+
+Current LM Studio installers are in \`../lm-studio/\`. They are included for
+manual fallback only; these scripts do not auto-wire LM Studio.
+EOF
 }
 
 write_common_unix_files() {
@@ -720,6 +931,30 @@ write_windows() {
   read -r wh_tag wh_url <<<"$(github_asset ggml-org/whisper.cpp "${WHISPER_TAG}" whisper-bin-x64.zip)"
   echo "windows whisper.cpp ${wh_tag}"
   fetch_archive "${wh_url}" "${t}/whisper.cpp" whisper-server.exe
+  install -m 644 "${SCRIPT_DIR}/llamacpp_prewarm_opencode.bat" "${t}/prewarm-opencode.bat"
+  cat >"${t}/restore-llamacpp-slot.ps1" <<'PS1'
+param(
+  [string]$BaseUrl = "http://127.0.0.1:8080",
+  [string]$SlotDir = "$env:USERPROFILE\slopcode\cache\slots",
+  [string]$SlotFile = "opencode-prewarm-slot.bin",
+  [int]$SlotId = 0
+)
+$ErrorActionPreference = "SilentlyContinue"
+$SlotPath = Join-Path $SlotDir $SlotFile
+if (-not (Test-Path $SlotPath)) { exit 0 }
+$Ready = $false
+for ($i = 0; $i -lt 180 -and -not $Ready; $i++) {
+  try {
+    Invoke-RestMethod -Uri "$BaseUrl/v1/models" -TimeoutSec 5 | Out-Null
+    $Ready = $true
+  } catch {
+    Start-Sleep -Seconds 2
+  }
+}
+if (-not $Ready) { exit 0 }
+$Body = @{ filename = $SlotFile } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri "$BaseUrl/slots/$SlotId?action=restore" -ContentType "application/json" -Body $Body -TimeoutSec 120 | Out-Null
+PS1
   rm -rf "${t}/meeting"
   cp -R "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
@@ -1114,10 +1349,12 @@ echo Clearing Intel shader cache...
 rmdir /S /Q "%LOCALAPPDATA%\Intel\ShaderCache" 2>nul
 echo === Cleanup done; installing fresh ===
 echo.
-mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" 2>nul
+mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\bin" "%DEST%\cache\slots" 2>nul
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
 xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
+copy /Y "%HERE%\prewarm-opencode.bat" "%DEST%\bin\prewarm-opencode.bat" >nul
+copy /Y "%HERE%\restore-llamacpp-slot.ps1" "%DEST%\bin\restore-llamacpp-slot.ps1" >nul
 setx OPENCODE_DISABLE_AUTOUPDATE 1 >nul
 setx OPENCODE_DISABLE_SHARE 1 >nul
 setx OPENCODE_DISABLE_MODELS_FETCH 1 >nul
@@ -1144,20 +1381,25 @@ if !THREADS! LSS 2 set THREADS=2
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo mkdir "%DEST%\cache\slots" 2^>nul
+>>"%DEST%\run-llamacpp.bat" echo start "slopcode-slot-restore" /MIN powershell -NoProfile -ExecutionPolicy Bypass -File "%DEST%\bin\restore-llamacpp-slot.ps1" -BaseUrl "http://127.0.0.1:8080" -SlotDir "%DEST%\cache\slots"
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --slot-save-path "%DEST%\cache\slots" --host 127.0.0.1 --port 8080
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo mkdir "%DEST%\cache\slots" 2^>nul
+>>"%DEST%\run-llamacpp-cpu.bat" echo start "slopcode-slot-restore" /MIN powershell -NoProfile -ExecutionPolicy Bypass -File "%DEST%\bin\restore-llamacpp-slot.ps1" -BaseUrl "http://127.0.0.1:8080" -SlotDir "%DEST%\cache\slots"
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --no-webui --slot-save-path "%DEST%\cache\slots" --host 127.0.0.1 --port 8080
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
 >"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
-powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); $add='%DEST%\opencode'; if (($p -split ';') -notcontains $add) { [Environment]::SetEnvironmentVariable('Path', ($add+';'+$p), 'User') }"
+powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); $adds=@('%DEST%\opencode','%DEST%\bin'); foreach($add in $adds){ if (($p -split ';') -notcontains $add) { $p=($add+';'+$p) } }; [Environment]::SetEnvironmentVariable('Path', $p, 'User')"
 start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
 echo Installed localhost-only llama.cpp 8080 and opencode (--threads !THREADS!).
 echo (whisper/meeting tools are shipped on the USB but not auto-installed.)
 echo If you see repeated slashes in opencode thinking, run: %DEST%\run-llamacpp-cpu.bat
 echo and update the Startup shortcut to point at run-llamacpp-cpu.bat instead.
+echo To refresh the OpenCode prompt cache, run: %DEST%\bin\prewarm-opencode.bat --force
 echo Open a new terminal before running opencode.
 EOF
 }
@@ -1165,25 +1407,59 @@ EOF
 copy_models
 for target in "${TARGETS[@]}"; do
   case "${target}" in
-    linux-cuda) write_linux ;;
-    mac-m1) write_mac ;;
-    windows-arc) write_windows ;;
+    linux-cuda)
+      write_linux
+      write_simple_platform_readme "${OUT}/linux-cuda" "slopcode for Linux (NVIDIA CUDA)" "bash install.sh" "scripts/llamacpp_prewarm_opencode.sh --force"
+      ;;
+    mac-m1)
+      write_mac
+      write_simple_platform_readme "${OUT}/mac-m1" "slopcode for macOS (Apple Silicon)" "bash install.sh" "scripts/llamacpp_prewarm_opencode.sh --force"
+      ;;
+    windows-arc)
+      write_windows
+      write_simple_platform_readme "${OUT}/windows-arc" "slopcode for Windows (Intel Arc, Vulkan)" ".\\install.bat" "prewarm-opencode.bat --force"
+      ;;
   esac
 done
 
+copy_local_luna
+download_llama_vscode
+write_vscode_helpers
+download_lmstudio_installers
+
 cat >"${OUT}/README.md" <<'EOF'
-slopcode USB bundle
-===================
+# slopcode USB bundle
 
-A local AI coding assistant. Everything runs on your computer, on
-localhost only. No cloud, no account, no data leaves the machine.
+A local AI coding bundle. The primary automatic path is llama.cpp + OpenCode on
+localhost. LM Studio is included as a manual fallback.
 
-Find your platform's folder and open its README.md for full
-instructions (automatic and manual install):
+## Automatic llama.cpp path
 
-  Windows (Intel Arc):     windows-arc/README.md
-  macOS (Apple Silicon):   mac-m1/README.md
-  Linux (NVIDIA CUDA):     linux-cuda/README.md
+Open your platform folder and run its installer:
+
+- `linux-cuda/`
+- `mac-m1/`
+- `windows-arc/`
+
+Each installer binds llama.cpp to `127.0.0.1:8080` and configures OpenCode for
+that local endpoint.
+
+## Manual or LM Studio path
+
+Open `local-luna/README.md`.
+
+That tutorial is copied onto this stick for people who want step-by-step setup,
+or who prefer LM Studio instead of the automatic llama.cpp scripts.
+
+## VS Code
+
+Open `vscode/README.md` to install the bundled latest llama.vscode extension
+and apply settings for the local llama.cpp server.
+
+## LM Studio installers
+
+Current LM Studio desktop installers are in `lm-studio/`. They are included for
+manual fallback only; the slopcode scripts use llama.cpp by default.
 EOF
 
 echo "bundle ready at ${OUT}"

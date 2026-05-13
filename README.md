@@ -39,6 +39,21 @@ scripts/opencode_set_llamacpp.sh              # write ~/.config/opencode/opencod
 opencode                                      # go
 ```
 
+### OpenCode prompt cache
+
+`llama-server` starts with a slot-save directory. After OpenCode, AGENTS.md, or
+MCP plugin changes, refresh the saved startup slot:
+
+```
+scripts/llamacpp_prewarm_opencode.sh --force
+```
+
+The script runs one non-editing `opencode run`, saves slot 0 to disk, and
+writes a fingerprint manifest. On later starts, `scripts/server_start_llamacpp.sh`
+restores that slot automatically when the cache file exists. Use
+`scripts/llamacpp_prewarm_opencode.sh --check` to test whether the cache is
+fresh.
+
 ## SearXNG (local web search for Helpy)
 
 Helpy's `web_search` tool needs a SearXNG endpoint. This repo now ships a
@@ -166,12 +181,13 @@ scripts/build_bundle.sh all --out /mnt/usb
 
 The bundle includes llama.cpp, opencode, whisper.cpp, Qwen3.6 35B A3B
 UD-Q4_K_XL (Unsloth's recommended variant), the Qwen mmproj, and
-`ggml-large-v3-turbo.bin`. It does not include Pi, Node, or an npm cache.
+`ggml-large-v3-turbo.bin`. It also copies the `local-luna` tutorial, the
+latest llama.vscode VSIX with settings helpers, and current LM Studio desktop
+installers for manual fallback. It does not include Pi, Node, or an npm cache.
 Generated installers bind llama.cpp to `127.0.0.1:8080`; opencode is
 configured only against the local llama.cpp endpoint with
-telemetry/share/update/model fetch paths disabled. Whisper.cpp and the
-meeting commands are shipped on the USB but are **not** automatically
-installed — see the per-platform README on the USB for the manual steps.
+telemetry/share/update/model fetch paths disabled. LM Studio is copied to the
+stick but is not wired by the scripts.
 
 ## Voxtype install (push-to-talk dictation)
 
