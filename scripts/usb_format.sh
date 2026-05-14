@@ -33,9 +33,8 @@ sudo wipefs -a "${DEV}"
 sudo mkfs.exfat -n "${LABEL}" "${DEV}"
 
 mnt="$(mktemp -d)"
-sudo mount "${DEV}" "${mnt}"
-sudo install -d -o "$(id -u)" -g "$(id -g)" \
-  "${mnt}/models" "${mnt}/linux-cuda" "${mnt}/mac-m1" "${mnt}/windows-arc"
+sudo mount -o "uid=$(id -u),gid=$(id -g),umask=022" "${DEV}" "${mnt}"
+mkdir -p "${mnt}/models" "${mnt}/linux-cuda" "${mnt}/mac-m1" "${mnt}/windows-arc"
 cat >"${mnt}/README.txt" <<'EOF'
 Empty slopcode USB skeleton. Populate it with:
   scripts/build_bundle.sh all --out <this-directory>
