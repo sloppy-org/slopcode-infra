@@ -553,15 +553,13 @@ opencode, whisper.cpp, the meeting workflow scripts, the Qwen GGUF/mmproj,
 and `ggml-large-v3-turbo.bin`.
 
 **Automatic install scope.** The bundled `install.sh` / `install.bat`
-auto-installs and autostarts **only** llama.cpp on `127.0.0.1:8080` plus
-opencode. Whisper.cpp + meeting tools are shipped on the USB but the
-automatic installer does NOT touch them: they aren't copied, built,
-registered, or autostarted. This is deliberate — running whisper-server
-alongside llama-server on Intel Arc Vulkan adds a second concurrent
-Vulkan workload that contributed to the May 2026 Windows TDR/BSOD
-incidents. Users who want speech-to-text follow the manual install
-section in the per-platform README. Opencode points only at localhost
-and sets the same privacy env/config as the repo install.
+auto-installs and autostarts llama.cpp on `127.0.0.1:8080`, opencode,
+whisper.cpp on `127.0.0.1:8427`, and the meeting workflow scripts. Voxtype is
+not part of the USB installer. Meeting transcription is PCM WAV only so the
+installed whisper launcher does not depend on ffmpeg; `meeting-process` calls
+`opencode run` once after transcription rather than relying on an agent skill
+or nested OpenCode session. Opencode points only at localhost and sets the
+same privacy env/config as the repo install.
 
 Pi is a developer-only convenience installed through the system `npm` via
 `scripts/pi_install.sh`; if Node is missing the script tells the user to

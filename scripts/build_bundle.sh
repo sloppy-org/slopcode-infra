@@ -453,7 +453,7 @@ write_simple_platform_readme() {
   cat >"${target}/README.md" <<EOF
 # ${title}
 
-## Automatic llama.cpp install
+## Automatic install
 
 Run the installer in this folder:
 
@@ -461,9 +461,17 @@ Run the installer in this folder:
 ${installer}
 \`\`\`
 
-It copies the bundled llama.cpp, OpenCode, and model files into your user
-profile, binds llama.cpp to \`127.0.0.1:8080\`, and writes the OpenCode local
-provider config.
+It copies the bundled llama.cpp, OpenCode, whisper.cpp, meeting tools, and
+model files into your user profile. It starts llama.cpp on
+\`127.0.0.1:8080\`, starts whisper.cpp on \`127.0.0.1:8427\`, and writes the
+OpenCode local provider config.
+
+The meeting workflow is local and expects PCM WAV input:
+
+\`\`\`sh
+meeting-transcribe meeting.wav
+meeting-process meeting.wav
+\`\`\`
 
 ## Manual or LM Studio path
 
@@ -537,9 +545,8 @@ to localhost only:
 
 "Endpoint" just means a URL the opencode coding tool talks to.
 
-The USB also ships whisper.cpp + meeting tools, but the automatic
-installer does NOT install or start them. Follow the manual section
-below (steps 6, 8, 10) if you want speech-to-text + meeting workflow.
+The automatic installer also installs whisper.cpp + meeting tools. The meeting
+workflow expects PCM WAV input and does not require ffmpeg.
 
 
 OPTION 1 - AUTOMATIC INSTALL (recommended)
@@ -654,7 +661,7 @@ Prerequisite: cmake and ninja must be installed.
          -m "$HOME/.local/slopcode/models/ggml-large-v3-turbo.bin" \
          --host 127.0.0.1 --port 8427 -l auto -t 4 -fa \
          --inference-path /v1/audio/transcriptions \
-         --convert --tmp-dir /tmp
+         --tmp-dir /tmp
 
        chmod +x ~/.local/slopcode/run-whisper.sh
 
@@ -733,13 +740,32 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${HERE}/.." && pwd)"
 DEST="${HOME}/.local/slopcode"
-mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${HOME}/.local/bin" "${HOME}/.config/systemd/user"
+mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${DEST}/meeting" "${HOME}/.local/bin" "${HOME}/.config/systemd/user" "${HOME}/.config/opencode"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
+cp -R "${HERE}/whisper.cpp/." "${DEST}/whisper.cpp/"
+cp -R "${HERE}/meeting/." "${DEST}/meeting/"
 cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
+cp -n "${ROOT}/models/ggml-large-v3-turbo.bin" "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
+chmod +x "${DEST}/meeting/"*.sh
+ln -sf "${DEST}/meeting/record-meeting.sh" "${HOME}/.local/bin/record-meeting"
+ln -sf "${DEST}/meeting/meeting-transcribe.sh" "${HOME}/.local/bin/meeting-transcribe"
+ln -sf "${DEST}/meeting/meeting-notes.sh" "${HOME}/.local/bin/meeting-notes"
+ln -sf "${DEST}/meeting/meeting-process.sh" "${HOME}/.local/bin/meeting-process"
 bash "${HERE}/opencode_privacy.sh"
+
+command -v cmake >/dev/null 2>&1 || { echo "cmake is required to build whisper.cpp" >&2; exit 1; }
+command -v ninja >/dev/null 2>&1 || { echo "ninja is required to build whisper.cpp" >&2; exit 1; }
+cmake -S "${DEST}/whisper.cpp" \
+  -B "${DEST}/whisper.cpp/build" \
+  -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DWHISPER_BUILD_SERVER=1 \
+  -DGGML_CUDA=1
+cmake --build "${DEST}/whisper.cpp/build" -j"$(nproc)"
 
 cat >"${DEST}/run-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
@@ -786,6 +812,16 @@ echo "log: /tmp/slopcode-coder.log"
 RUN
 chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/run-llamacpp-coder.sh" "${DEST}/stop-llamacpp.sh" "${DEST}/llama-chat.sh" "${DEST}/llama-coder.sh"
 
+cat >"${DEST}/run-whisper.sh" <<RUN
+#!/usr/bin/env bash
+exec "${DEST}/whisper.cpp/build/bin/whisper-server" \
+  -m "${DEST}/models/ggml-large-v3-turbo.bin" \
+  --host 127.0.0.1 --port 8427 -l auto -t 4 -fa \
+  --inference-path /v1/audio/transcriptions \
+  --tmp-dir /tmp
+RUN
+chmod +x "${DEST}/run-whisper.sh"
+
 cat >"${HOME}/.config/systemd/user/slopcode-llamacpp.service" <<UNIT
 [Unit]
 Description=slopcode llama.cpp localhost
@@ -795,13 +831,21 @@ Restart=on-failure
 [Install]
 WantedBy=default.target
 UNIT
+cat >"${HOME}/.config/systemd/user/whisper-server.service" <<UNIT
+[Unit]
+Description=slopcode whisper.cpp localhost
+[Service]
+ExecStart=${DEST}/run-whisper.sh
+Restart=on-failure
+[Install]
+WantedBy=default.target
+UNIT
 systemctl --user daemon-reload
-systemctl --user enable --now slopcode-llamacpp.service
-mkdir -p "${HOME}/.config/opencode"
+systemctl --user enable --now slopcode-llamacpp.service whisper-server.service
 cat >"${HOME}/.config/opencode/opencode.json" <<JSON
 {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4","limit":{"context":262144,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 JSON
-echo "installed: opencode + llama.cpp on 127.0.0.1:8080 (whisper/meeting tools shipped on USB but not auto-installed)"
+echo "installed: opencode + llama.cpp on 127.0.0.1:8080 + whisper.cpp on 127.0.0.1:8427"
 EOF
   chmod +x "${t}/install.sh"
 }
@@ -833,9 +877,8 @@ to localhost only:
 
 "Endpoint" just means a URL the opencode coding tool talks to.
 
-The USB also ships whisper.cpp + meeting tools, but the automatic
-installer does NOT install or start them. Follow the manual section
-below if you want speech-to-text + meeting workflow.
+The automatic installer also installs whisper.cpp + meeting tools. The meeting
+workflow expects PCM WAV input and does not require ffmpeg.
 
 
 OPTION 1 - AUTOMATIC INSTALL (recommended)
@@ -969,7 +1012,6 @@ Homebrew yet, visit https://brew.sh first.
        <string>-l</string><string>auto</string><string>-t</string><string>4</string>
        <string>-fa</string>
        <string>--inference-path</string><string>/v1/audio/transcriptions</string>
-       <string>--convert</string>
        <string>--tmp-dir</string><string>/tmp</string>
        </array>
        <key>EnvironmentVariables</key><dict>
@@ -1030,13 +1072,32 @@ ROOT="$(cd "${HERE}/.." && pwd)"
 DEST="${HOME}/Library/Application Support/slopcode"
 LOGS="${HOME}/Library/Logs/slopcode"
 AGENTS="${HOME}/Library/LaunchAgents"
-mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${LOGS}" "${AGENTS}" "${HOME}/.local/bin"
+mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${DEST}/meeting" "${LOGS}" "${AGENTS}" "${HOME}/.local/bin" "${HOME}/.config/opencode"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
+cp -R "${HERE}/whisper.cpp/." "${DEST}/whisper.cpp/"
+cp -R "${HERE}/meeting/." "${DEST}/meeting/"
 cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
+cp -n "${ROOT}/models/ggml-large-v3-turbo.bin" "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
+chmod +x "${DEST}/meeting/"*.sh
+ln -sf "${DEST}/meeting/record-meeting.sh" "${HOME}/.local/bin/record-meeting"
+ln -sf "${DEST}/meeting/meeting-transcribe.sh" "${HOME}/.local/bin/meeting-transcribe"
+ln -sf "${DEST}/meeting/meeting-notes.sh" "${HOME}/.local/bin/meeting-notes"
+ln -sf "${DEST}/meeting/meeting-process.sh" "${HOME}/.local/bin/meeting-process"
 bash "${HERE}/opencode_privacy.sh"
+
+command -v cmake >/dev/null 2>&1 || { echo "cmake is required to build whisper.cpp; install it with: brew install cmake ninja" >&2; exit 1; }
+command -v ninja >/dev/null 2>&1 || { echo "ninja is required to build whisper.cpp; install it with: brew install cmake ninja" >&2; exit 1; }
+cmake -S "${DEST}/whisper.cpp" \
+  -B "${DEST}/whisper.cpp/build" \
+  -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DWHISPER_BUILD_SERVER=1 \
+  -DGGML_METAL=1
+cmake --build "${DEST}/whisper.cpp/build" -j"$(sysctl -n hw.physicalcpu)"
 
 cat >"${DEST}/run-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
@@ -1082,6 +1143,17 @@ echo "log: /tmp/slopcode-coder.log"
 RUN
 chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/run-llamacpp-coder.sh" "${DEST}/stop-llamacpp.sh" "${DEST}/llama-chat.sh" "${DEST}/llama-coder.sh"
 
+cat >"${DEST}/run-whisper.sh" <<RUN
+#!/usr/bin/env bash
+export DYLD_LIBRARY_PATH="${DEST}/whisper.cpp/build/bin\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
+exec "${DEST}/whisper.cpp/build/bin/whisper-server" \
+  -m "${DEST}/models/ggml-large-v3-turbo.bin" \
+  --host 127.0.0.1 --port 8427 -l auto -t 4 -fa \
+  --inference-path /v1/audio/transcriptions \
+  --tmp-dir /tmp
+RUN
+chmod +x "${DEST}/run-whisper.sh"
+
 LLAMA_PLIST="${AGENTS}/com.slopcode.llamacpp.plist"
 cat >"${LLAMA_PLIST}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1096,13 +1168,28 @@ cat >"${LLAMA_PLIST}" <<XML
 <key>StandardOutPath</key><string>${LOGS}/llamacpp.log</string><key>StandardErrorPath</key><string>${LOGS}/llamacpp.log</string>
 </dict></plist>
 XML
+WHISPER_PLIST="${AGENTS}/com.slopcode.whisper-server.plist"
+cat >"${WHISPER_PLIST}" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>com.slopcode.whisper-server</string>
+<key>ProgramArguments</key><array>
+<string>${DEST}/run-whisper.sh</string>
+</array>
+<key>EnvironmentVariables</key><dict><key>DYLD_LIBRARY_PATH</key><string>${DEST}/whisper.cpp/build/bin</string></dict>
+<key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+<key>StandardOutPath</key><string>${LOGS}/whisper-server.log</string><key>StandardErrorPath</key><string>${LOGS}/whisper-server.log</string>
+</dict></plist>
+XML
 launchctl bootout "gui/$(id -u)/com.slopcode.llamacpp" 2>/dev/null || true
+launchctl bootout "gui/$(id -u)/com.slopcode.whisper-server" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "${LLAMA_PLIST}"
-mkdir -p "${HOME}/.config/opencode"
+launchctl bootstrap "gui/$(id -u)" "${WHISPER_PLIST}"
 cat >"${HOME}/.config/opencode/opencode.json" <<JSON
 {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 JSON
-echo "installed: opencode + llama.cpp on 127.0.0.1:8080 (whisper/meeting tools shipped on USB but not auto-installed)"
+echo "installed: opencode + llama.cpp on 127.0.0.1:8080 + whisper.cpp on 127.0.0.1:8427"
 EOF
   chmod +x "${t}/install.sh"
 }
@@ -1171,9 +1258,8 @@ service binds to localhost only:
 
 "Endpoint" just means a URL the opencode coding tool talks to.
 
-The USB also ships whisper.cpp + meeting tools, but the automatic
-installer does NOT install or start them. Follow the manual section
-below if you want speech-to-text + meeting workflow.
+The automatic installer also installs whisper.cpp + meeting tools. The meeting
+workflow expects PCM WAV input and does not require ffmpeg.
 
 
 PREREQUISITES (Arc 140V / Lunar Lake / 64 GB RAM)
@@ -1361,7 +1447,7 @@ OPTION 2 - MANUAL INSTALL
 
        @echo off
        set "PATH=%USERPROFILE%\slopcode\whisper.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\whisper.cpp\whisper-server.exe" -m "%USERPROFILE%\slopcode\models\ggml-large-v3-turbo.bin" --host 127.0.0.1 --port 8427 -l auto -t 4 -fa --inference-path /v1/audio/transcriptions --convert --tmp-dir "%TEMP%"
+       "%USERPROFILE%\slopcode\whisper.cpp\whisper-server.exe" -m "%USERPROFILE%\slopcode\models\ggml-large-v3-turbo.bin" --host 127.0.0.1 --port 8427 -l auto -t 4 -fa --inference-path /v1/audio/transcriptions --tmp-dir "%TEMP%"
 
 9. Create the opencode config. In Command Prompt:
 
@@ -1493,6 +1579,7 @@ echo.
 echo === Aggressive cleanup of any prior slopcode install ===
 echo Stopping any running llama-server / opencode...
 taskkill /F /IM llama-server.exe /T >nul 2>&1
+taskkill /F /IM whisper-server.exe /T >nul 2>&1
 taskkill /F /IM opencode.exe /T >nul 2>&1
 REM Brief pause so Windows releases file handles before we rmdir.
 ping -n 3 127.0.0.1 >nul 2>&1
@@ -1505,21 +1592,31 @@ del /Q "%DEST%\run-llamacpp-cpu.bat" 2>nul
 del /Q "%DEST%\start-slopcode.bat" 2>nul
 del /Q "%DEST%\run-whisper.bat" 2>nul
 del /Q "%DEST%\bin\prewarm-opencode.bat" 2>nul
+del /Q "%DEST%\bin\record-meeting.bat" 2>nul
+del /Q "%DEST%\bin\meeting-transcribe.bat" 2>nul
+del /Q "%DEST%\bin\meeting-notes.bat" 2>nul
+del /Q "%DEST%\bin\meeting-process.bat" 2>nul
 del /Q "%USERPROFILE%\.config\opencode\opencode.json" 2>nul
 echo Removing old llama.cpp + opencode dirs...
 rmdir /S /Q "%DEST%\llama.cpp" 2>nul
 rmdir /S /Q "%DEST%\opencode" 2>nul
+rmdir /S /Q "%DEST%\whisper.cpp" 2>nul
+rmdir /S /Q "%DEST%\meeting" 2>nul
 echo Removing old GGUFs from %DEST%\models...
 del /Q "%DEST%\models\*.gguf" 2>nul
 del /Q "%DEST%\models\*.sha256" 2>nul
+del /Q "%DEST%\models\ggml-large-v3-turbo.bin" 2>nul
 echo Clearing Intel shader cache...
 rmdir /S /Q "%LOCALAPPDATA%\Intel\ShaderCache" 2>nul
 echo === Cleanup done; installing fresh ===
 echo.
-mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\bin" "%DEST%\cache" 2>nul
+mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\whisper.cpp" "%DEST%\meeting" "%DEST%\bin" "%DEST%\cache" 2>nul
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
 xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
+xcopy /E /I /Y "%HERE%\whisper.cpp" "%DEST%\whisper.cpp" >nul
+xcopy /E /I /Y "%HERE%\meeting" "%DEST%\meeting" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
+copy /Y "%ROOT%\models\ggml-large-v3-turbo.bin" "%DEST%\models\" >nul
 setx OPENCODE_DISABLE_AUTOUPDATE 1 >nul
 setx OPENCODE_DISABLE_SHARE 1 >nul
 setx OPENCODE_DISABLE_MODELS_FETCH 1 >nul
@@ -1562,6 +1659,9 @@ set "CODER_MODEL=%DEST%\models\Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf"
 >"%DEST%\stop-llamacpp.bat" echo @echo off
 >>"%DEST%\stop-llamacpp.bat" echo taskkill /F /IM llama-server.exe /T ^>nul 2^>^&1
 >>"%DEST%\stop-llamacpp.bat" echo echo stopped
+>"%DEST%\run-whisper.bat" echo @echo off
+>>"%DEST%\run-whisper.bat" echo set "PATH=%DEST%\whisper.cpp;%%PATH%%"
+>>"%DEST%\run-whisper.bat" echo "%DEST%\whisper.cpp\whisper-server.exe" -m "%DEST%\models\ggml-large-v3-turbo.bin" --host 127.0.0.1 --port 8427 -l auto -t 4 -fa --inference-path /v1/audio/transcriptions --tmp-dir "%%TEMP%%"
 >"%DEST%\llama-chat.bat" echo @echo off
 >>"%DEST%\llama-chat.bat" echo call "%DEST%\stop-llamacpp.bat" ^>nul 2^>^&1
 >>"%DEST%\llama-chat.bat" echo start "slopcode-llamacpp" /MIN "%DEST%\run-llamacpp.bat"
@@ -1573,6 +1673,18 @@ set "CODER_MODEL=%DEST%\models\Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf"
 >>"%DEST%\llama-coder.bat" echo echo coder ^(Qwen3-Coder-30B-A3B-Instruct^) on http://127.0.0.1:8080
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
+>"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper.bat" echo start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
+>"%DEST%\bin\record-meeting.bat" echo @echo off
+>>"%DEST%\bin\record-meeting.bat" echo start "" "%DEST%\meeting\record-meeting.html"
+>"%DEST%\bin\meeting-transcribe.bat" echo @echo off
+>>"%DEST%\bin\meeting-transcribe.bat" echo where pwsh ^>nul 2^>^&1 ^|^| ^(echo PowerShell 7 pwsh is required for meeting scripts. Install it from https://aka.ms/powershell ^& exit /b 1^)
+>>"%DEST%\bin\meeting-transcribe.bat" echo pwsh -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-transcribe.ps1" %%*
+>"%DEST%\bin\meeting-notes.bat" echo @echo off
+>>"%DEST%\bin\meeting-notes.bat" echo where pwsh ^>nul 2^>^&1 ^|^| ^(echo PowerShell 7 pwsh is required for meeting scripts. Install it from https://aka.ms/powershell ^& exit /b 1^)
+>>"%DEST%\bin\meeting-notes.bat" echo pwsh -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-notes.ps1" %%*
+>"%DEST%\bin\meeting-process.bat" echo @echo off
+>>"%DEST%\bin\meeting-process.bat" echo where pwsh ^>nul 2^>^&1 ^|^| ^(echo PowerShell 7 pwsh is required for meeting scripts. Install it from https://aka.ms/powershell ^& exit /b 1^)
+>>"%DEST%\bin\meeting-process.bat" echo pwsh -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-process.ps1" %%*
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
 >"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 REM Update user PATH (HKCU\Environment) without touching system entries.
@@ -1585,8 +1697,8 @@ if defined USERPATH (
 )
 setx Path "!NEWPATH!" >nul
 start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
-echo Installed localhost-only llama.cpp 8080 and opencode (--threads !THREADS!).
-echo (whisper/meeting tools are shipped on the USB but not auto-installed.)
+start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
+echo Installed localhost-only llama.cpp 8080, whisper.cpp 8427, opencode, and meeting scripts (--threads !THREADS!).
 echo If you see repeated slashes in opencode thinking, run: %DEST%\run-llamacpp-cpu.bat
 echo and update the Startup shortcut to point at run-llamacpp-cpu.bat instead.
 echo Open a new terminal before running opencode.
@@ -1622,10 +1734,11 @@ download_lmstudio_installers
 cat >"${OUT}/README.md" <<'EOF'
 # slopcode USB bundle
 
-A local AI coding bundle. The primary automatic path is llama.cpp + OpenCode on
-localhost. LM Studio is included as a manual fallback.
+A local AI coding bundle. The primary automatic path is llama.cpp + OpenCode
+plus whisper.cpp meeting transcription on localhost. LM Studio is included as a
+manual fallback.
 
-## Automatic llama.cpp path
+## Automatic localhost path
 
 Open your platform folder and run its installer:
 
@@ -1633,15 +1746,17 @@ Open your platform folder and run its installer:
 - `mac-m1/`
 - `windows-arc/`
 
-Each installer binds llama.cpp to `127.0.0.1:8080` and configures OpenCode for
-that local endpoint.
+Each installer binds llama.cpp to `127.0.0.1:8080`, binds whisper.cpp to
+`127.0.0.1:8427`, configures OpenCode for the local LLM endpoint, and installs
+the meeting scripts on PATH. `meeting-process <audio.wav>` transcribes PCM WAV
+through whisper.cpp and then calls `opencode run` once to write meeting notes.
 
 ## Manual or LM Studio path
 
 Open `local-luna/README.md`.
 
 That tutorial is copied onto this stick for people who want step-by-step setup,
-or who prefer LM Studio instead of the automatic llama.cpp scripts.
+or who prefer LM Studio instead of the automatic llama.cpp/whisper.cpp scripts.
 
 ## VS Code llama.vscode
 

@@ -177,10 +177,11 @@ A3B-Instruct UD-Q4_K_XL (the FIM swap model), the Qwen mmproj, and `ggml-large-
 v3-turbo.bin`. It also copies the `local-luna` tutorial, the latest
 llama.vscode VSIX with settings helpers, and current LM Studio desktop
 installers for manual fallback. It does not include Pi, Node, or an npm cache.
-Generated installers bind llama.cpp to `127.0.0.1:8080`; opencode is configured
-only against the local llama.cpp endpoint with telemetry/share/update/model
-fetch paths disabled. LM Studio is copied to the stick but is not wired by
-the scripts.
+Generated installers bind llama.cpp to `127.0.0.1:8080`, bind whisper.cpp to
+`127.0.0.1:8427`, put the meeting scripts on PATH, and configure opencode only
+against the local llama.cpp endpoint with telemetry/share/update/model fetch
+paths disabled. LM Studio is copied to the stick but is not wired by the
+scripts.
 
 ## Chat vs autocomplete: swap, don't sidecar
 
