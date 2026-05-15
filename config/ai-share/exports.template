@@ -1,0 +1,7 @@
+# slopcode AI share - /etc/exports on the server (macOS nfsd)
+# Read-only export of /Volumes/AI to:
+#   - ITP LAN  129.27.161.0/24
+#   - WireGuard 10.77.0.0/24
+# Admin writes happen locally on the server; no write path via network.
+/Volumes/AI -ro -mapall=nobody -network 129.27.161.0 -mask 255.255.255.0
+/Volumes/AI -ro -mapall=nobody -network 10.77.0.0 -mask 255.255.255.0

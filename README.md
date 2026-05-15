@@ -222,6 +222,29 @@ server on `127.0.0.1:8427` by default and registers a `systemd --user`
 service. macOS and Windows scripts surface the upstream non-goal of those
 platforms instead of pretending support exists.
 
+## AI model share (NFS)
+
+Single read-only `/Volumes/AI` on faepmac1, NFSv4 to clients. One copy of
+the GGUFs across the network; admins write locally, nobody writes via the
+network. llama.cpp picks it up automatically when `/Volumes/AI/llama.cpp`
+exists (`scripts/_common.sh` falls through to it).
+
+Server (faepmac1):
+
+```
+bash scripts/install_mac_ai_share_server.sh
+bash scripts/migrate_llamacpp_cache_to_share.sh
+```
+
+Clients:
+
+```
+sudo bash scripts/install_mac_ai_client.sh     # autofs
+sudo bash scripts/install_linux_ai_client.sh   # systemd .mount
+```
+
+Details, TCC caveat, and recovery: see `docs/ai-share.md`.
+
 ## Tests
 
 ```

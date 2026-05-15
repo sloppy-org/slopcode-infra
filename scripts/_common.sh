@@ -9,6 +9,11 @@ case "$(uname -s)" in
   Darwin) DEFAULT_CACHE_ROOT="${HOME}/Library/Caches/llama.cpp" ;;
   *)      DEFAULT_CACHE_ROOT="${HOME}/.cache/llama.cpp" ;;
 esac
+# Prefer the shared /Volumes/AI cache when the per-user path is missing or
+# already a symlink into it. See docs/ai-share.md.
+if [[ -d /Volumes/AI/llama.cpp ]] && { [[ ! -e "${DEFAULT_CACHE_ROOT}" ]] || [[ -L "${DEFAULT_CACHE_ROOT}" ]]; }; then
+  DEFAULT_CACHE_ROOT="/Volumes/AI/llama.cpp"
+fi
 LLAMACPP_CACHE_ROOT="${LLAMACPP_CACHE_ROOT:-${DEFAULT_CACHE_ROOT}}"
 export LLAMA_CACHE="${LLAMA_CACHE:-${LLAMACPP_CACHE_ROOT}}"
 
