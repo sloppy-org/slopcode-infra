@@ -400,9 +400,7 @@ heartbeat.
 
 **Routing.** Power-of-Two-Choices over the free-slot count, filtered by
 KV-cache headroom so a long-context request never lands on a slot that can't
-fit it. Optional sticky session affinity via the `x-session-affinity` header;
-slopgate also accepts the legacy `X-Slopgate-Session` name and opencode's
-native `x-opencode-session` header.
+fit it. Optional sticky session affinity via the `x-session-affinity` header.
 
 **Configuration.** Per-host capability data and topology live in env files
 outside the repo:

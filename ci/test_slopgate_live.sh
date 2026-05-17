@@ -112,7 +112,7 @@ response_file="$(mktemp)"
 header_file="$(mktemp)"
 curl -fsS -D "${header_file}" \
   -H 'content-type: application/json' \
-  -H 'x-opencode-session: live-smoke' \
+  -H 'x-session-affinity: live-smoke' \
   "http://127.0.0.1:${PROXY_PORT}/v1/chat/completions" \
   -d '{"model":"mock-model","max_tokens":8,"messages":[{"role":"user","content":"hello"}]}' \
   > "${response_file}"
