@@ -4,8 +4,8 @@
 # config/slopgate/follower.env.example and fill in). Writes:
 #   Linux: ~/.config/systemd/user/slopgate-agent.service
 #   macOS: ~/Library/LaunchAgents/com.slopcode.slopgate-agent.plist
-# and links ~/.local/bin/slopgate to the cargo build at
-# $CODE/sloppy/slopgate/target/release/slopgate (override with SLOPGATE_BIN).
+# and links ~/.local/bin/slopgate to the Go build at
+# $CODE/sloppy/slopgate/go/bin/slopgate (override with SLOPGATE_BIN).
 #
 # The agent registers the local llama-server with the leader's management
 # endpoint over the user's private network (WireGuard/LAN). No balancer is
@@ -55,15 +55,15 @@ resolve_slopgate_bin() {
   local candidate=""
   if [[ -n "${SLOPGATE_BIN}" && -x "${SLOPGATE_BIN}" ]]; then
     candidate="${SLOPGATE_BIN}"
-  elif [[ -x "${SLOPGATE_BUILD_DIR}/target/release/slopgate" ]]; then
-    candidate="${SLOPGATE_BUILD_DIR}/target/release/slopgate"
+  elif [[ -x "${SLOPGATE_BUILD_DIR}/go/bin/slopgate" ]]; then
+    candidate="${SLOPGATE_BUILD_DIR}/go/bin/slopgate"
   elif have slopgate; then
     candidate="$(command -v slopgate)"
   fi
   if [[ -z "${candidate}" ]]; then
     die "slopgate binary not found.
 build it first:
-  cd ${SLOPGATE_BUILD_DIR} && cargo build --release
+  cd ${SLOPGATE_BUILD_DIR} && make build
 or pass SLOPGATE_BIN=/path/to/slopgate"
   fi
   canonicalize_path "${candidate}"

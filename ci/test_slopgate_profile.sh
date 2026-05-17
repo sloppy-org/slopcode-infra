@@ -263,11 +263,31 @@ test_gitignore_blocks_env_files() {
   fi
 }
 
-test_leader_install_dry_run         || FAILED=$((FAILED + 1))
-test_follower_install_dry_run       || FAILED=$((FAILED + 1))
+test_install_scripts_reference_go_binary() {
+  echo "TEST: slopgate installers resolve the Go binary"
+  local files=(
+    "${REPO_ROOT}/scripts/install_slopgate_leader.sh"
+    "${REPO_ROOT}/scripts/install_slopgate_follower.sh"
+  )
+  if grep -Eq 'cargo|target/release' "${files[@]}"; then
+    echo "FAIL: installer still references the old Rust build path"
+    grep -En 'cargo|target/release' "${files[@]}" || true
+    return 1
+  fi
+  if grep -q 'go/bin/slopgate' "${files[@]}"; then
+    echo "PASS: installers reference go/bin/slopgate"
+  else
+    echo "FAIL: installer does not reference go/bin/slopgate"
+    return 1
+  fi
+}
+
+test_leader_install_dry_run           || FAILED=$((FAILED + 1))
+test_follower_install_dry_run         || FAILED=$((FAILED + 1))
 test_install_refuses_without_env_file || FAILED=$((FAILED + 1))
-test_env_examples_present           || FAILED=$((FAILED + 1))
-test_gitignore_blocks_env_files     || FAILED=$((FAILED + 1))
+test_env_examples_present             || FAILED=$((FAILED + 1))
+test_gitignore_blocks_env_files       || FAILED=$((FAILED + 1))
+test_install_scripts_reference_go_binary || FAILED=$((FAILED + 1))
 
 if [[ "${FAILED}" -gt 0 ]]; then
   echo "${FAILED} test(s) failed"
