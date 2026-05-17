@@ -90,7 +90,15 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
                     "prompt_tokens": len(user_message.split()),
                     "completion_tokens": len(response_text.split()),
                     "total_tokens": len(user_message.split()) + len(response_text.split())
-                }
+                },
+                "timings": {
+                    "prompt_n": max(1, len(user_message.split())),
+                    "prompt_ms": 10.0,
+                    "prompt_per_second": 100.0,
+                    "predicted_n": max(1, len(response_text.split())),
+                    "predicted_ms": 50.0,
+                    "predicted_per_second": 50.0,
+                },
             })
         else:
             self._send_json({"error": "not found"}, 404)
