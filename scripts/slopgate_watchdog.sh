@@ -68,14 +68,18 @@ _check_disk() {
 
 run_check() {
     local comp="$1"; shift
-    local detail now since msg_id
+    local detail now since msg_id fail_msg_id
     state_read "$comp"
+    fail_msg_id="$STATE_MSG_ID"
 
     if detail=$("$@" 2>/dev/null); then
         if [[ "$STATE_STATUS" == "fail" ]]; then
             now=$(date +%s)
             msg_id=$(zulip_post "$comp" "$(ok_msg "$comp" "$STATE_SINCE" "$now")")
-            state_write "$comp" "ok" "$now" ""
+            # Resolve the incident topic. Prefer the original fail msg id;
+            # fall back to the recovery msg id if state was missing it.
+            zulip_resolve_topic "${fail_msg_id:-$msg_id}" "$comp" || true
+            state_write "$comp" "ok" "$now" "" || true
         fi
         return 0
     else
@@ -85,7 +89,7 @@ run_check() {
             local content
             content=$(fail_msg "$comp" "$detail" "$(ts_to_iso "$since")")
             msg_id=$(zulip_post "$comp" "$content" "[slopgate-watchdog] FAIL: $comp")
-            state_write "$comp" "fail" "$since" "$msg_id"
+            state_write "$comp" "fail" "$since" "$msg_id" || true
         fi
         return 1
     fi

@@ -70,6 +70,26 @@ zulip_edit() {
         "$_ZULIP_SITE/api/v1/messages/$msg_id" >/dev/null 2>&1 || true
 }
 
+# zulip_resolve_topic MSG_ID TOPIC — mark the entire topic resolved by
+# renaming it to "✔ TOPIC" with propagate_mode=change_all. Idempotent:
+# topics already starting with the ✔ marker are left alone. MSG_ID must be
+# any message in the topic — the recovery post or the original fail post
+# both work since change_all rewrites the whole thread.
+zulip_resolve_topic() {
+    local msg_id="$1" topic="$2"
+    [[ -z "$msg_id" || "$msg_id" == "0" ]] && return 1
+    case "$topic" in "✔ "*) return 0 ;; esac
+    _zulip_init || return 1
+    curl -s --max-time 10 \
+        -u "$_ZULIP_EMAIL:$_ZULIP_KEY" \
+        -X PATCH \
+        --data-urlencode "topic=✔ $topic" \
+        --data-urlencode "propagate_mode=change_all" \
+        --data-urlencode "send_notification_to_old_thread=false" \
+        --data-urlencode "send_notification_to_new_thread=false" \
+        "$_ZULIP_SITE/api/v1/messages/$msg_id" >/dev/null 2>&1 || true
+}
+
 # zulip_newest_msg_ts TOPIC
 zulip_newest_msg_ts() {
     local topic="$1"
@@ -102,9 +122,18 @@ state_read() {
 }
 
 # state_write COMPONENT STATUS SINCE_EPOCH MSG_ID
+# Returns non-zero on disk error but never aborts the caller under set -e;
+# losing state silently is how recoveries get dropped, so the error path
+# logs to stderr.
 state_write() {
-    mkdir -p "$WATCHDOG_STATE_DIR"
-    printf '%s\n%s\n%s\n' "$2" "$3" "${4:-}" > "$WATCHDOG_STATE_DIR/$1.state"
+    if ! mkdir -p "$WATCHDOG_STATE_DIR" 2>/dev/null; then
+        echo "slopgate-watchdog: state dir not writable: $WATCHDOG_STATE_DIR" >&2
+        return 1
+    fi
+    if ! printf '%s\n%s\n%s\n' "$2" "$3" "${4:-}" > "$WATCHDOG_STATE_DIR/$1.state" 2>/dev/null; then
+        echo "slopgate-watchdog: state write failed: $WATCHDOG_STATE_DIR/$1.state" >&2
+        return 1
+    fi
 }
 
 ts_to_iso() {

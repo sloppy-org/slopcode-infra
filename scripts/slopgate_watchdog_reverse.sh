@@ -23,8 +23,10 @@ main() {
 
     if [[ "$ts" -gt 0 && $(( now - ts )) -le $MAX_STALE ]]; then
         if [[ "$STATE_STATUS" == "fail" ]]; then
+            local fail_msg_id="$STATE_MSG_ID"
             msg=$(zulip_post "slopgate-watchdog dead" "$(ok_msg "$COMP" "$STATE_SINCE" "$now")")
-            state_write "$COMP" "ok" "$now" ""
+            zulip_resolve_topic "${fail_msg_id:-$msg}" "slopgate-watchdog dead" || true
+            state_write "$COMP" "ok" "$now" "" || true
         fi
     else
         if [[ "$STATE_STATUS" == "ok" ]]; then
@@ -36,7 +38,7 @@ main() {
             local content
             content="$(fail_msg "$COMP" "$detail" "$(ts_to_iso "$now")")"
             msg=$(zulip_post "slopgate-watchdog dead" "$content" "[slopgate-watchdog] PRIMARY WATCHDOG SILENT")
-            state_write "$COMP" "fail" "$now" "$msg"
+            state_write "$COMP" "fail" "$now" "$msg" || true
         fi
     fi
 }
