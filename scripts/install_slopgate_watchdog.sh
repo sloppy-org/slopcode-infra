@@ -44,6 +44,9 @@ install_leader() {
     SMTP_USER_VAL="$SMTP_USER"
     SMTP_PASS_VAL="$SMTP_PASSWORD"
     INCIDENT_MAIL="$WATCHDOG_INCIDENT_MAIL"
+    HB_SSH_TARGET="root@${COMPUTOR_HOST_IP}"
+    HB_SSH_PORT="${COMPUTOR_SSH_PORT:-22}"
+    HB_REMOTE_PATH="/var/lib/slopgate-watchdog/primary-heartbeat"
 
     ssh "$FAEPMAC1" bash -s <<REMOTE
 set -euo pipefail
@@ -88,6 +91,9 @@ export WATCHDOG_ZULIPRC="\$HOME/.config/slopgate-watchdog/zuliprc"
 export WATCHDOG_STATE_DIR="\$HOME/.local/share/slopgate-watchdog"
 export WATCHDOG_INCIDENT_MAIL="${INCIDENT_MAIL}"
 export MSMTP_CONFIG="\$HOME/.config/slopgate-watchdog/msmtprc"
+export WATCHDOG_HEARTBEAT_SSH_TARGET="${HB_SSH_TARGET}"
+export WATCHDOG_HEARTBEAT_SSH_PORT="${HB_SSH_PORT}"
+export WATCHDOG_HEARTBEAT_REMOTE_PATH="${HB_REMOTE_PATH}"
 ENV
 
 cat >~/bin/slopgate-watchdog-run <<'WRAP'

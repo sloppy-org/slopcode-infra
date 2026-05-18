@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Primary slopgate watchdog — runs every 5 min on the leader (faepmac1) via
 # launchd. Checks the balancer, management API, agent population, launchd
-# services, and local disk; posts to Zulip on state transitions and edits a
-# heartbeat message in topic `slopgate-heartbeat` on success.
+# services, and local disk; posts to Zulip on state transitions only.
+# Heartbeat is pushed out-of-band via SSH to the chat host so it never
+# touches Zulip; the reverse watchdog stats that file's mtime.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -111,20 +112,7 @@ main() {
         local ticks=0
         [[ -f "$tick_file" ]] && ticks=$(cat "$tick_file")
         echo $(( ticks + 1 )) > "$tick_file"
-        local hb_file="$WATCHDOG_STATE_DIR/heartbeat.msgid"
-        local now_iso msg_id content
-        now_iso=$(date -u "+%Y-%m-%dT%H:%MZ")
-        content="Slopgate watchdog heartbeat — last all-OK: $now_iso"
-        if [[ -f "$hb_file" ]]; then
-            msg_id=$(cat "$hb_file")
-            if ! zulip_edit "$msg_id" "$content" 2>/dev/null; then
-                msg_id=$(zulip_post "slopgate-heartbeat" "$content")
-                echo "$msg_id" > "$hb_file"
-            fi
-        else
-            msg_id=$(zulip_post "slopgate-heartbeat" "$content")
-            echo "$msg_id" > "$hb_file"
-        fi
+        _heartbeat_push_remote
     fi
 }
 

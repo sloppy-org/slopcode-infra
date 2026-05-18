@@ -12,11 +12,20 @@ WATCHDOG_STATE_DIR="${WATCHDOG_STATE_DIR:-/var/lib/slopgate-watchdog}"
 
 MAX_STALE=900   # 15 min
 COMP="slopgate-watchdog-primary"
-HEARTBEAT_TOPIC="slopgate-heartbeat"
+HEARTBEAT_FILE="${WATCHDOG_HEARTBEAT_LOCAL_PATH:-/var/lib/slopgate-watchdog/primary-heartbeat}"
+
+_read_heartbeat_ts() {
+    [[ -f "$HEARTBEAT_FILE" ]] || { echo 0; return; }
+    local mtime
+    mtime=$(stat -c %Y "$HEARTBEAT_FILE" 2>/dev/null \
+        || stat -f %m "$HEARTBEAT_FILE" 2>/dev/null \
+        || echo 0)
+    echo "${mtime:-0}"
+}
 
 main() {
     local ts now detail msg
-    ts=$(zulip_newest_msg_ts "$HEARTBEAT_TOPIC")
+    ts=$(_read_heartbeat_ts)
     now=$(date +%s)
 
     state_read "$COMP"
@@ -31,7 +40,7 @@ main() {
     else
         if [[ "$STATE_STATUS" == "ok" ]]; then
             if [[ "$ts" -eq 0 ]]; then
-                detail="no heartbeat message found in topic $HEARTBEAT_TOPIC"
+                detail="no heartbeat file at $HEARTBEAT_FILE"
             else
                 detail="heartbeat stale: last seen $(( (now - ts) / 60 ))m ago (threshold 15m)"
             fi

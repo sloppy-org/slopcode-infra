@@ -12,6 +12,24 @@ WATCHDOG_INCIDENT_MAIL="${WATCHDOG_INCIDENT_MAIL:-}"
 WATCHDOG_SMTP_FROM="${WATCHDOG_SMTP_FROM:-albert@tugraz.at}"
 WATCHDOG_ADMINS_GROUP="${WATCHDOG_ADMINS_GROUP:-computor-admins}"
 
+# Heartbeat is pushed via SSH to the chat host so Zulip never sees it.
+# Configure via the primary's env.sh:
+#   WATCHDOG_HEARTBEAT_SSH_TARGET   user@host (required to enable push)
+#   WATCHDOG_HEARTBEAT_SSH_PORT     optional, default 22
+#   WATCHDOG_HEARTBEAT_REMOTE_PATH  default /var/lib/slopgate-watchdog/primary-heartbeat
+WATCHDOG_HEARTBEAT_SSH_TARGET="${WATCHDOG_HEARTBEAT_SSH_TARGET:-}"
+WATCHDOG_HEARTBEAT_SSH_PORT="${WATCHDOG_HEARTBEAT_SSH_PORT:-22}"
+WATCHDOG_HEARTBEAT_REMOTE_PATH="${WATCHDOG_HEARTBEAT_REMOTE_PATH:-/var/lib/slopgate-watchdog/primary-heartbeat}"
+
+_heartbeat_push_remote() {
+    [[ -n "$WATCHDOG_HEARTBEAT_SSH_TARGET" ]] || return 0
+    local remote="$WATCHDOG_HEARTBEAT_REMOTE_PATH"
+    ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+        -p "$WATCHDOG_HEARTBEAT_SSH_PORT" "$WATCHDOG_HEARTBEAT_SSH_TARGET" \
+        "mkdir -p \"\$(dirname '$remote')\" && date -u +%s > '$remote'" \
+        >/dev/null 2>&1 || true
+}
+
 _ZULIP_EMAIL=""
 _ZULIP_KEY=""
 _ZULIP_SITE=""
