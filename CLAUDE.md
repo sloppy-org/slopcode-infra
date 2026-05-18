@@ -425,7 +425,7 @@ Current canonical → alias mapping in the env templates:
 | `bartowski/qwen3.6:27b-q4km@256k`                    | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@256k`    |
 | `unsloth/qwen3.5:122b-a10b-q4kxl@256k`               | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@256k` |
 
-Reserved aliases (no live peer yet): `luna` for a future gpt-oss-20b
+Reserved aliases (no live peer yet): `luna` for a future gpt-oss-120b
 instance, `tuna` for a future short-context Qwen 35B chat pool.
 
 **Machine profiles.** `SLOPGATE_LOCAL_MACHINE_PROFILE` /
