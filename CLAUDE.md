@@ -411,6 +411,34 @@ Templates at `config/slopgate/{leader,follower}.env.example`. Real env files
 are gitignored. Concrete IPs and hostnames never leak into commits, PR
 descriptions, or issue bodies.
 
+**Model naming.** Every agent advertises a canonical model slug, a short
+alias (legacy `--model-alias`), and any number of additional routing
+aliases. The full convention plus the alias table for the three current
+Qwen variants on faepmac1 lives in the slopgate repo:
+<https://github.com/sloppy-org/slopgate#model-naming-convention>.
+
+Current canonical → alias mapping in the env templates:
+
+| Canonical                                            | Aliases                                         |
+|------------------------------------------------------|-------------------------------------------------|
+| `unsloth/qwen3.6:35b-a3b-q4kxl@262k`                 | `qwen`, `qwen3.6-35b`, `qwen3.6-35b@256k`       |
+| `bartowski/qwen3.6:27b-q4km@262k`                    | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@256k`    |
+| `unsloth/qwen3.5:122b-a10b-q4kxl@262k`               | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@256k` |
+
+Reserved aliases (no live peer yet): `luna` for a future gpt-oss-20b
+instance, `tuna` for a future short-context Qwen 35B chat pool.
+
+**Machine profiles.** `SLOPGATE_LOCAL_MACHINE_PROFILE` /
+`SLOPGATE_MACHINE_PROFILE` is a stable class name shared by physically
+identical hosts. faepmac1 and faepmac2 both set
+`mac-studio-m3-ultra-256g`, which lets the balancer apply faepmac1's
+pre-calibration EMA seeds to faepmac2 immediately on first heartbeat —
+no cold-start exploration. Each box still keeps its own `machine_id`;
+the profile is purely a calibration-reuse key. The slopgate-agent also
+reports a `config_digest` derived from llama-server `/props`; two peers
+serving the same alias with disagreeing canonical or digest light up a
+"config mismatch" badge on the dashboard.
+
 **Install.** From the leader: `bash scripts/install_slopgate_leader.sh`.
 From each follower: `bash scripts/install_slopgate_follower.sh`. Both
 scripts link `~/.local/bin/slopgate` to the cargo build at

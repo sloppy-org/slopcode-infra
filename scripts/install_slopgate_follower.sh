@@ -103,6 +103,9 @@ ExecStart=${EXEC_BIN} agent \\
   --llamacpp-request-timeout ${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT} \\
   --max-context \${SLOPGATE_MAX_CONTEXT} \\
   --model-alias \${SLOPGATE_MODEL_ALIAS} \\
+  --canonical-model \${SLOPGATE_CANONICAL_MODEL:-} \\
+  --model-aliases \${SLOPGATE_MODEL_ALIASES:-} \\
+  --machine-profile \${SLOPGATE_MACHINE_PROFILE:-} \\
   --name \${SLOPGATE_AGENT_NAME}
 Restart=on-failure
 RestartSec=5
@@ -162,6 +165,9 @@ UNIT
     <string>--llamacpp-request-timeout</string><string>${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT}</string>
     <string>--max-context</string><string>${SLOPGATE_MAX_CONTEXT}</string>
     <string>--model-alias</string><string>${SLOPGATE_MODEL_ALIAS}</string>
+    <string>--canonical-model</string><string>${SLOPGATE_CANONICAL_MODEL:-}</string>
+    <string>--model-aliases</string><string>${SLOPGATE_MODEL_ALIASES:-}</string>
+    <string>--machine-profile</string><string>${SLOPGATE_MACHINE_PROFILE:-}</string>
     <string>--name</string><string>${SLOPGATE_AGENT_NAME}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent.log</string>

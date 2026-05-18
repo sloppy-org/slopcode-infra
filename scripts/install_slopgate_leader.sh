@@ -131,6 +131,9 @@ ExecStart=${EXEC_BIN} agent \\
   --llamacpp-request-timeout ${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT} \\
   --max-context \${SLOPGATE_LOCAL_MAX_CONTEXT} \\
   --model-alias \${SLOPGATE_LOCAL_MODEL_ALIAS} \\
+  --canonical-model \${SLOPGATE_LOCAL_CANONICAL_MODEL:-} \\
+  --model-aliases \${SLOPGATE_LOCAL_MODEL_ALIASES:-} \\
+  --machine-profile \${SLOPGATE_LOCAL_MACHINE_PROFILE:-} \\
   --name \${SLOPGATE_LOCAL_AGENT_NAME}
 Restart=on-failure
 RestartSec=5
@@ -185,10 +188,14 @@ UNIT
     AGENT_27B_MAX_CONTEXT="${SLOPGATE_AGENT_27B_MAX_CONTEXT:-262144}"
     AGENT_27B_MODEL_ALIAS="${SLOPGATE_AGENT_27B_MODEL_ALIAS:-qwen27b}"
     AGENT_27B_NAME="${SLOPGATE_AGENT_27B_NAME:-leader-27b}"
+    AGENT_27B_CANONICAL_MODEL="${SLOPGATE_AGENT_27B_CANONICAL_MODEL:-bartowski/qwen3.6:27b-q4km@262k}"
+    AGENT_27B_MODEL_ALIASES="${SLOPGATE_AGENT_27B_MODEL_ALIASES:-qwen3.6-27b,qwen3.6-27b@256k}"
     AGENT_122B_ADDR="${SLOPGATE_AGENT_122B_ADDR:-127.0.0.1:8083}"
     AGENT_122B_MAX_CONTEXT="${SLOPGATE_AGENT_122B_MAX_CONTEXT:-262144}"
     AGENT_122B_MODEL_ALIAS="${SLOPGATE_AGENT_122B_MODEL_ALIAS:-qwen122b}"
     AGENT_122B_NAME="${SLOPGATE_AGENT_122B_NAME:-leader-122b}"
+    AGENT_122B_CANONICAL_MODEL="${SLOPGATE_AGENT_122B_CANONICAL_MODEL:-unsloth/qwen3.5:122b-a10b-q4kxl@262k}"
+    AGENT_122B_MODEL_ALIASES="${SLOPGATE_AGENT_122B_MODEL_ALIASES:-qwen3.5-122b,qwen3.5-122b@256k}"
 
     cat > "${BALANCER_PLIST}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -236,6 +243,9 @@ XML
     <string>--llamacpp-request-timeout</string><string>${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT}</string>
     <string>--max-context</string><string>${SLOPGATE_LOCAL_MAX_CONTEXT}</string>
     <string>--model-alias</string><string>${SLOPGATE_LOCAL_MODEL_ALIAS}</string>
+    <string>--canonical-model</string><string>${SLOPGATE_LOCAL_CANONICAL_MODEL:-}</string>
+    <string>--model-aliases</string><string>${SLOPGATE_LOCAL_MODEL_ALIASES:-}</string>
+    <string>--machine-profile</string><string>${SLOPGATE_LOCAL_MACHINE_PROFILE:-}</string>
     <string>--name</string><string>${SLOPGATE_LOCAL_AGENT_NAME}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent.log</string>
@@ -249,6 +259,8 @@ XML
 
     write_companion_agent() {
       local label="$1" plist="$2" addr="$3" max_ctx="$4" alias="$5" name="$6"
+      local canonical="${7:-}" aliases="${8:-}"
+      local profile="${SLOPGATE_LOCAL_MACHINE_PROFILE:-}"
       cat > "${plist}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -270,6 +282,9 @@ XML
     <string>--llamacpp-request-timeout</string><string>${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT}</string>
     <string>--max-context</string><string>${max_ctx}</string>
     <string>--model-alias</string><string>${alias}</string>
+    <string>--canonical-model</string><string>${canonical}</string>
+    <string>--model-aliases</string><string>${aliases}</string>
+    <string>--machine-profile</string><string>${profile}</string>
     <string>--name</string><string>${name}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent-${alias}.log</string>
@@ -285,7 +300,8 @@ XML
     if [[ -f "${AGENTS_DIR}/com.slopcode.llamacpp-27b.plist" ]]; then
       write_companion_agent "${AGENT_27B_LABEL}" "${AGENT_27B_PLIST}" \
         "${AGENT_27B_ADDR}" "${AGENT_27B_MAX_CONTEXT}" \
-        "${AGENT_27B_MODEL_ALIAS}" "${AGENT_27B_NAME}"
+        "${AGENT_27B_MODEL_ALIAS}" "${AGENT_27B_NAME}" \
+        "${AGENT_27B_CANONICAL_MODEL:-}" "${AGENT_27B_MODEL_ALIASES:-}"
       INSTALLED_AGENT_LABELS+=("${AGENT_27B_LABEL}")
     else
       rm -f "${AGENT_27B_PLIST}"
@@ -294,7 +310,8 @@ XML
     if [[ -f "${AGENTS_DIR}/com.slopcode.llamacpp-122b.plist" ]]; then
       write_companion_agent "${AGENT_122B_LABEL}" "${AGENT_122B_PLIST}" \
         "${AGENT_122B_ADDR}" "${AGENT_122B_MAX_CONTEXT}" \
-        "${AGENT_122B_MODEL_ALIAS}" "${AGENT_122B_NAME}"
+        "${AGENT_122B_MODEL_ALIAS}" "${AGENT_122B_NAME}" \
+        "${AGENT_122B_CANONICAL_MODEL:-}" "${AGENT_122B_MODEL_ALIASES:-}"
       INSTALLED_AGENT_LABELS+=("${AGENT_122B_LABEL}")
     else
       rm -f "${AGENT_122B_PLIST}"
