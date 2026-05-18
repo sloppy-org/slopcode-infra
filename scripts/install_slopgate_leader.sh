@@ -134,6 +134,7 @@ ExecStart=${EXEC_BIN} agent \\
   --canonical-model \${SLOPGATE_LOCAL_CANONICAL_MODEL:-} \\
   --model-aliases \${SLOPGATE_LOCAL_MODEL_ALIASES:-} \\
   --machine-profile \${SLOPGATE_LOCAL_MACHINE_PROFILE:-} \\
+  --digest-extra \${SLOPGATE_LOCAL_DIGEST_EXTRA:-} \\
   --name \${SLOPGATE_LOCAL_AGENT_NAME}
 Restart=on-failure
 RestartSec=5
@@ -246,6 +247,7 @@ XML
     <string>--canonical-model</string><string>${SLOPGATE_LOCAL_CANONICAL_MODEL:-}</string>
     <string>--model-aliases</string><string>${SLOPGATE_LOCAL_MODEL_ALIASES:-}</string>
     <string>--machine-profile</string><string>${SLOPGATE_LOCAL_MACHINE_PROFILE:-}</string>
+    <string>--digest-extra</string><string>${SLOPGATE_LOCAL_DIGEST_EXTRA:-}</string>
     <string>--name</string><string>${SLOPGATE_LOCAL_AGENT_NAME}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent.log</string>
@@ -259,7 +261,7 @@ XML
 
     write_companion_agent() {
       local label="$1" plist="$2" addr="$3" max_ctx="$4" alias="$5" name="$6"
-      local canonical="${7:-}" aliases="${8:-}"
+      local canonical="${7:-}" aliases="${8:-}" digest_extra="${9:-${SLOPGATE_LOCAL_DIGEST_EXTRA:-}}"
       local profile="${SLOPGATE_LOCAL_MACHINE_PROFILE:-}"
       cat > "${plist}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -285,6 +287,7 @@ XML
     <string>--canonical-model</string><string>${canonical}</string>
     <string>--model-aliases</string><string>${aliases}</string>
     <string>--machine-profile</string><string>${profile}</string>
+    <string>--digest-extra</string><string>${digest_extra}</string>
     <string>--name</string><string>${name}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent-${alias}.log</string>

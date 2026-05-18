@@ -106,6 +106,7 @@ ExecStart=${EXEC_BIN} agent \\
   --canonical-model \${SLOPGATE_CANONICAL_MODEL:-} \\
   --model-aliases \${SLOPGATE_MODEL_ALIASES:-} \\
   --machine-profile \${SLOPGATE_MACHINE_PROFILE:-} \\
+  --digest-extra \${SLOPGATE_DIGEST_EXTRA:-} \\
   --name \${SLOPGATE_AGENT_NAME}
 Restart=on-failure
 RestartSec=5
@@ -168,6 +169,7 @@ UNIT
     <string>--canonical-model</string><string>${SLOPGATE_CANONICAL_MODEL:-}</string>
     <string>--model-aliases</string><string>${SLOPGATE_MODEL_ALIASES:-}</string>
     <string>--machine-profile</string><string>${SLOPGATE_MACHINE_PROFILE:-}</string>
+    <string>--digest-extra</string><string>${SLOPGATE_DIGEST_EXTRA:-}</string>
     <string>--name</string><string>${SLOPGATE_AGENT_NAME}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent.log</string>
