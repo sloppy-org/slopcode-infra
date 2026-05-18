@@ -22,7 +22,7 @@ checks="slopgate-balancer slopgate-management slopgate-agents slopgate-launchd s
 rows=""
 for comp in $checks; do
     state_read "$comp"
-    icon=":white_check_mark:"
+    icon=":check:"
     [[ "$STATE_STATUS" == "fail" ]] && icon=":rotating_light:"
     since_str=""
     [[ "$STATE_SINCE" != "0" && -n "$STATE_SINCE" ]] && since_str=" (since $(ts_to_iso "$STATE_SINCE"))"
