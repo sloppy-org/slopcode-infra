@@ -421,9 +421,9 @@ Current canonical → alias mapping in the env templates:
 
 | Canonical                                            | Aliases                                         |
 |------------------------------------------------------|-------------------------------------------------|
-| `unsloth/qwen3.6:35b-a3b-q4kxl@262k`                 | `qwen`, `qwen3.6-35b`, `qwen3.6-35b@256k`       |
-| `bartowski/qwen3.6:27b-q4km@262k`                    | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@256k`    |
-| `unsloth/qwen3.5:122b-a10b-q4kxl@262k`               | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@256k` |
+| `unsloth/qwen3.6:35b-a3b-q4kxl@256k`                 | `qwen`, `qwen3.6-35b`, `qwen3.6-35b@256k`       |
+| `bartowski/qwen3.6:27b-q4km@256k`                    | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@256k`    |
+| `unsloth/qwen3.5:122b-a10b-q4kxl@256k`               | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@256k` |
 
 Reserved aliases (no live peer yet): `luna` for a future gpt-oss-20b
 instance, `tuna` for a future short-context Qwen 35B chat pool.
