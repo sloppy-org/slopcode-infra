@@ -59,15 +59,20 @@ zulip_post() {
 }
 
 # zulip_edit MSG_ID CONTENT
+# Returns 0 on API success, 1 otherwise (e.g. message-edit time limit
+# exceeded). Callers rely on the non-zero return to fall back to a fresh
+# post; without it the heartbeat goes permanently silent once Zulip's
+# edit window closes.
 zulip_edit() {
-    local msg_id="$1" content="$2"
+    local msg_id="$1" content="$2" resp
     [[ -z "$msg_id" || "$msg_id" == "0" ]] && return 1
     _zulip_init || return 1
-    curl -s --max-time 10 \
+    resp=$(curl -s --max-time 10 \
         -u "$_ZULIP_EMAIL:$_ZULIP_KEY" \
         -X PATCH \
         --data-urlencode "content=$content" \
-        "$_ZULIP_SITE/api/v1/messages/$msg_id" >/dev/null 2>&1 || true
+        "$_ZULIP_SITE/api/v1/messages/$msg_id" 2>/dev/null) || return 1
+    echo "$resp" | grep -q '"result":"success"'
 }
 
 # zulip_resolve_topic MSG_ID TOPIC — mark the entire topic resolved by
