@@ -103,10 +103,10 @@ ExecStart=${EXEC_BIN} agent \\
   --llamacpp-request-timeout ${SLOPGATE_LLAMACPP_REQUEST_TIMEOUT} \\
   --max-context \${SLOPGATE_MAX_CONTEXT} \\
   --model-alias \${SLOPGATE_MODEL_ALIAS} \\
-  --canonical-model \${SLOPGATE_CANONICAL_MODEL:-} \\
-  --model-aliases \${SLOPGATE_MODEL_ALIASES:-} \\
-  --machine-profile \${SLOPGATE_MACHINE_PROFILE:-} \\
-  --digest-extra \${SLOPGATE_DIGEST_EXTRA:-} \\
+  --canonical-model \${SLOPGATE_CANONICAL_MODEL} \\
+  --model-aliases \${SLOPGATE_MODEL_ALIASES} \\
+  --machine-profile \${SLOPGATE_MACHINE_PROFILE} \\
+  --digest-extra \${SLOPGATE_DIGEST_EXTRA} \\
   --name \${SLOPGATE_AGENT_NAME}
 Restart=on-failure
 RestartSec=5
