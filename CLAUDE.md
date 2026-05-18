@@ -102,6 +102,23 @@ scripts/
                                 (sources ~/.config/slopgate/leader.env)
   install_slopgate_follower.sh  install slopgate agent only (sources
                                 ~/.config/slopgate/follower.env)
+  install_slopgate_watchdog.sh  install slopgate watchdog (primary +
+                                weekly summary on leader via launchd,
+                                reverse on chat.computor.at via systemd).
+                                Posts to Zulip stream `monitoring`,
+                                topics `slopgate-*`. Sources
+                                ~/infra/computor-infra/env for SMTP and
+                                chat.computor.at SSH parameters.
+  slopgate_watchdog.sh          primary check loop (5 min). Verifies
+                                balancer :8080/v1/models, management
+                                :8085/healthz, usable_agents > 0,
+                                launchd services, and leader disk.
+  slopgate_watchdog_reverse.sh  reverse check (10 min on chat host) —
+                                pages if `slopgate-heartbeat` topic
+                                goes stale > 15 min.
+  slopgate_watchdog_summary.sh  weekly Markdown ring-state report
+                                (Mon 06:00).
+  slopgate_watchdog_lib.sh      shared Zulip / state / mail helpers.
   opencode_install.sh           curl|bash (online) or OPENCODE_OFFLINE_ARCHIVE
   build_bundle.sh               USB bundle builder for linux-cuda, mac-m1,
                                 windows-arc. Includes llama.cpp, opencode,
