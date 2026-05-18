@@ -108,14 +108,26 @@ scripts/
                                 Posts to Zulip stream `monitoring`,
                                 topics `slopgate-*`. Sources
                                 ~/infra/computor-infra/env for SMTP and
-                                chat.computor.at SSH parameters.
+                                chat.computor.at SSH parameters. Generates
+                                a dedicated passphraseless ed25519 key on
+                                the leader (~/.ssh/slopgate_watchdog_ed25519)
+                                and installs it in chat's
+                                /root/.ssh/authorized_keys with a
+                                forced-command lock that only updates
+                                /var/lib/slopgate-watchdog/primary-heartbeat.
+                                The launchd SSH agent socket is empty for
+                                background jobs (Touch ID never fires), so
+                                an agent-dependent key would fail silently
+                                — hence the dedicated key + IdentitiesOnly.
   slopgate_watchdog.sh          primary check loop (5 min). Verifies
                                 balancer :8080/v1/models, management
                                 :8085/healthz, usable_agents > 0,
-                                launchd services, and leader disk.
+                                launchd services, and leader disk. On
+                                all-OK, pushes heartbeat via SSH to the
+                                chat host using the dedicated key above.
   slopgate_watchdog_reverse.sh  reverse check (10 min on chat host) —
-                                pages if `slopgate-heartbeat` topic
-                                goes stale > 15 min.
+                                pages if /var/lib/slopgate-watchdog/
+                                primary-heartbeat is older than 15 min.
   slopgate_watchdog_summary.sh  weekly Markdown ring-state report
                                 (Mon 06:00).
   slopgate_watchdog_lib.sh      shared Zulip / state / mail helpers.

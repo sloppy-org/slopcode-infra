@@ -47,6 +47,7 @@ install_leader() {
     HB_SSH_TARGET="root@${COMPUTOR_HOST_IP}"
     HB_SSH_PORT="${COMPUTOR_SSH_PORT:-22}"
     HB_REMOTE_PATH="/var/lib/slopgate-watchdog/primary-heartbeat"
+    HB_SSH_KEY="\$HOME/.ssh/slopgate_watchdog_ed25519"
 
     ssh "$FAEPMAC1" bash -s <<REMOTE
 set -euo pipefail
@@ -56,7 +57,20 @@ if ! command -v msmtp >/dev/null 2>&1; then
     brew install msmtp
 fi
 
-mkdir -p ~/.config/slopgate-watchdog ~/.local/share/slopgate-watchdog ~/bin
+mkdir -p ~/.config/slopgate-watchdog ~/.local/share/slopgate-watchdog ~/bin ~/.ssh
+chmod 0700 ~/.ssh
+
+# Dedicated, passphraseless ed25519 key for the heartbeat push. The
+# launchd SSH agent socket is empty until Touch ID unlocks the keychain,
+# which never happens for background jobs — so the watchdog cannot rely
+# on the user's interactive keys. This key is installed on the chat host
+# with a forced command that updates the heartbeat file and nothing else.
+HB_KEY=~/.ssh/slopgate_watchdog_ed25519
+if [[ ! -f "\$HB_KEY" ]]; then
+    ssh-keygen -t ed25519 -N '' -C "slopgate-watchdog@\$(hostname -s)" -f "\$HB_KEY" >/dev/null
+fi
+chmod 0600 "\$HB_KEY"
+chmod 0644 "\$HB_KEY.pub"
 
 install -m 0600 /tmp/slopgate_zuliprc ~/.config/slopgate-watchdog/zuliprc
 rm -f /tmp/slopgate_zuliprc
@@ -93,6 +107,7 @@ export WATCHDOG_INCIDENT_MAIL="${INCIDENT_MAIL}"
 export MSMTP_CONFIG="\$HOME/.config/slopgate-watchdog/msmtprc"
 export WATCHDOG_HEARTBEAT_SSH_TARGET="${HB_SSH_TARGET}"
 export WATCHDOG_HEARTBEAT_SSH_PORT="${HB_SSH_PORT}"
+export WATCHDOG_HEARTBEAT_SSH_KEY="${HB_SSH_KEY}"
 export WATCHDOG_HEARTBEAT_REMOTE_PATH="${HB_REMOTE_PATH}"
 ENV
 
@@ -183,6 +198,14 @@ install_reverse() {
     put_remote "$SCRIPT_DIR/slopgate_watchdog_lib.sh"     "/tmp/slopgate_watchdog_lib.sh"
     put_remote "$SCRIPT_DIR/slopgate_watchdog_reverse.sh" "/tmp/slopgate_watchdog_reverse.sh"
 
+    LEADER_HB_PUBKEY=$(ssh "$FAEPMAC1" 'cat ~/.ssh/slopgate_watchdog_ed25519.pub' 2>/dev/null \
+        || { echo "install_slopgate_watchdog: leader pubkey missing — run install_leader first" >&2; exit 1; })
+    HB_FORCED_CMD='mkdir -p /var/lib/slopgate-watchdog && date -u +%s > /var/lib/slopgate-watchdog/primary-heartbeat'
+    # base64-encode to avoid quote-mangling when injected into the remote
+    # heredoc; the `command="..."` substring would otherwise collide with
+    # the outer "${HB_AUTH_LINE}" shell quoting.
+    HB_AUTH_LINE_B64=$(printf 'command="%s",restrict %s\n' "$HB_FORCED_CMD" "$LEADER_HB_PUBKEY" | base64 | tr -d '\n')
+
     INCIDENT_MAIL="$WATCHDOG_INCIDENT_MAIL"
 
     run_remote bash -s <<REMOTE
@@ -194,7 +217,16 @@ install -m 0644 /tmp/slopgate_watchdog_lib.sh     /usr/local/sbin/slopgate_watch
 install -m 0755 /tmp/slopgate_watchdog_reverse.sh /usr/local/sbin/slopgate-watchdog-reverse
 rm -f /tmp/slopgate_watchdog_lib.sh /tmp/slopgate_watchdog_reverse.sh
 
-mkdir -p /var/lib/slopgate-watchdog
+mkdir -p /var/lib/slopgate-watchdog /root/.ssh
+chmod 0700 /root/.ssh
+touch /root/.ssh/authorized_keys
+chmod 0600 /root/.ssh/authorized_keys
+
+# Idempotent install of the leader's heartbeat pubkey. Replace any prior
+# slopgate-watchdog entry so a rotated leader key takes effect cleanly.
+sed -i '/slopgate-watchdog@/d' /root/.ssh/authorized_keys
+echo "${HB_AUTH_LINE_B64}" | base64 -d >> /root/.ssh/authorized_keys
+echo "" >> /root/.ssh/authorized_keys
 
 cat >/etc/systemd/system/slopgate-watchdog-reverse.service <<SVC
 [Unit]

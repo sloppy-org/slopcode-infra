@@ -16,18 +16,31 @@ WATCHDOG_ADMINS_GROUP="${WATCHDOG_ADMINS_GROUP:-computor-admins}"
 # Configure via the primary's env.sh:
 #   WATCHDOG_HEARTBEAT_SSH_TARGET   user@host (required to enable push)
 #   WATCHDOG_HEARTBEAT_SSH_PORT     optional, default 22
+#   WATCHDOG_HEARTBEAT_SSH_KEY      passphraseless private key (required so
+#                                   launchd can push without a populated
+#                                   SSH agent; the macOS launchd agent
+#                                   socket is empty until Touch ID unlocks
+#                                   the keychain, which never happens for
+#                                   background jobs)
 #   WATCHDOG_HEARTBEAT_REMOTE_PATH  default /var/lib/slopgate-watchdog/primary-heartbeat
+#                                   only used as a label; the server-side
+#                                   forced command picks the actual path.
 WATCHDOG_HEARTBEAT_SSH_TARGET="${WATCHDOG_HEARTBEAT_SSH_TARGET:-}"
 WATCHDOG_HEARTBEAT_SSH_PORT="${WATCHDOG_HEARTBEAT_SSH_PORT:-22}"
+WATCHDOG_HEARTBEAT_SSH_KEY="${WATCHDOG_HEARTBEAT_SSH_KEY:-${HOME:-}/.ssh/slopgate_watchdog_ed25519}"
 WATCHDOG_HEARTBEAT_REMOTE_PATH="${WATCHDOG_HEARTBEAT_REMOTE_PATH:-/var/lib/slopgate-watchdog/primary-heartbeat}"
 
 _heartbeat_push_remote() {
     [[ -n "$WATCHDOG_HEARTBEAT_SSH_TARGET" ]] || return 0
-    local remote="$WATCHDOG_HEARTBEAT_REMOTE_PATH"
-    ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+    if [[ ! -r "$WATCHDOG_HEARTBEAT_SSH_KEY" ]]; then
+        echo "slopgate-watchdog: heartbeat key missing or unreadable: $WATCHDOG_HEARTBEAT_SSH_KEY" >&2
+        return 1
+    fi
+    ssh -i "$WATCHDOG_HEARTBEAT_SSH_KEY" \
+        -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+        -o IdentitiesOnly=yes -o IdentityAgent=none \
         -p "$WATCHDOG_HEARTBEAT_SSH_PORT" "$WATCHDOG_HEARTBEAT_SSH_TARGET" \
-        "mkdir -p \"\$(dirname '$remote')\" && date -u +%s > '$remote'" \
-        >/dev/null 2>&1 || true
+        true
 }
 
 _ZULIP_EMAIL=""
