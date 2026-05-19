@@ -36,6 +36,11 @@
 #                          f16 nearly doubles KV; only fits the 2/1/1 layout
 #                          with -c trimmed elsewhere.
 #   LLAMACPP_CACHE_TYPE_V  KV-cache value type: q8_0 (default) or f16.
+#   LLAMACPP_CACHE_REUSE   N tokens for --cache-reuse (default 256). Enables
+#                          chunked KV-shifting so a mid-prompt divergence
+#                          can reuse the matching suffix instead of cold
+#                          re-prefilling from the divergence point. Set 0 to
+#                          disable.
 #   INSTALL_QWEN27B      auto (default), true, or false. auto installs when
 #                        the 27B GGUF + mmproj are cached.
 #   INSTALL_QWEN122B     auto (default), true, or false. auto installs when
@@ -65,6 +70,12 @@ SERVER_DIR="$(cd "$(dirname "${SERVER_BIN}")" && pwd)"
 REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
 KV_TYPE_K="${LLAMACPP_CACHE_TYPE_K:-q8_0}"
 KV_TYPE_V="${LLAMACPP_CACHE_TYPE_V:-q8_0}"
+CACHE_REUSE="${LLAMACPP_CACHE_REUSE:-256}"
+CACHE_REUSE_XML=""
+if [[ -n "${CACHE_REUSE}" && "${CACHE_REUSE}" != "0" ]]; then
+  CACHE_REUSE_XML="    <string>--cache-reuse</string><string>${CACHE_REUSE}</string>
+"
+fi
 
 resolve_model() {
   local alias="$1" path
@@ -176,7 +187,7 @@ ${mmproj_xml}    <string>-c</string><string>1048576</string>
     <string>-np</string><string>4</string>
     <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
     <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
-    <string>--alias</string><string>qwen</string>
+${CACHE_REUSE_XML}    <string>--alias</string><string>qwen</string>
     <string>--jinja</string>
     <string>--temp</string><string>0.6</string>
     <string>--top-p</string><string>0.95</string>
@@ -247,7 +258,7 @@ write_llamacpp_27b_plist() {
     <string>-np</string><string>4</string>
     <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
     <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
-    <string>--alias</string><string>qwen27b</string>
+${CACHE_REUSE_XML}    <string>--alias</string><string>qwen27b</string>
     <string>--jinja</string>
     <string>--temp</string><string>0.6</string>
     <string>--top-p</string><string>0.95</string>
@@ -315,7 +326,7 @@ ${mmproj_xml}    <string>-c</string><string>1048576</string>
     <string>-np</string><string>4</string>
     <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
     <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
-    <string>--alias</string><string>qwen122b</string>
+${CACHE_REUSE_XML}    <string>--alias</string><string>qwen122b</string>
     <string>--jinja</string>
     <string>--temp</string><string>0.6</string>
     <string>--top-p</string><string>0.95</string>

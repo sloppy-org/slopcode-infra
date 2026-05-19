@@ -49,8 +49,12 @@
 #   LLAMACPP_FIT          explicit value passed to -fit (for example: off)
 #   LLAMACPP_CACHE_RAM    explicit value passed to --cache-ram; 0 disables the
 #                         prompt cache
-#   LLAMACPP_CACHE_REUSE  N tokens for --cache-reuse (default empty; 256 is the
-#                         FIM-recommended value for Qwen3-Coder)
+#   LLAMACPP_CACHE_REUSE  N tokens for --cache-reuse (default 256). Enables
+#                         chunked KV-shifting so a mid-prompt divergence can
+#                         reuse the matching suffix instead of cold-prefilling
+#                         from the divergence point. 256 is also the
+#                         FIM-recommended value for Qwen3-Coder. Set 0 to
+#                         disable.
 #   LLAMACPP_DRY_RUN      true to print the command and exit
 #   LLAMACPP_EXEC         true to exec llama-server in the foreground (for
 #                         systemd/launchd ExecStart); skips nohup, pid files,
@@ -200,7 +204,7 @@ REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
 NO_MMAP="${LLAMACPP_NO_MMAP:-false}"
 FIT="${LLAMACPP_FIT:-}"
 CACHE_RAM="${LLAMACPP_CACHE_RAM:-}"
-CACHE_REUSE="${LLAMACPP_CACHE_REUSE:-}"
+CACHE_REUSE="${LLAMACPP_CACHE_REUSE:-256}"
 SERVED_ALIAS="${LLAMACPP_SERVED_ALIAS:-qwen}"
 INSTANCE="${LLAMACPP_INSTANCE:-}"
 if [[ -n "${INSTANCE}" ]]; then
@@ -415,7 +419,7 @@ fi
 if [[ -n "${CACHE_RAM}" ]]; then
   CMD+=(--cache-ram "${CACHE_RAM}")
 fi
-if [[ -n "${CACHE_REUSE}" ]]; then
+if [[ -n "${CACHE_REUSE}" && "${CACHE_REUSE}" != "0" ]]; then
   CMD+=(--cache-reuse "${CACHE_REUSE}")
 fi
 if [[ -n "${MMPROJ_PATH}" ]]; then
