@@ -126,6 +126,92 @@ zulip_resolve_topic() {
         "$_ZULIP_SITE/api/v1/messages/$msg_id" >/dev/null 2>&1 || true
 }
 
+# zulip_get_stream_id STREAM — print numeric stream id (cached). 0 on failure.
+_ZULIP_STREAM_ID=""
+_ZULIP_STREAM_ID_FOR=""
+zulip_get_stream_id() {
+    local stream="$1" resp sid
+    if [[ "$stream" == "$_ZULIP_STREAM_ID_FOR" && -n "$_ZULIP_STREAM_ID" ]]; then
+        echo "$_ZULIP_STREAM_ID"; return 0
+    fi
+    _zulip_init || { echo 0; return 1; }
+    resp=$(curl -s --max-time 10 -u "$_ZULIP_EMAIL:$_ZULIP_KEY" \
+        -G --data-urlencode "stream=$stream" \
+        "$_ZULIP_SITE/api/v1/get_stream_id" 2>/dev/null || echo '{}')
+    sid=$(echo "$resp" | grep -o '"stream_id":[0-9]*' | head -1 | grep -o '[0-9]*')
+    [[ -z "$sid" ]] && { echo 0; return 1; }
+    _ZULIP_STREAM_ID="$sid"; _ZULIP_STREAM_ID_FOR="$stream"
+    echo "$sid"
+}
+
+# zulip_newest_msg_id TOPIC — print id of newest message in topic. 0 if empty.
+zulip_newest_msg_id() {
+    local topic="$1"
+    _zulip_init || { echo 0; return 1; }
+    local narrow resp mid
+    narrow="$(printf '[{"operator":"stream","operand":"%s"},{"operator":"topic","operand":"%s"}]' \
+        "$WATCHDOG_ZULIP_STREAM" "$topic")"
+    resp=$(curl -s --max-time 10 -u "$_ZULIP_EMAIL:$_ZULIP_KEY" \
+        -G --data-urlencode "narrow=$narrow" \
+        -d "anchor=newest" -d "num_before=1" -d "num_after=0" \
+        "$_ZULIP_SITE/api/v1/messages" 2>/dev/null || echo '{}')
+    mid=$(echo "$resp" | grep -o '"id":[0-9]*' | tail -1 | grep -o '[0-9]*')
+    echo "${mid:-0}"
+}
+
+# zulip_mark_topic_read TOPIC — flag every message in TOPIC as read for the
+# bot user (slopbot) via the public API. Zulip's public API can only mark
+# read for the calling user; "for all users" is handled separately by
+# zulip_mark_topic_read_for_all (server-side, via SSH).
+zulip_mark_topic_read() {
+    local topic="$1" sid
+    sid=$(zulip_get_stream_id "$WATCHDOG_ZULIP_STREAM")
+    [[ -z "$sid" || "$sid" == "0" ]] && return 1
+    _zulip_init || return 1
+    curl -s --max-time 10 -u "$_ZULIP_EMAIL:$_ZULIP_KEY" \
+        -X POST \
+        --data-urlencode "stream_id=$sid" \
+        --data-urlencode "topic_name=$topic" \
+        "$_ZULIP_SITE/api/v1/mark_topic_as_read" >/dev/null 2>&1 || true
+}
+
+# zulip_mark_topic_read_for_all TOPIC — force every subscriber's
+# UserMessage rows for STREAM/TOPIC to flags |= read. Implemented as an
+# SSH call to the chat host: Zulip has no public API for this, so the
+# bot's SSH key carries a dispatcher forced-command that switches on
+# SSH_ORIGINAL_COMMAND ("heartbeat" | "mark-read:STREAM:TOPIC") and runs
+# a Django ORM update under the zulip user. Marks both TOPIC and the
+# resolved name "✔ TOPIC" so call order (resolve then mark) doesn't
+# matter. No-op if WATCHDOG_HEARTBEAT_SSH_TARGET is unset or the key is
+# missing — the bot's own per-user mark-read still runs.
+zulip_mark_topic_read_for_all() {
+    local topic="$1"
+    [[ -n "$WATCHDOG_HEARTBEAT_SSH_TARGET" ]] || return 0
+    [[ -r "$WATCHDOG_HEARTBEAT_SSH_KEY" ]] || return 0
+    ssh -i "$WATCHDOG_HEARTBEAT_SSH_KEY" \
+        -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+        -o IdentitiesOnly=yes -o IdentityAgent=none \
+        -p "$WATCHDOG_HEARTBEAT_SSH_PORT" "$WATCHDOG_HEARTBEAT_SSH_TARGET" \
+        "mark-read:${WATCHDOG_ZULIP_STREAM}:${topic}" >/dev/null 2>&1 || true
+}
+
+# zulip_close_topic TOPIC — resolve + mark-read by topic name. Used at the
+# end of a watchdog tick once all components are green: looks up the
+# newest message in TOPIC, renames the whole topic to "✔ TOPIC", marks
+# the topic read for the bot, and marks read for all users server-side
+# via SSH. No-op if the topic is already empty or already prefixed
+# with ✔.
+zulip_close_topic() {
+    local topic="$1"
+    case "$topic" in "✔ "*) return 0 ;; esac
+    local mid
+    mid=$(zulip_newest_msg_id "$topic")
+    [[ "$mid" == "0" || -z "$mid" ]] && return 0
+    zulip_resolve_topic "$mid" "$topic" || true
+    zulip_mark_topic_read "$topic" || true
+    zulip_mark_topic_read_for_all "$topic" || true
+}
+
 # zulip_newest_msg_ts TOPIC
 zulip_newest_msg_ts() {
     local topic="$1"

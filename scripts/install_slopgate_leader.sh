@@ -208,7 +208,6 @@ UNIT
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ProcessType</key><string>Background</string>
-  <key>LimitLoadToSessionType</key><string>Background</string>
   <key>ProgramArguments</key>
   <array>
     <string>${EXEC_BIN}</string>
@@ -233,7 +232,6 @@ XML
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ProcessType</key><string>Background</string>
-  <key>LimitLoadToSessionType</key><string>Background</string>
   <key>ProgramArguments</key>
   <array>
     <string>${EXEC_BIN}</string>
@@ -273,7 +271,6 @@ XML
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ProcessType</key><string>Background</string>
-  <key>LimitLoadToSessionType</key><string>Background</string>
   <key>ProgramArguments</key>
   <array>
     <string>${EXEC_BIN}</string>
@@ -325,18 +322,25 @@ XML
       exit 0
     fi
 
+    # Bootstrap into gui/$UID so the plists auto-load on console login like
+    # the other slopcode launchd jobs (llamacpp, searxng, whisper). The
+    # previous LimitLoadToSessionType=Background + user/$UID combination
+    # silently dropped these jobs on every reboot: ~/Library/LaunchAgents/
+    # autoloads into gui/$UID at Aqua login, and Background filtered them
+    # out — so a macOS auto-update restart left the cluster headless until
+    # someone manually re-bootstrapped.
     for label in "${BALANCER_LABEL}" "${INSTALLED_AGENT_LABELS[@]}"; do
       launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
       launchctl bootout "user/$(id -u)/${label}" 2>/dev/null || true
     done
-    launchctl bootstrap "user/$(id -u)" "${BALANCER_PLIST}"
-    launchctl enable "user/$(id -u)/${BALANCER_LABEL}" 2>/dev/null || true
-    launchctl kickstart -k "user/$(id -u)/${BALANCER_LABEL}"
+    launchctl bootstrap "gui/$(id -u)" "${BALANCER_PLIST}"
+    launchctl enable "gui/$(id -u)/${BALANCER_LABEL}" 2>/dev/null || true
+    launchctl kickstart -k "gui/$(id -u)/${BALANCER_LABEL}"
     for label in "${INSTALLED_AGENT_LABELS[@]}"; do
       plist_path="${AGENTS_DIR}/${label}.plist"
-      launchctl bootstrap "user/$(id -u)" "${plist_path}"
-      launchctl enable "user/$(id -u)/${label}" 2>/dev/null || true
-      launchctl kickstart -k "user/$(id -u)/${label}"
+      launchctl bootstrap "gui/$(id -u)" "${plist_path}"
+      launchctl enable "gui/$(id -u)/${label}" 2>/dev/null || true
+      launchctl kickstart -k "gui/$(id -u)/${label}"
     done
     echo "loaded ${BALANCER_LABEL} + ${INSTALLED_AGENT_LABELS[*]}"
     ;;

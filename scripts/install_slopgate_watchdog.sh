@@ -195,16 +195,19 @@ REMOTE
 install_reverse() {
     log "bootstrapping slopgate reverse watchdog on $(ssh_target)"
 
-    put_remote "$SCRIPT_DIR/slopgate_watchdog_lib.sh"     "/tmp/slopgate_watchdog_lib.sh"
-    put_remote "$SCRIPT_DIR/slopgate_watchdog_reverse.sh" "/tmp/slopgate_watchdog_reverse.sh"
+    put_remote "$SCRIPT_DIR/slopgate_watchdog_lib.sh"          "/tmp/slopgate_watchdog_lib.sh"
+    put_remote "$SCRIPT_DIR/slopgate_watchdog_reverse.sh"      "/tmp/slopgate_watchdog_reverse.sh"
+    put_remote "$SCRIPT_DIR/slopgate-watchdog-dispatch"        "/tmp/slopgate-watchdog-dispatch"
+    put_remote "$SCRIPT_DIR/zulip-mark-topic-read-for-all"     "/tmp/zulip-mark-topic-read-for-all"
+    put_remote "$SCRIPT_DIR/zulip_mark_topic_read_for_all.py"  "/tmp/zulip_mark_topic_read_for_all.py"
 
     LEADER_HB_PUBKEY=$(ssh "$FAEPMAC1" 'cat ~/.ssh/slopgate_watchdog_ed25519.pub' 2>/dev/null \
         || { echo "install_slopgate_watchdog: leader pubkey missing — run install_leader first" >&2; exit 1; })
-    HB_FORCED_CMD='mkdir -p /var/lib/slopgate-watchdog && date -u +%s > /var/lib/slopgate-watchdog/primary-heartbeat'
-    # base64-encode to avoid quote-mangling when injected into the remote
-    # heredoc; the `command="..."` substring would otherwise collide with
-    # the outer "${HB_AUTH_LINE}" shell quoting.
-    HB_AUTH_LINE_B64=$(printf 'command="%s",restrict %s\n' "$HB_FORCED_CMD" "$LEADER_HB_PUBKEY" | base64 | tr -d '\n')
+    # The forced command now points at a dispatcher that switches on
+    # SSH_ORIGINAL_COMMAND so the bot can do both heartbeat and
+    # mark-topic-read-for-all under the same restricted key.
+    HB_AUTH_LINE_B64=$(printf 'command="/usr/local/sbin/slopgate-watchdog-dispatch",restrict %s\n' \
+        "$LEADER_HB_PUBKEY" | base64 | tr -d '\n')
 
     INCIDENT_MAIL="$WATCHDOG_INCIDENT_MAIL"
 
@@ -213,9 +216,16 @@ set -euo pipefail
 
 apt-get -y install msmtp msmtp-mta curl jq >/dev/null 2>&1
 
-install -m 0644 /tmp/slopgate_watchdog_lib.sh     /usr/local/sbin/slopgate_watchdog_lib.sh
-install -m 0755 /tmp/slopgate_watchdog_reverse.sh /usr/local/sbin/slopgate-watchdog-reverse
-rm -f /tmp/slopgate_watchdog_lib.sh /tmp/slopgate_watchdog_reverse.sh
+install -m 0644 /tmp/slopgate_watchdog_lib.sh      /usr/local/sbin/slopgate_watchdog_lib.sh
+install -m 0755 /tmp/slopgate_watchdog_reverse.sh  /usr/local/sbin/slopgate-watchdog-reverse
+install -m 0755 /tmp/slopgate-watchdog-dispatch    /usr/local/sbin/slopgate-watchdog-dispatch
+install -m 0755 /tmp/zulip-mark-topic-read-for-all /usr/local/sbin/zulip-mark-topic-read-for-all
+install -d -m 0755 /usr/local/lib/slopgate-watchdog
+install -m 0644 /tmp/zulip_mark_topic_read_for_all.py \\
+    /usr/local/lib/slopgate-watchdog/zulip_mark_topic_read_for_all.py
+rm -f /tmp/slopgate_watchdog_lib.sh /tmp/slopgate_watchdog_reverse.sh \\
+      /tmp/slopgate-watchdog-dispatch /tmp/zulip-mark-topic-read-for-all \\
+      /tmp/zulip_mark_topic_read_for_all.py
 
 mkdir -p /var/lib/slopgate-watchdog /root/.ssh
 chmod 0700 /root/.ssh

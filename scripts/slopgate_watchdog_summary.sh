@@ -39,6 +39,6 @@ ${rows}
 
 This post appearing is the success signal. No post Monday morning → investigate."
 
-zulip_post "slopgate weekly summary" "$report" "[slopgate-watchdog] weekly summary $(date -u +%Y-%m-%d)"
+zulip_post "${SLOPGATE_TOPIC:-slopgate}" "$report" "[slopgate-watchdog] weekly summary $(date -u +%Y-%m-%d)"
 
 echo 0 > "$TICK_FILE"

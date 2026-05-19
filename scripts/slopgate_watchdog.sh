@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Primary slopgate watchdog — runs every 5 min on the leader (faepmac1) via
 # launchd. Checks the balancer, management API, agent population, launchd
-# services, and local disk; posts to Zulip on state transitions only.
-# Heartbeat is pushed out-of-band via SSH to the chat host so it never
-# touches Zulip; the reverse watchdog stats that file's mtime.
+# services, and local disk; posts to a single Zulip topic "slopgate" on
+# state transitions only. When every component is green again, the topic
+# is resolved (renamed to "✔ slopgate") and marked read for ALL users
+# (server-side ORM update on the chat host via the bot's locked-down SSH
+# key + dispatcher). Heartbeat is pushed out-of-band via SSH to the chat
+# host so it never touches Zulip; the reverse watchdog stats that file's
+# mtime.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -14,6 +18,7 @@ MGMT_ADDR="${SLOPGATE_MGMT_ADDR:-127.0.0.1:8085}"
 REQUIRED_LAUNCHD="${SLOPGATE_LAUNCHD_LABELS:-com.slopcode.slopgate-balancer com.slopcode.slopgate-agent}"
 MIN_AGENTS="${SLOPGATE_MIN_AGENTS:-1}"
 DISK_THRESHOLD="${SLOPGATE_DISK_THRESHOLD:-85}"
+WATCHDOG_TOPIC="${SLOPGATE_TOPIC:-slopgate}"
 
 _check_balancer() {
     http_check "http://$BALANCER_ADDR/v1/models" "200"
@@ -69,17 +74,14 @@ _check_disk() {
 
 run_check() {
     local comp="$1"; shift
-    local detail now since msg_id fail_msg_id
+    local detail now since msg_id
     state_read "$comp"
-    fail_msg_id="$STATE_MSG_ID"
 
     if detail=$("$@" 2>/dev/null); then
         if [[ "$STATE_STATUS" == "fail" ]]; then
             now=$(date +%s)
-            msg_id=$(zulip_post "$comp" "$(ok_msg "$comp" "$STATE_SINCE" "$now")")
-            # Resolve the incident topic. Prefer the original fail msg id;
-            # fall back to the recovery msg id if state was missing it.
-            zulip_resolve_topic "${fail_msg_id:-$msg_id}" "$comp" || true
+            zulip_post "$WATCHDOG_TOPIC" "$(ok_msg "$comp" "$STATE_SINCE" "$now")" \
+                "[slopgate-watchdog] OK: $comp" >/dev/null
             state_write "$comp" "ok" "$now" "" || true
         fi
         return 0
@@ -89,7 +91,7 @@ run_check() {
             since=$now
             local content
             content=$(fail_msg "$comp" "$detail" "$(ts_to_iso "$since")")
-            msg_id=$(zulip_post "$comp" "$content" "[slopgate-watchdog] FAIL: $comp")
+            msg_id=$(zulip_post "$WATCHDOG_TOPIC" "$content" "[slopgate-watchdog] FAIL: $comp")
             state_write "$comp" "fail" "$since" "$msg_id" || true
         fi
         return 1
@@ -113,6 +115,10 @@ main() {
         [[ -f "$tick_file" ]] && ticks=$(cat "$tick_file")
         echo $(( ticks + 1 )) > "$tick_file"
         _heartbeat_push_remote
+        # Resolve the incident topic + mark read for all users only when
+        # everything is green this tick. No-op if the topic is already
+        # empty or already resolved.
+        zulip_close_topic "$WATCHDOG_TOPIC" || true
     fi
 }
 

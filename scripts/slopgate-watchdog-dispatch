@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# SSH forced-command dispatcher for the slopgate watchdog key on chat.computor.at.
+# The key in /root/.ssh/authorized_keys is restricted via
+#   command="/usr/local/sbin/slopgate-watchdog-dispatch",restrict <pubkey>
+# so the bot can only invoke the two operations below, regardless of what
+# the caller types after ssh.
+#
+# Supported SSH_ORIGINAL_COMMAND values:
+#   heartbeat (or empty) — touch the primary heartbeat file
+#   mark-read:STREAM:TOPIC — mark TOPIC read for all subscribers
+set -euo pipefail
+
+cmd="${SSH_ORIGINAL_COMMAND:-heartbeat}"
+case "$cmd" in
+    ""|heartbeat)
+        mkdir -p /var/lib/slopgate-watchdog
+        date -u +%s > /var/lib/slopgate-watchdog/primary-heartbeat
+        ;;
+    mark-read:*)
+        rest="${cmd#mark-read:}"
+        stream="${rest%%:*}"
+        topic="${rest#*:}"
+        if [[ -z "$stream" || -z "$topic" || "$stream" == "$rest" ]]; then
+            echo "mark-read: missing stream or topic" >&2; exit 2
+        fi
+        exec /usr/local/sbin/zulip-mark-topic-read-for-all "$stream" "$topic"
+        ;;
+    *)
+        echo "slopgate-watchdog-dispatch: unknown command" >&2
+        exit 2
+        ;;
+esac

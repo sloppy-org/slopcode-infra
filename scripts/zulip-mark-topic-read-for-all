@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Mark every UserMessage row for a Zulip (stream, topic) read for all
+# subscribers. Wrapper that delegates to the Python ORM script under the
+# zulip user via the Zulip Django venv. Called by the slopgate / computor
+# watchdog when an incident topic is fully green so everyone's unread
+# count clears, not just the bot's.
+set -euo pipefail
+
+if [[ $# -ne 2 ]]; then
+    echo "usage: $0 STREAM TOPIC" >&2
+    exit 2
+fi
+stream="$1"
+topic="$2"
+
+# Validate stream is plain identifier. Topic can hold spaces, unicode (✔),
+# punctuation — but reject control characters and shell metacharacters.
+if [[ ! "$stream" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "invalid stream: $stream" >&2
+    exit 2
+fi
+case "$topic" in
+    *$'\n'*|*$'\r'*|*$'\t'*|*$'\0'*)
+        echo "invalid topic (control char)" >&2; exit 2 ;;
+esac
+
+DEPLOYMENT="${ZULIP_DEPLOYMENT:-/home/zulip/deployments/current}"
+VENV_PY="$DEPLOYMENT/zulip-py3-venv/bin/python3"
+SCRIPT_DIR="${ZULIP_HELPER_DIR:-/usr/local/lib/slopgate-watchdog}"
+SCRIPT_PATH="$SCRIPT_DIR/zulip_mark_topic_read_for_all.py"
+
+if [[ ! -x "$VENV_PY" ]]; then
+    echo "zulip venv python not found: $VENV_PY" >&2
+    exit 4
+fi
+if [[ ! -r "$SCRIPT_PATH" ]]; then
+    echo "helper script not found: $SCRIPT_PATH" >&2
+    exit 4
+fi
+
+# Run as zulip so the ORM has the right credentials and file ownership.
+# Pass args positionally; the wrapper has already validated them.
+exec su -s /bin/bash zulip -c \
+    "$(printf 'ZULIP_DEPLOYMENT=%q %q %q %q %q' \
+        "$DEPLOYMENT" "$VENV_PY" "$SCRIPT_PATH" "$stream" "$topic")"

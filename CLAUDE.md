@@ -106,7 +106,11 @@ scripts/
                                 weekly summary on leader via launchd,
                                 reverse on chat.computor.at via systemd).
                                 Posts to Zulip stream `monitoring`,
-                                topics `slopgate-*`. Sources
+                                single topic `slopgate`; resolves +
+                                marks-read for all users when fully
+                                green (server-side ORM update on chat
+                                host via locked-down SSH dispatcher).
+                                Sources
                                 ~/infra/computor-infra/env for SMTP and
                                 chat.computor.at SSH parameters. Generates
                                 a dedicated passphraseless ed25519 key on

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Reverse slopgate watchdog — runs every 10 min on chat.computor.at via
-# systemd timer. Checks that the primary heartbeat topic was updated within
-# 15 min and pages if not.
+# systemd timer. Checks that the primary heartbeat file was updated
+# within 15 min and pages into the shared "slopgate" topic if not. On
+# recovery, posts the OK transition into the same topic but does NOT
+# resolve — only the primary watchdog can decide the cluster is all
+# green and close the topic.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -9,6 +12,7 @@ source "$SCRIPT_DIR/slopgate_watchdog_lib.sh"
 
 WATCHDOG_ZULIPRC="${WATCHDOG_ZULIPRC:-/etc/slopbot/zuliprc}"
 WATCHDOG_STATE_DIR="${WATCHDOG_STATE_DIR:-/var/lib/slopgate-watchdog}"
+WATCHDOG_TOPIC="${SLOPGATE_TOPIC:-slopgate}"
 
 MAX_STALE=900   # 15 min
 COMP="slopgate-watchdog-primary"
@@ -32,9 +36,8 @@ main() {
 
     if [[ "$ts" -gt 0 && $(( now - ts )) -le $MAX_STALE ]]; then
         if [[ "$STATE_STATUS" == "fail" ]]; then
-            local fail_msg_id="$STATE_MSG_ID"
-            msg=$(zulip_post "slopgate-watchdog dead" "$(ok_msg "$COMP" "$STATE_SINCE" "$now")")
-            zulip_resolve_topic "${fail_msg_id:-$msg}" "slopgate-watchdog dead" || true
+            zulip_post "$WATCHDOG_TOPIC" "$(ok_msg "$COMP" "$STATE_SINCE" "$now")" \
+                "[slopgate-watchdog] OK: $COMP" >/dev/null
             state_write "$COMP" "ok" "$now" "" || true
         fi
     else
@@ -46,7 +49,7 @@ main() {
             fi
             local content
             content="$(fail_msg "$COMP" "$detail" "$(ts_to_iso "$now")")"
-            msg=$(zulip_post "slopgate-watchdog dead" "$content" "[slopgate-watchdog] PRIMARY WATCHDOG SILENT")
+            msg=$(zulip_post "$WATCHDOG_TOPIC" "$content" "[slopgate-watchdog] PRIMARY WATCHDOG SILENT")
             state_write "$COMP" "fail" "$now" "$msg" || true
         fi
     fi
