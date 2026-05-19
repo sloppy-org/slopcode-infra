@@ -41,8 +41,12 @@
 #                          can reuse the matching suffix instead of cold
 #                          re-prefilling from the divergence point. Set 0 to
 #                          disable.
-#   INSTALL_QWEN27B      auto (default), true, or false. auto installs when
-#                        the 27B GGUF + mmproj are cached.
+#   INSTALL_QWEN27B      true, or false (default). 27B dense is the slowest
+#                        Mac model (prefill ~6× and decode ~3× slower than
+#                        35B-A3B, ~2× slower than 122B-A10B). Disabled by
+#                        default to free unified memory for other models. Set
+#                        true to re-enable; running with false also boots out
+#                        any previously installed 27B agent.
 #   INSTALL_QWEN122B     auto (default), true, or false. auto installs when
 #                        qwen3.5-122b-a10b-ud-q4 is cached on this host.
 #   SKIP_WHISPER         set to true to install only the llama agents.
@@ -96,7 +100,7 @@ MODEL_PATH="$(resolve_model qwen3.6-35b-a3b-q4)"
 MMPROJ_PATH="$(resolve_mmproj_optional qwen3.6-35b-a3b-q4)"
 [[ -n "${MMPROJ_PATH}" ]] || die "mmproj for qwen3.6-35b-a3b-q4 not on disk. Run: python3 ${MODELS_SCRIPT} prefetch qwen3.6-35b-a3b-q4"
 
-INSTALL_QWEN27B="${INSTALL_QWEN27B:-auto}"
+INSTALL_QWEN27B="${INSTALL_QWEN27B:-false}"
 MODEL_27B_PATH="$(python3 "${MODELS_SCRIPT}" resolve qwen3.6-27b-q4 2>/dev/null || true)"
 MMPROJ_27B_PATH="$(resolve_mmproj_optional qwen3.6-27b-q4)"
 if [[ "${INSTALL_QWEN27B}" == "true" && ( -z "${MODEL_27B_PATH}" || ! -f "${MODEL_27B_PATH}" ) ]]; then
@@ -223,7 +227,12 @@ XML
 write_llamacpp_plist
 
 write_llamacpp_27b_plist() {
-  [[ "${INSTALL_QWEN27B}" != "false" ]] || return 0
+  if [[ "${INSTALL_QWEN27B}" == "false" ]]; then
+    # Explicit disable: tear down a previously installed 27B agent so the
+    # unified-memory slot becomes available for other models.
+    bootout_if_loaded com.slopcode.llamacpp-27b
+    return 0
+  fi
   [[ -n "${MODEL_27B_PATH}" && -f "${MODEL_27B_PATH}" ]] || {
     echo "skipping com.slopcode.llamacpp-27b (model qwen3.6-27b-q4 not cached)"
     return 0
