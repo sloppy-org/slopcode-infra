@@ -36,11 +36,15 @@ _heartbeat_push_remote() {
         echo "slopgate-watchdog: heartbeat key missing or unreadable: $WATCHDOG_HEARTBEAT_SSH_KEY" >&2
         return 1
     fi
+    # Send the explicit "heartbeat" verb so the chat-host dispatcher routes
+    # to the heartbeat-touch branch; an empty command line (or `true`) would
+    # propagate as SSH_ORIGINAL_COMMAND="true" and hit the dispatcher's
+    # unknown-command branch, silently breaking the reverse watchdog.
     ssh -i "$WATCHDOG_HEARTBEAT_SSH_KEY" \
         -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
         -o IdentitiesOnly=yes -o IdentityAgent=none \
         -p "$WATCHDOG_HEARTBEAT_SSH_PORT" "$WATCHDOG_HEARTBEAT_SSH_TARGET" \
-        true
+        heartbeat
 }
 
 _ZULIP_EMAIL=""
