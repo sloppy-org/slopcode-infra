@@ -252,10 +252,13 @@ install_mac_source() {
   cp "${install}/bin/llama-server" "${LLAMACPP_HOME}/"
   local libdir="${install}/lib"
   [[ -d "${libdir}" ]] || die "${install}/lib missing"
-  # libllama-server-impl.dylib lands in ${install}/bin in recent llama.cpp
-  # (>= 2026-05 restructure); older layouts kept everything under lib. Copy
-  # from both so the binary finds its @rpath companions either way.
-  for src in "${libdir}" "${install}/bin"; do
+  # llama-server resolves a sibling libllama-server-impl.dylib via @rpath, but
+  # upstream's CMake install target does not ship that dylib (it stays under
+  # ${build}/bin). Copy it explicitly alongside the rest. Older layouts kept
+  # the shared libs under ${install}/lib; recent layouts spread them across
+  # ${install}/bin too — globbing both keeps both working.
+  for src in "${libdir}" "${install}/bin" "${build}/bin"; do
+    [[ -d "${src}" ]] || continue
     find "${src}" -maxdepth 1 \( -name 'lib*.dylib' -o -name 'lib*.dylib.*' \) \
       -exec cp -P {} "${LLAMACPP_HOME}/" \;
   done
