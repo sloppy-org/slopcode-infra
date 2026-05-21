@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Single-instance launchd agent for MacBooks with limited unified memory.
 #
-# Runs the blessed 35B-A3B Q4 (MoE) model on port 8080 with:
-#   -c 131072 -np 1 (single slot, 128K context)
+# Runs Qwen3.6 35B-A3B IQ4_XS MTP (MoE) model on port 8080 with:
+#   -c 131072 -np 1 (single slot, 128K context — leaves headroom for the MTP
+#   head on 32 GB unified memory; ~5 GB margin under macOS + apps)
 #   Q8_0 KV cache, flash attention, Metal (all layers on GPU)
+#   --spec-type draft-mtp --spec-draft-n-max 2 (auto-emitted by the launcher
+#   when the alias name contains -mtp-)
 #   No thread pinning (Metal schedules on its own)
 #
 # Intended for Macs with ~32 GB unified memory where the dual-instance deployment
 # (server_start_mac.sh / install_mac_launchagents.sh) does not fit.
-# The big-Mac scripts are untouched.
+# The big-Mac scripts (faepmac1-class) are untouched.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,18 +24,23 @@ MODELS_SCRIPT="${SCRIPT_DIR}/llamacpp_models.py"
 AGENTS_DIR="${HOME}/Library/LaunchAgents"
 mkdir -p "${AGENTS_DIR}" "${RUN_DIR}"
 
-DEFAULT_MODEL_ALIAS="$(python3 "${MODELS_SCRIPT}" default-alias)"
-MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-${DEFAULT_MODEL_ALIAS}}"
+# Macbook default is the smaller IQ4_XS-MTP (~18 GB weights) so the +1 GB MTP
+# head fits the 32 GB unified-memory budget. The repo-wide default-alias is
+# UD-Q4_K_XL-MTP (~22 GB), which is right for the Mac Studio but too tight
+# here. LLAMACPP_MODEL_ALIAS still overrides if the user wants XL.
+MACBOOK_DEFAULT_ALIAS="qwen3.6-35b-a3b-mtp-iq4_xs"
+MODEL_ALIAS="${LLAMACPP_MODEL_ALIAS:-${MACBOOK_DEFAULT_ALIAS}}"
 if ! model_path="$(python3 "${MODELS_SCRIPT}" resolve "${MODEL_ALIAS}" 2>/dev/null)" \
   || [[ -z "${model_path}" || ! -f "${model_path}" ]]; then
   if [[ -n "${LLAMACPP_MODEL_ALIAS:-}" ]]; then
     die "model alias ${MODEL_ALIAS} not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${MODEL_ALIAS}"
   fi
-  MODEL_ALIAS="qwen3.6-35b-a3b-bartowski-q4"
+  # Fallback to plain (non-MTP) IQ4_XS when the MTP variant isn't cached.
+  MODEL_ALIAS="qwen3.6-35b-a3b-iq4_xs"
   model_path="$(python3 "${MODELS_SCRIPT}" resolve "${MODEL_ALIAS}" 2>/dev/null || true)"
 fi
 [[ -n "${model_path}" && -f "${model_path}" ]] \
-  || die "35B-A3B model not on disk. Run: python3 ${MODELS_SCRIPT} prefetch"
+  || die "35B-A3B IQ4_XS not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${MACBOOK_DEFAULT_ALIAS}"
 
 SERVER_BIN="${LLAMACPP_SERVER_BIN:-}"
 if [[ -z "${SERVER_BIN}" ]]; then
@@ -108,6 +116,7 @@ cat > "${PLIST}" <<XML
     <key>LLAMACPP_PARALLEL</key><string>1</string>
     <key>LLAMACPP_BATCH</key><string>2048</string>
     <key>LLAMACPP_UBATCH</key><string>1024</string>
+    <key>LLAMACPP_SPEC_DRAFT_N_MAX</key><string>2</string>
     <key>LLAMACPP_REASONING_BUDGET</key><string>${REASONING_BUDGET}</string>
     <key>DYLD_LIBRARY_PATH</key><string>${SERVER_DIR}</string>
     <key>PATH</key><string>${SERVER_DIR}:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin</string>
