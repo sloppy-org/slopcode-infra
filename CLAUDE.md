@@ -254,7 +254,18 @@ by more powerful hardware.
 
 Override per invocation with `LLAMACPP_PARALLEL` and `LLAMACPP_CONTEXT`.
 
-## Windows-arc USB bundle (Intel Arc iGPU, Vulkan)
+## Windows-arc USB bundle (Intel Arc iGPU, SYCL / oneAPI)
+
+**As of 2026-05-22 the windows-arc bundle ships the upstream Windows
+SYCL prebuilt (`llama-bN-bin-win-sycl-x64.zip`) instead of the older
+Vulkan prebuilt.** The Vulkan-coopmat / F16 workarounds and the
+`GGML_VK_DISABLE_*` env vars below no longer apply — they were
+Vulkan-specific. SYCL gives ~2x prefill on Lunar Lake / Arc 140V and
+sidesteps the active Vulkan-Arc bugs (#18808 agentic-use, #22275 silent
+exits, #20554 coopmat TDR). The historical Vulkan notes are kept for
+context but the live bundle is SYCL.
+
+### Historical: Vulkan profile (no longer used)
 
 Target hardware: Intel Arc 140V iGPU (Lunar Lake, Xe2) on Windows 11,
 64 GB unified system RAM shared with the iGPU. Other Arc generations

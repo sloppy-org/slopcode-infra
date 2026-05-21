@@ -1341,8 +1341,12 @@ write_windows() {
   local t="${OUT}/windows-arc"
   mkdir -p "${t}/llama.cpp" "${t}/opencode" "${t}/whisper.cpp"
   local tag url oc_tag oc_url wh_tag wh_url
-  read -r tag url <<<"$(llama_asset win-vulkan-x64)"
-  echo "windows-arc llama.cpp ${tag}"
+  # SYCL prebuilt instead of Vulkan: ~2x prefill on Lunar Lake / Arc 140V,
+  # sidesteps Vulkan-Arc bugs (#18808 agentic-use, #22275 silent exits,
+  # #20554 coopmat TDR). Upstream Windows SYCL zip now ships oneAPI runtime
+  # DLLs so colleagues need no separate Intel install.
+  read -r tag url <<<"$(llama_asset win-sycl-x64)"
+  echo "windows-arc llama.cpp ${tag} (SYCL)"
   fetch_archive "${url}" "${t}/llama.cpp" llama-server.exe
   read -r oc_tag oc_url <<<"$(github_asset sst/opencode "${OPENCODE_TAG}" opencode-windows-x64.zip)"
   echo "windows-arc opencode ${oc_tag}"
@@ -1388,8 +1392,14 @@ exit /b 0
 BAT
 
   cat >"${t}/README.md" <<'EOF'
-slopcode for Windows (Intel Arc, Vulkan)
-========================================
+slopcode for Windows (Intel Arc, SYCL / oneAPI)
+===============================================
+
+This bundle uses the Intel oneAPI / SYCL backend of llama.cpp instead of
+the older Vulkan backend. SYCL prefill is ~2x faster on Lunar Lake / Arc
+140V and the historic Vulkan-coopmat TDR bugs do not apply here. The
+upstream Windows SYCL prebuilt ships its oneAPI runtime DLLs next to
+llama-server.exe, so you do not need to install Intel oneAPI separately.
 
 WHAT THIS IS
 ------------
@@ -1557,25 +1567,19 @@ OPTION 2 - MANUAL INSTALL
    "All Files" so Notepad does not append .txt.
 
        @echo off
-       REM Intel Arc Vulkan stability workarounds:
-       REM   GGML_VK_DISABLE_COOPMAT / COOPMAT2 -- Arc 140V Xe2 KHR_coopmat TDR (ggml-org/llama.cpp#20554)
-       REM   GGML_VK_DISABLE_F16                -- Intel iGPU F16 acc NaN/garbage (#18969)
-       set "GGML_VK_DISABLE_COOPMAT=1"
-       set "GGML_VK_DISABLE_COOPMAT2=1"
-       set "GGML_VK_DISABLE_F16=1"
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 
    On Arc 140V (Lunar Lake, 4P + 4LP = 8 physical cores) --threads 6 is
    the right value (physical - 2). On other Arc hosts substitute
    physical-cores - 2 (min 2).
 
    No --cpu-moe / --n-cpu-moe: all 40 MoE expert layers stay on the Arc
-   iGPU together with attention + KV + DeltaNet. On a Core Ultra 7
-   with 64 GB unified RAM and the "Shared GPU Memory Override" raised
-   to 32 GB this is meaningfully faster than --cpu-moe; if you hit
-   Vulkan OOM on a smaller host, add "--n-cpu-moe 20" (or higher up
-   to 40 = --cpu-moe) to push expert layers back to CPU.
+   iGPU together with attention + KV + DeltaNet. The IQ4_XS-MTP weights
+   plus the MTP head fit the 32 GB Shared GPU Memory Override budget with
+   ~10 GB of headroom. If you hit out-of-memory on a smaller host, add
+   "--n-cpu-moe 20" (or higher up to 40 = --cpu-moe) to push expert
+   layers back to CPU.
 
 7. Create the CPU fallback launcher
    %USERPROFILE%\slopcode\run-llamacpp-cpu.bat with this exact
@@ -1583,7 +1587,7 @@ OPTION 2 - MANUAL INSTALL
 
        @echo off
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 
 8. Create the whisper launcher %USERPROFILE%\slopcode\run-whisper.bat
    with this exact content:
@@ -1598,7 +1602,7 @@ OPTION 2 - MANUAL INSTALL
 
    Then open Notepad and paste this exact content (one long line):
 
-       {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+       {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP (Arc SYCL)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 
    Save as opencode.json in %USERPROFILE%\.config\opencode\
    (set "Save as type" to "All Files").
@@ -1637,25 +1641,24 @@ The background service runs as a visible Command Prompt window.
 Close it via Task Manager (Ctrl-Shift-Esc) or by closing the
 black window.
 
-run-llamacpp.bat       Vulkan GPU build, era-1 safe profile
-                       (all 40 MoE expert layers on the Arc iGPU;
-                       no --cpu-moe / --n-cpu-moe). Tuned for
-                       Core Ultra 7 with 64 GB unified RAM and
-                       "Shared GPU Memory Override" raised to 32 GB.
-                       Sets three stability env vars:
-                         GGML_VK_DISABLE_COOPMAT/COOPMAT2 -- Arc 140V Xe2
-                           KHR_coopmat TDR bug (ggml-org/llama.cpp#20554)
-                         GGML_VK_DISABLE_F16             -- Intel iGPU
-                           F16 accumulator NaN bug (#18969)
-                       -c 131072, -ub 512, q8_0 KV.
-                       If Vulkan OOM on a smaller host, add
-                       "--n-cpu-moe 20" (or higher, up to 40 =
-                       --cpu-moe) to push experts back to CPU.
+run-llamacpp.bat       Active SYCL GPU launcher. Copied from
+                       run-llamacpp-iq4xs.bat or run-llamacpp-xl.bat
+                       depending on which installer you ran. All 40
+                       MoE expert layers stay on the Arc iGPU; no
+                       --cpu-moe / --n-cpu-moe. Tuned for Lunar Lake
+                       Arc 140V with the Shared GPU Memory Override at
+                       32 GB. -c 131072, -ub 512, q8_0 KV, MTP
+                       speculative decoding via --spec-type draft-mtp.
+run-llamacpp-iq4xs.bat IQ4_XS-MTP variant (~18 GB). Default.
+run-llamacpp-xl.bat    UD-Q4_K_XL-MTP variant (~23 GB). Opt-in via
+                       install-xl.bat or switch-quant.bat xl.
+switch-quant.bat       Flip the active quant: `switch-quant.bat iq4_xs`
+                       or `switch-quant.bat xl`. Restarts the service.
 run-llamacpp-cpu.bat   Pure CPU fallback (-ngl 0). Always correct
                        output but only ~10 tokens per second.
 
 WHEN TO SWITCH TO CPU FALLBACK
-If the Vulkan path produces garbage (repeated slashes "/////" in
+If the SYCL path produces garbage (repeated slashes "/////" in
 opencode's thinking stream, or broken characters in the answer), or
 if Windows BSODs with "your device ran into a problem and needs to
 restart" (VIDEO_TDR_FAILURE):
@@ -1680,27 +1683,29 @@ Then reboot. This does not fix hangs, it just lets longer dispatches
 finish before Windows kills the driver.
 
 
-SECONDARY FALLBACK - garbage output that isn't slash-storm and isn't TDR
-The three GGML_VK_DISABLE_* env vars in run-llamacpp.bat already cover
-the known coopmat (140V Xe2) and F16-acc (155H Xe-LPG) bugs. If you
-still see garbage:
+SECONDARY FALLBACK - garbage output that isn't TDR
+The SYCL backend sidesteps the Vulkan-coopmat (#20554) and F16-acc
+(#18969) bugs that needed env-var workarounds. If you still see
+garbage:
 
-1. Confirm the env vars actually took effect: in the llama-server
-   startup banner you should see "matrix cores: none" (not
-   "KHR_coopmat"). If it shows KHR_coopmat, the env vars aren't being
-   read - launch from the same Command Prompt that the bat file sets up.
+1. Try the IQ4_XS variant if you were on XL (switch-quant.bat iq4_xs).
+   The smaller weights leave more room for the MTP head and KV cache.
 
-2. Try bumping the KV cache to bf16 (slower, doubles memory, but Unsloth
-   recommends it as the gibberish remedy). Edit run-llamacpp.bat and
-   change "--cache-type-k q8_0 --cache-type-v q8_0" to
-   "--cache-type-k bf16 --cache-type-v bf16". You may also need to
+2. Try bumping the KV cache to bf16 (slower, doubles memory, but a
+   common remedy for Intel iGPU numerical issues). Edit
+   run-llamacpp.bat and change "--cache-type-k q8_0 --cache-type-v q8_0"
+   to "--cache-type-k bf16 --cache-type-v bf16". You may also need to
    drop -c from 131072 to 65536 to keep VRAM in budget.
 
-3. Try disabling flash attention. Change "-fa on" to "-fa off". This
-   trades performance for more conservative attention compute paths
-   that have been better-behaved on Intel iGPUs historically.
+3. Try disabling MTP. Remove "--spec-type draft-mtp --spec-draft-n-max 2"
+   from run-llamacpp.bat. The MTP code path is newer than the rest of
+   llama.cpp; if a future driver regression is MTP-specific, plain
+   speculation-free decode keeps working.
 
-4. Use the CPU fallback (run-llamacpp-cpu.bat). If that also produces
+4. Try disabling flash attention. Change "-fa on" to "-fa off". This
+   trades performance for more conservative attention compute paths.
+
+5. Use the CPU fallback (run-llamacpp-cpu.bat). If that also produces
    garbage, the model file is corrupt - re-copy from the USB.
 EOF
 
@@ -1731,9 +1736,16 @@ del /Q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacp
 del /Q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper.bat" 2>nul
 echo Removing old launchers and opencode config...
 del /Q "%DEST%\run-llamacpp.bat" 2>nul
+del /Q "%DEST%\run-llamacpp-iq4xs.bat" 2>nul
+del /Q "%DEST%\run-llamacpp-xl.bat" 2>nul
+del /Q "%DEST%\run-llamacpp-coder.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-cpu.bat" 2>nul
+del /Q "%DEST%\switch-quant.bat" 2>nul
 del /Q "%DEST%\start-slopcode.bat" 2>nul
 del /Q "%DEST%\run-whisper.bat" 2>nul
+del /Q "%DEST%\stop-llamacpp.bat" 2>nul
+del /Q "%DEST%\llama-chat.bat" 2>nul
+del /Q "%DEST%\llama-coder.bat" 2>nul
 del /Q "%DEST%\bin\prewarm-opencode.bat" 2>nul
 del /Q "%DEST%\bin\record-meeting.bat" 2>nul
 del /Q "%DEST%\bin\meeting-transcribe.bat" 2>nul
@@ -1790,19 +1802,13 @@ REM Per-quant launchers; switch-quant.bat below copies the active one to
 REM run-llamacpp.bat. Both load the MTP-trained GGUF and emit
 REM --spec-type draft-mtp for the 1.4-2.2x decode speedup; sampler block
 REM (temp 1.0, presence-penalty 1.5) follows Unsloth's MTP recipe.
+REM Backend: SYCL (Intel oneAPI) prebuilt. No GGML_VK_* env vars needed —
+REM those workarounds were Vulkan-specific. The bundled llama-server.exe
+REM ships oneAPI runtime DLLs so no separate Intel install is required.
 >"%DEST%\run-llamacpp-iq4xs.bat" echo @echo off
->>"%DEST%\run-llamacpp-iq4xs.bat" echo REM Intel Arc Vulkan stability workarounds:
->>"%DEST%\run-llamacpp-iq4xs.bat" echo REM   GGML_VK_DISABLE_COOPMAT / COOPMAT2 -- Arc 140V Xe2 KHR_coopmat TDR ^(ggml-org/llama.cpp#20554^)
->>"%DEST%\run-llamacpp-iq4xs.bat" echo REM   GGML_VK_DISABLE_F16                -- Intel iGPU F16 acc NaN/garbage ^(#18969^)
->>"%DEST%\run-llamacpp-iq4xs.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
->>"%DEST%\run-llamacpp-iq4xs.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
->>"%DEST%\run-llamacpp-iq4xs.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp-iq4xs.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
 >>"%DEST%\run-llamacpp-iq4xs.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL_IQ4_XS%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 >"%DEST%\run-llamacpp-xl.bat" echo @echo off
->>"%DEST%\run-llamacpp-xl.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
->>"%DEST%\run-llamacpp-xl.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
->>"%DEST%\run-llamacpp-xl.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp-xl.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
 >>"%DEST%\run-llamacpp-xl.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL_XL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 REM Active launcher = copy of the per-quant file selected at install time.
@@ -1862,7 +1868,7 @@ mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >>"%DEST%\bin\meeting-process.bat" echo where pwsh ^>nul 2^>^&1 ^|^| ^(echo PowerShell 7 pwsh is required for meeting scripts. Install it from https://aka.ms/powershell ^& exit /b 1^)
 >>"%DEST%\bin\meeting-process.bat" echo pwsh -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-process.ps1" %%*
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
->"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+>"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP (Arc SYCL)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 REM Update user PATH (HKCU\Environment) without touching system entries.
 set "USERPATH="
 for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul ^| findstr /I "Path"') do set "USERPATH=%%B"

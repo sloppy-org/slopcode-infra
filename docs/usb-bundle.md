@@ -8,7 +8,10 @@ scripts/build_bundle.sh all --out /mnt/usb
 
 The bundle includes:
 
-- llama.cpp (latest release), opencode, whisper.cpp.
+- llama.cpp (latest release) — Vulkan on Linux, Metal on macOS,
+  **SYCL / oneAPI on Windows** (switched from Vulkan 2026-05-22; sidesteps
+  the active Vulkan-Arc bugs and gives ~2x prefill on Lunar Lake).
+- opencode, whisper.cpp.
 - Both quants of Qwen3.6-35B-A3B-Instruct MTP from
   `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`:
   - **UD-IQ4_XS** (~18 GB) — bundle default, fits 32 GB unified Macs and
