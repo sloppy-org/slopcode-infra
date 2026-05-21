@@ -133,18 +133,19 @@ if [[ "${INSTALL_QWEN122B}" == "true" && ( -z "${MODEL_122B_PATH}" || ! -f "${MO
   die "model for alias ${QWEN_122B_ALIAS} not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${QWEN_122B_ALIAS}"
 fi
 
-# MTP flag block per plist (empty when LLAMACPP_NO_MTP=true).
+# MTP flag block per plist (empty when LLAMACPP_NO_MTP=true). Sampler dials
+# are the same regardless: Qwen "Thinking + general" (temp 1.0, pp 1.5) so
+# every peer serving alias `qwen` produces consistent output whether MTP is
+# loaded or not.
 if [[ "${LLAMACPP_NO_MTP:-false}" == "true" ]]; then
   MTP_XML=""
-  QWEN_TEMP="0.6"
-  QWEN_PRESENCE="0.0"
 else
   MTP_XML="    <string>--spec-type</string><string>draft-mtp</string>
     <string>--spec-draft-n-max</string><string>${LLAMACPP_SPEC_DRAFT_N_MAX:-2}</string>
 "
-  QWEN_TEMP="1.0"
-  QWEN_PRESENCE="1.5"
 fi
+QWEN_TEMP="1.0"
+QWEN_PRESENCE="1.5"
 
 bootout_if_loaded() {
   local label="$1" plist="${AGENTS_DIR}/${1}.plist"
