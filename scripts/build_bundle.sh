@@ -231,16 +231,25 @@ copy_model_alias() {
 
 copy_models() {
   [[ "${SKIP_MODEL}" == true ]] && return 0
+  # Bundle ships both MTP quants of Qwen3.6-35B-A3B so the per-platform
+  # installer can flip between them via switch-quant.{sh,bat}:
+  #   * UD-IQ4_XS-MTP  (~18 GB) — default, fits 32 GB unified Macs and the
+  #     Windows-arc 32 GB iGPU cap comfortably with the MTP head loaded.
+  #   * UD-Q4_K_XL-MTP (~23 GB) — opt-in via install-xl.{sh,bat} for hosts
+  #     with the resident-memory headroom (Mac Studio, 64 GB+ desktops).
   prune_dir_entries "${OUT}/models" \
     Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
     Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf.sha256 \
+    Qwen3.6-35B-A3B-UD-IQ4_XS.gguf \
+    Qwen3.6-35B-A3B-UD-IQ4_XS.gguf.sha256 \
     Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf \
     Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf.sha256 \
     mmproj-BF16.gguf \
     mmproj-BF16.gguf.sha256 \
     ggml-large-v3-turbo.bin \
     ggml-large-v3-turbo.bin.partial
-  copy_model_alias qwen3.6-35b-a3b-q4 true
+  copy_model_alias qwen3.6-35b-a3b-mtp-iq4_xs true
+  copy_model_alias qwen3.6-35b-a3b-mtp-q4 true
   copy_model_alias qwen3-coder-30b-a3b-q4 false
   local model="${OUT}/models/ggml-large-v3-turbo.bin"
   if [[ ! -f "${model}" ]]; then
@@ -513,21 +522,30 @@ write_linux() {
   fetch_whisper_source "${t}/whisper.cpp" "${WHISPER_TAG}"
   write_common_unix_files "${t}"
 
+  # Bundle-root preview launcher (no install). Defaults to the smaller
+  # IQ4_XS-MTP variant; pass SLOPCODE_QUANT=xl for the heavier UD-Q4_K_XL-MTP.
   cat >"${t}/start.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="${HERE}/opencode:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/llama.cpp${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+case "${SLOPCODE_QUANT:-iq4_xs}" in
+  xl)     MODEL="Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" ;;
+  iq4_xs) MODEL="Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" ;;
+  *) echo "SLOPCODE_QUANT must be iq4_xs or xl" >&2; exit 1 ;;
+esac
 exec "${HERE}/llama.cpp/llama-server" \
-  -m "${HERE}/../models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" \
+  -m "${HERE}/../models/${MODEL}" \
   --mmproj "${HERE}/../models/mmproj-BF16.gguf" \
-  -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 \
+  -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 \
   -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 \
-  --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
-  --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek \
-  --reasoning-budget 4096 --no-context-shift --reasoning on \
-  --host 127.0.0.1 --port 8080
+  --alias qwen --jinja \
+  --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 \
+  --presence-penalty 1.5 --repeat-penalty 1.0 \
+  --reasoning-format deepseek --reasoning-budget 4096 --reasoning on \
+  --spec-type draft-mtp --spec-draft-n-max 2 \
+  --no-context-shift --host 127.0.0.1 --port 8080
 EOF
   chmod +x "${t}/start.sh"
 
@@ -767,12 +785,65 @@ cmake -S "${DEST}/whisper.cpp" \
   -DGGML_CUDA=1
 cmake --build "${DEST}/whisper.cpp/build" -j"$(nproc)"
 
-cat >"${DEST}/run-llamacpp.sh" <<RUN
+# Per-quant chat launchers; switch-quant.sh flips the run-llamacpp.sh
+# symlink between them. Both load the MTP-trained GGUF and emit
+# --spec-type draft-mtp for the 1.4-2.2x decode speedup; the sampler
+# block (temp 1.0, presence-penalty 1.5) follows Unsloth's MTP recipe.
+cat >"${DEST}/run-llamacpp-iq4xs.sh" <<RUN
 #!/usr/bin/env bash
 export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
-exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 262144 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 RUN
+cat >"${DEST}/run-llamacpp-xl.sh" <<RUN
+#!/usr/bin/env bash
+export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
+export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+RUN
+chmod +x "${DEST}/run-llamacpp-iq4xs.sh" "${DEST}/run-llamacpp-xl.sh"
+# Active variant selected by the installer that invoked this. install.sh sets
+# SLOPCODE_QUANT=iq4_xs, install-xl.sh sets SLOPCODE_QUANT=xl. switch-quant.sh
+# below flips the symlink and restarts the systemd unit.
+SLOPCODE_QUANT="${SLOPCODE_QUANT:-iq4_xs}"
+case "${SLOPCODE_QUANT}" in
+  iq4_xs) ln -sf "${DEST}/run-llamacpp-iq4xs.sh" "${DEST}/run-llamacpp.sh" ;;
+  xl)     ln -sf "${DEST}/run-llamacpp-xl.sh"    "${DEST}/run-llamacpp.sh" ;;
+  *) echo "SLOPCODE_QUANT must be iq4_xs or xl" >&2; exit 1 ;;
+esac
+
+cat >"${DEST}/switch-quant.sh" <<'RUN'
+#!/usr/bin/env bash
+# Flip the active 35B-A3B quant between iq4_xs (default, lighter) and xl
+# (heavier, more accurate). Restarts the systemd unit so the change takes
+# effect immediately.
+set -euo pipefail
+DEST="${HOME}/.local/slopcode"
+case "${1:-}" in
+  iq4_xs|xl) QUANT="$1" ;;
+  ""|--help|-h)
+    cat <<USAGE
+usage: switch-quant.sh {iq4_xs|xl}
+
+  iq4_xs   ~18 GB weights, default — fits 32 GB unified Macs and the
+           windows-arc 32 GB iGPU cap.
+  xl       ~23 GB weights, heavier — for hosts with 24 GB+ free.
+
+current: $(readlink "${DEST}/run-llamacpp.sh" 2>/dev/null | xargs -I{} basename {} 2>/dev/null || echo unset)
+USAGE
+    exit 1
+    ;;
+  *) echo "switch-quant.sh: unknown quant '$1'; use iq4_xs or xl" >&2; exit 1 ;;
+esac
+case "${QUANT}" in
+  iq4_xs) ln -sf "${DEST}/run-llamacpp-iq4xs.sh" "${DEST}/run-llamacpp.sh" ;;
+  xl)     ln -sf "${DEST}/run-llamacpp-xl.sh"    "${DEST}/run-llamacpp.sh" ;;
+esac
+systemctl --user restart slopcode-llamacpp.service 2>/dev/null \
+  || echo "systemd unit not running; start it with: systemctl --user start slopcode-llamacpp.service"
+echo "active quant: ${QUANT}"
+RUN
+chmod +x "${DEST}/switch-quant.sh"
 cat >"${DEST}/run-llamacpp-coder.sh" <<RUN
 #!/usr/bin/env bash
 # Foreground Qwen3-Coder-30B-A3B-Instruct FIM profile. Same hardware budget
@@ -843,11 +914,22 @@ UNIT
 systemctl --user daemon-reload
 systemctl --user enable --now slopcode-llamacpp.service whisper-server.service
 cat >"${HOME}/.config/opencode/opencode.json" <<JSON
-{"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4","limit":{"context":262144,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+{"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 JSON
 echo "installed: opencode + llama.cpp on 127.0.0.1:8080 + whisper.cpp on 127.0.0.1:8427"
+echo "active quant: ${SLOPCODE_QUANT}; switch later with: ${DEST}/switch-quant.sh {iq4_xs|xl}"
 EOF
   chmod +x "${t}/install.sh"
+
+  # install-xl.sh = the same install with the heavier quant active.
+  cat >"${t}/install-xl.sh" <<EOF
+#!/usr/bin/env bash
+# Install with UD-Q4_K_XL-MTP (~23 GB) as the active 35B-A3B launcher.
+# Use this on hosts with 24 GB+ free unified memory / VRAM headroom.
+set -euo pipefail
+SLOPCODE_QUANT=xl exec bash "\$(dirname "\${BASH_SOURCE[0]}")/install.sh" "\$@"
+EOF
+  chmod +x "${t}/install-xl.sh"
 }
 
 write_mac() {
@@ -1099,12 +1181,61 @@ cmake -S "${DEST}/whisper.cpp" \
   -DGGML_METAL=1
 cmake --build "${DEST}/whisper.cpp/build" -j"$(sysctl -n hw.physicalcpu)"
 
-cat >"${DEST}/run-llamacpp.sh" <<RUN
+# Per-quant chat launchers on macOS Metal; switch-quant.sh below flips the
+# run-llamacpp.sh symlink. Both load the MTP-trained GGUF and emit
+# --spec-type draft-mtp for the 1.4-2.2x decode speedup; sampler block
+# (temp 1.0, presence-penalty 1.5) follows Unsloth's MTP recipe.
+cat >"${DEST}/run-llamacpp-iq4xs.sh" <<RUN
 #!/usr/bin/env bash
 export PATH="${DEST}/opencode:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:\${PATH}"
 export DYLD_LIBRARY_PATH="${DEST}/llama.cpp\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
-exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --reasoning on --reasoning-budget 4096 --no-context-shift --host 127.0.0.1 --port 8080
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 RUN
+cat >"${DEST}/run-llamacpp-xl.sh" <<RUN
+#!/usr/bin/env bash
+export PATH="${DEST}/opencode:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:\${PATH}"
+export DYLD_LIBRARY_PATH="${DEST}/llama.cpp\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+RUN
+chmod +x "${DEST}/run-llamacpp-iq4xs.sh" "${DEST}/run-llamacpp-xl.sh"
+SLOPCODE_QUANT="${SLOPCODE_QUANT:-iq4_xs}"
+case "${SLOPCODE_QUANT}" in
+  iq4_xs) ln -sf "${DEST}/run-llamacpp-iq4xs.sh" "${DEST}/run-llamacpp.sh" ;;
+  xl)     ln -sf "${DEST}/run-llamacpp-xl.sh"    "${DEST}/run-llamacpp.sh" ;;
+  *) echo "SLOPCODE_QUANT must be iq4_xs or xl" >&2; exit 1 ;;
+esac
+
+cat >"${DEST}/switch-quant.sh" <<'RUN'
+#!/usr/bin/env bash
+# Flip the active 35B-A3B quant between iq4_xs (default, lighter) and xl
+# (heavier, more accurate). Reloads the launchd plist so the change takes
+# effect immediately.
+set -euo pipefail
+DEST="${HOME}/.local/slopcode"
+case "${1:-}" in
+  iq4_xs|xl) QUANT="$1" ;;
+  ""|--help|-h)
+    cat <<USAGE
+usage: switch-quant.sh {iq4_xs|xl}
+
+  iq4_xs   ~18 GB weights, default — fits 32 GB unified Macs.
+  xl       ~23 GB weights, heavier — for 64 GB+ unified memory.
+
+current: $(readlink "${DEST}/run-llamacpp.sh" 2>/dev/null | xargs -I{} basename {} 2>/dev/null || echo unset)
+USAGE
+    exit 1
+    ;;
+  *) echo "switch-quant.sh: unknown quant '$1'; use iq4_xs or xl" >&2; exit 1 ;;
+esac
+case "${QUANT}" in
+  iq4_xs) ln -sf "${DEST}/run-llamacpp-iq4xs.sh" "${DEST}/run-llamacpp.sh" ;;
+  xl)     ln -sf "${DEST}/run-llamacpp-xl.sh"    "${DEST}/run-llamacpp.sh" ;;
+esac
+launchctl bootout "gui/$(id -u)/com.slopcode.llamacpp" 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" "${HOME}/Library/LaunchAgents/com.slopcode.llamacpp.plist"
+echo "active quant: ${QUANT}"
+RUN
+chmod +x "${DEST}/switch-quant.sh"
 cat >"${DEST}/run-llamacpp-coder.sh" <<RUN
 #!/usr/bin/env bash
 # Qwen3-Coder-30B-A3B-Instruct FIM profile for Apple Silicon. Same hardware
@@ -1187,11 +1318,23 @@ launchctl bootout "gui/$(id -u)/com.slopcode.whisper-server" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "${LLAMA_PLIST}"
 launchctl bootstrap "gui/$(id -u)" "${WHISPER_PLIST}"
 cat >"${HOME}/.config/opencode/opencode.json" <<JSON
-{"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+{"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 JSON
 echo "installed: opencode + llama.cpp on 127.0.0.1:8080 + whisper.cpp on 127.0.0.1:8427"
+echo "active quant: ${SLOPCODE_QUANT}; switch later with: ${DEST}/switch-quant.sh {iq4_xs|xl}"
 EOF
   chmod +x "${t}/install.sh"
+
+  # install-xl.sh = the same install with the heavier quant active.
+  cat >"${t}/install-xl.sh" <<EOF
+#!/usr/bin/env bash
+# Install with UD-Q4_K_XL-MTP (~23 GB) as the active 35B-A3B launcher.
+# Use this on Macs with 64 GB+ unified memory; the default install.sh
+# uses the smaller IQ4_XS-MTP that fits 32 GB Macs comfortably.
+set -euo pipefail
+SLOPCODE_QUANT=xl exec bash "\$(dirname "\${BASH_SOURCE[0]}")/install.sh" "\$@"
+EOF
+  chmod +x "${t}/install-xl.sh"
 }
 
 write_windows() {
@@ -1455,7 +1598,7 @@ OPTION 2 - MANUAL INSTALL
 
    Then open Notepad and paste this exact content (one long line):
 
-       {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+       {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 
    Save as opencode.json in %USERPROFILE%\.config\opencode\
    (set "Save as type" to "All Files").
@@ -1623,8 +1766,15 @@ setx OPENCODE_DISABLE_MODELS_FETCH 1 >nul
 setx OPENCODE_DISABLE_LSP_DOWNLOAD 1 >nul
 setx OPENCODE_DISABLE_DEFAULT_PLUGINS 1 >nul
 setx OPENCODE_DISABLE_EMBEDDED_WEB_UI 1 >nul
-set "MODEL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
+REM Active 35B-A3B quant: install.bat defaults to iq4_xs (~18 GB, fits the
+REM Arc 140V 32 GB GPU cap with the MTP head loaded). install-xl.bat sets
+REM SLOPCODE_QUANT=xl for the heavier UD-Q4_K_XL-MTP. switch-quant.bat
+REM flips between the two on an installed host.
+if not defined SLOPCODE_QUANT set "SLOPCODE_QUANT=iq4_xs"
+set "MODEL_IQ4_XS=%DEST%\models\Qwen3.6-35B-A3B-UD-IQ4_XS.gguf"
+set "MODEL_XL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
 set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
+if /I "%SLOPCODE_QUANT%"=="xl" (set "MODEL=%MODEL_XL%") else (set "MODEL=%MODEL_IQ4_XS%")
 REM Detect physical cores via wmic; --threads = physical - 2 (min 2). On Lunar
 REM Lake Arc 140V (4P + 4LP = 8 physical) this lands on --threads 6. If wmic
 REM is not installed (Windows 11 24H2+ without the optional feature) we fall
@@ -1636,18 +1786,44 @@ for /f "skip=1 tokens=*" %%C in ('wmic cpu get NumberOfCores 2^>nul') do (
 )
 if defined PHYS (set /a THREADS=%PHYS% - 2) else (set /a THREADS=%NUMBER_OF_PROCESSORS%/2 - 1)
 if !THREADS! LSS 2 set THREADS=2
->"%DEST%\run-llamacpp.bat" echo @echo off
->>"%DEST%\run-llamacpp.bat" echo REM Intel Arc Vulkan stability workarounds:
->>"%DEST%\run-llamacpp.bat" echo REM   GGML_VK_DISABLE_COOPMAT / COOPMAT2 -- Arc 140V Xe2 KHR_coopmat TDR ^(ggml-org/llama.cpp#20554^)
->>"%DEST%\run-llamacpp.bat" echo REM   GGML_VK_DISABLE_F16                -- Intel iGPU F16 acc NaN/garbage ^(#18969^)
->>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
->>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
->>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
->>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
+REM Per-quant launchers; switch-quant.bat below copies the active one to
+REM run-llamacpp.bat. Both load the MTP-trained GGUF and emit
+REM --spec-type draft-mtp for the 1.4-2.2x decode speedup; sampler block
+REM (temp 1.0, presence-penalty 1.5) follows Unsloth's MTP recipe.
+>"%DEST%\run-llamacpp-iq4xs.bat" echo @echo off
+>>"%DEST%\run-llamacpp-iq4xs.bat" echo REM Intel Arc Vulkan stability workarounds:
+>>"%DEST%\run-llamacpp-iq4xs.bat" echo REM   GGML_VK_DISABLE_COOPMAT / COOPMAT2 -- Arc 140V Xe2 KHR_coopmat TDR ^(ggml-org/llama.cpp#20554^)
+>>"%DEST%\run-llamacpp-iq4xs.bat" echo REM   GGML_VK_DISABLE_F16                -- Intel iGPU F16 acc NaN/garbage ^(#18969^)
+>>"%DEST%\run-llamacpp-iq4xs.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
+>>"%DEST%\run-llamacpp-iq4xs.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
+>>"%DEST%\run-llamacpp-iq4xs.bat" echo set "GGML_VK_DISABLE_F16=1"
+>>"%DEST%\run-llamacpp-iq4xs.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+>>"%DEST%\run-llamacpp-iq4xs.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL_IQ4_XS%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+>"%DEST%\run-llamacpp-xl.bat" echo @echo off
+>>"%DEST%\run-llamacpp-xl.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
+>>"%DEST%\run-llamacpp-xl.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
+>>"%DEST%\run-llamacpp-xl.bat" echo set "GGML_VK_DISABLE_F16=1"
+>>"%DEST%\run-llamacpp-xl.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+>>"%DEST%\run-llamacpp-xl.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL_XL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 512 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+REM Active launcher = copy of the per-quant file selected at install time.
+if /I "%SLOPCODE_QUANT%"=="xl" (copy /Y "%DEST%\run-llamacpp-xl.bat" "%DEST%\run-llamacpp.bat" ^>nul) else (copy /Y "%DEST%\run-llamacpp-iq4xs.bat" "%DEST%\run-llamacpp.bat" ^>nul)
+REM switch-quant.bat: copy the requested variant on top of run-llamacpp.bat.
+>"%DEST%\switch-quant.bat" echo @echo off
+>>"%DEST%\switch-quant.bat" echo setlocal EnableDelayedExpansion
+>>"%DEST%\switch-quant.bat" echo if /I "%%1"=="iq4_xs" goto :pick
+>>"%DEST%\switch-quant.bat" echo if /I "%%1"=="xl" goto :pick
+>>"%DEST%\switch-quant.bat" echo echo usage: switch-quant.bat {iq4_xs^|xl}
+>>"%DEST%\switch-quant.bat" echo exit /b 1
+>>"%DEST%\switch-quant.bat" echo :pick
+>>"%DEST%\switch-quant.bat" echo set "QUANT=%%~1"
+>>"%DEST%\switch-quant.bat" echo taskkill /F /IM llama-server.exe /T ^>nul 2^>^&1
+>>"%DEST%\switch-quant.bat" echo copy /Y "%DEST%\run-llamacpp-!QUANT!.bat" "%DEST%\run-llamacpp.bat" ^>nul
+>>"%DEST%\switch-quant.bat" echo start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
+>>"%DEST%\switch-quant.bat" echo echo active quant: !QUANT!
+REM CPU fallback inherits the active quant.
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0 --repeat-penalty 1 --reasoning-format deepseek --reasoning-budget 4096 --no-context-shift --reasoning on --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 set "CODER_MODEL=%DEST%\models\Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf"
 >"%DEST%\run-llamacpp-coder.bat" echo @echo off
 >>"%DEST%\run-llamacpp-coder.bat" echo REM Qwen3-Coder-30B-A3B-Instruct FIM profile. Same Arc Vulkan stability env vars as chat.
@@ -1686,7 +1862,7 @@ mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >>"%DEST%\bin\meeting-process.bat" echo where pwsh ^>nul 2^>^&1 ^|^| ^(echo PowerShell 7 pwsh is required for meeting scripts. Install it from https://aka.ms/powershell ^& exit /b 1^)
 >>"%DEST%\bin\meeting-process.bat" echo pwsh -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-process.ps1" %%*
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
->"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B Q4 (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
+>"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP (Arc)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 REM Update user PATH (HKCU\Environment) without touching system entries.
 set "USERPATH="
 for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul ^| findstr /I "Path"') do set "USERPATH=%%B"
@@ -1699,9 +1875,22 @@ setx Path "!NEWPATH!" >nul
 start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
 start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
 echo Installed localhost-only llama.cpp 8080, whisper.cpp 8427, opencode, and meeting scripts (--threads !THREADS!).
+echo active quant: %SLOPCODE_QUANT%  (switch later with: %DEST%\switch-quant.bat {iq4_xs^|xl})
 echo If you see repeated slashes in opencode thinking, run: %DEST%\run-llamacpp-cpu.bat
 echo and update the Startup shortcut to point at run-llamacpp-cpu.bat instead.
 echo Open a new terminal before running opencode.
+EOF
+
+  # install-xl.bat = the same install with the heavier quant active.
+  cat >"${t}/install-xl.bat" <<'EOF'
+@echo off
+REM Install with UD-Q4_K_XL-MTP (~23 GB) as the active 35B-A3B launcher.
+REM Use this on Windows hosts with 24 GB+ free unified memory / GPU cap.
+REM The default install.bat uses the smaller IQ4_XS-MTP that fits the
+REM Arc 140V 32 GB GPU cap comfortably.
+setlocal
+set "SLOPCODE_QUANT=xl"
+call "%~dp0install.bat" %*
 EOF
 }
 
