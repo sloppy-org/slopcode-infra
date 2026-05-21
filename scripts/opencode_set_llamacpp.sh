@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Configure OpenCode for slopgate llama.cpp routing. The 122B-A10B MoE model
-# is the default coding model; the 35B-A3B MoE model is the fast/agent model;
-# the dense 27B model stays available as an explicit option.
+# Configure OpenCode for slopgate llama.cpp routing. The 35B-A3B-MTP MoE
+# model (alias `qwen`) is the default chat/coding model; the 122B-A10B-MTP
+# model stays available as an explicit `qwen122b` override for heavyweight
+# runs, and the dense 27B model as `qwen27b`.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -99,7 +100,7 @@ $(model_block "qwen27b" "qwen27b")
 EOF
 }
 
-DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-slopgate/qwen122b}"
+DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-slopgate/qwen}"
 SMALL_MODEL="${OPENCODE_LOCAL_SMALL_MODEL:-slopgate/qwen}"
 PROVIDER_BLOCK="$(providers_block)"
 DISABLED='"disabled_providers": ["exa", "opencode", "llmgateway", "github-copilot", "copilot", "openai", "anthropic", "google", "mistral", "groq", "xai", "ollama"]'

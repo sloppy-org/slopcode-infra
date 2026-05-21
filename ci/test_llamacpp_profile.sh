@@ -328,7 +328,7 @@ JSON
 
   local platform_ok=1
   local context_expected=131072
-  grep -q '"model": "slopgate/qwen122b"' "${config_path}" || platform_ok=0
+  grep -q '"model": "slopgate/qwen"' "${config_path}" || platform_ok=0
   grep -q '"small_model": "slopgate/qwen"' "${config_path}" || platform_ok=0
   grep -q "\"context\": ${context_expected}" "${config_path}" || platform_ok=0
   grep -q 'http://127.0.0.1:8080/v1' "${config_path}" || platform_ok=0
@@ -336,7 +336,7 @@ JSON
   grep -q '"qwen122b"' "${config_path}" || platform_ok=0
   grep -q '"qwen"' "${config_path}" || platform_ok=0
   grep -q '"qwen27b"' "${config_path}" || platform_ok=0
-  grep -q '"model": "slopgate/qwen122b"' "${config_path}" || platform_ok=0
+  grep -q '"model": "slopgate/qwen"' "${config_path}" || platform_ok=0
   grep -q '"model": "slopgate/qwen"' "${config_path}" || platform_ok=0
   [[ -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || platform_ok=0
 
@@ -364,7 +364,7 @@ test_opencode_config_slopgate() {
   local ok=1
   grep -q '"baseURL": "http://10.0.0.99:8080/v1"' "${config_path}" || ok=0
   grep -q '"x-session-affinity"' "${config_path}" || ok=0
-  grep -q '"model": "slopgate/qwen122b"' "${config_path}" || ok=0
+  grep -q '"model": "slopgate/qwen"' "${config_path}" || ok=0
   grep -q '"small_model": "slopgate/qwen"' "${config_path}" || ok=0
   grep -q '"qwen27b"' "${config_path}" || ok=0
   [[ -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || ok=0
