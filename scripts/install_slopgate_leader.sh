@@ -135,7 +135,7 @@ ExecStart=${EXEC_BIN} agent \\
   --model-aliases \${SLOPGATE_LOCAL_MODEL_ALIASES:-} \\
   --machine-profile \${SLOPGATE_LOCAL_MACHINE_PROFILE:-} \\
   --digest-extra \${SLOPGATE_LOCAL_DIGEST_EXTRA:-} \\
-  --quant \${SLOPGATE_LOCAL_QUANT:-} \\
+  --quant \${SLOPGATE_LOCAL_QUANT} \\
   --name \${SLOPGATE_LOCAL_AGENT_NAME}
 Restart=on-failure
 RestartSec=5
@@ -249,7 +249,7 @@ XML
     <string>--model-aliases</string><string>${SLOPGATE_LOCAL_MODEL_ALIASES:-}</string>
     <string>--machine-profile</string><string>${SLOPGATE_LOCAL_MACHINE_PROFILE:-}</string>
     <string>--digest-extra</string><string>${SLOPGATE_LOCAL_DIGEST_EXTRA:-}</string>
-    <string>--quant</string><string>${SLOPGATE_LOCAL_QUANT:-}</string>
+    <string>--quant</string><string>${SLOPGATE_LOCAL_QUANT}</string>
     <string>--name</string><string>${SLOPGATE_LOCAL_AGENT_NAME}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent.log</string>
