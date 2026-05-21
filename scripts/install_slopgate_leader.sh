@@ -135,6 +135,7 @@ ExecStart=${EXEC_BIN} agent \\
   --model-aliases \${SLOPGATE_LOCAL_MODEL_ALIASES:-} \\
   --machine-profile \${SLOPGATE_LOCAL_MACHINE_PROFILE:-} \\
   --digest-extra \${SLOPGATE_LOCAL_DIGEST_EXTRA:-} \\
+  --quant \${SLOPGATE_LOCAL_QUANT:-} \\
   --name \${SLOPGATE_LOCAL_AGENT_NAME}
 Restart=on-failure
 RestartSec=5
@@ -186,17 +187,19 @@ UNIT
     # iff its llama-server launchd plist is present in this directory (see
     # install_mac_launchagents.sh). Stays in sync with the llama-server ports.
     AGENT_27B_ADDR="${SLOPGATE_AGENT_27B_ADDR:-127.0.0.1:8082}"
-    AGENT_27B_MAX_CONTEXT="${SLOPGATE_AGENT_27B_MAX_CONTEXT:-262144}"
+    AGENT_27B_MAX_CONTEXT="${SLOPGATE_AGENT_27B_MAX_CONTEXT:-180000}"
     AGENT_27B_MODEL_ALIAS="${SLOPGATE_AGENT_27B_MODEL_ALIAS:-qwen27b}"
     AGENT_27B_NAME="${SLOPGATE_AGENT_27B_NAME:-leader-27b}"
-    AGENT_27B_CANONICAL_MODEL="${SLOPGATE_AGENT_27B_CANONICAL_MODEL:-bartowski/qwen3.6:27b-q4km@256k}"
-    AGENT_27B_MODEL_ALIASES="${SLOPGATE_AGENT_27B_MODEL_ALIASES:-qwen3.6-27b,qwen3.6-27b@256k}"
+    AGENT_27B_CANONICAL_MODEL="${SLOPGATE_AGENT_27B_CANONICAL_MODEL:-bartowski/qwen3.6:27b@180k}"
+    AGENT_27B_MODEL_ALIASES="${SLOPGATE_AGENT_27B_MODEL_ALIASES:-qwen3.6-27b,qwen3.6-27b@180k}"
+    AGENT_27B_QUANT="${SLOPGATE_AGENT_27B_QUANT:-Q4_K_M}"
     AGENT_122B_ADDR="${SLOPGATE_AGENT_122B_ADDR:-127.0.0.1:8083}"
-    AGENT_122B_MAX_CONTEXT="${SLOPGATE_AGENT_122B_MAX_CONTEXT:-262144}"
+    AGENT_122B_MAX_CONTEXT="${SLOPGATE_AGENT_122B_MAX_CONTEXT:-180000}"
     AGENT_122B_MODEL_ALIAS="${SLOPGATE_AGENT_122B_MODEL_ALIAS:-qwen122b}"
     AGENT_122B_NAME="${SLOPGATE_AGENT_122B_NAME:-leader-122b}"
-    AGENT_122B_CANONICAL_MODEL="${SLOPGATE_AGENT_122B_CANONICAL_MODEL:-unsloth/qwen3.5:122b-a10b-q4kxl@256k}"
-    AGENT_122B_MODEL_ALIASES="${SLOPGATE_AGENT_122B_MODEL_ALIASES:-qwen3.5-122b,qwen3.5-122b@256k}"
+    AGENT_122B_CANONICAL_MODEL="${SLOPGATE_AGENT_122B_CANONICAL_MODEL:-unsloth/qwen3.5:122b-a10b@180k}"
+    AGENT_122B_MODEL_ALIASES="${SLOPGATE_AGENT_122B_MODEL_ALIASES:-qwen3.5-122b,qwen3.5-122b@180k}"
+    AGENT_122B_QUANT="${SLOPGATE_AGENT_122B_QUANT:-UD-Q4_K_XL}"
 
     cat > "${BALANCER_PLIST}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -246,6 +249,7 @@ XML
     <string>--model-aliases</string><string>${SLOPGATE_LOCAL_MODEL_ALIASES:-}</string>
     <string>--machine-profile</string><string>${SLOPGATE_LOCAL_MACHINE_PROFILE:-}</string>
     <string>--digest-extra</string><string>${SLOPGATE_LOCAL_DIGEST_EXTRA:-}</string>
+    <string>--quant</string><string>${SLOPGATE_LOCAL_QUANT:-}</string>
     <string>--name</string><string>${SLOPGATE_LOCAL_AGENT_NAME}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent.log</string>
@@ -259,7 +263,7 @@ XML
 
     write_companion_agent() {
       local label="$1" plist="$2" addr="$3" max_ctx="$4" alias="$5" name="$6"
-      local canonical="${7:-}" aliases="${8:-}" digest_extra="${9:-${SLOPGATE_LOCAL_DIGEST_EXTRA:-}}"
+      local canonical="${7:-}" aliases="${8:-}" quant="${9:-}" digest_extra="${10:-${SLOPGATE_LOCAL_DIGEST_EXTRA:-}}"
       local profile="${SLOPGATE_LOCAL_MACHINE_PROFILE:-}"
       cat > "${plist}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -285,6 +289,7 @@ XML
     <string>--model-aliases</string><string>${aliases}</string>
     <string>--machine-profile</string><string>${profile}</string>
     <string>--digest-extra</string><string>${digest_extra}</string>
+    <string>--quant</string><string>${quant}</string>
     <string>--name</string><string>${name}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent-${alias}.log</string>
@@ -301,7 +306,8 @@ XML
       write_companion_agent "${AGENT_27B_LABEL}" "${AGENT_27B_PLIST}" \
         "${AGENT_27B_ADDR}" "${AGENT_27B_MAX_CONTEXT}" \
         "${AGENT_27B_MODEL_ALIAS}" "${AGENT_27B_NAME}" \
-        "${AGENT_27B_CANONICAL_MODEL:-}" "${AGENT_27B_MODEL_ALIASES:-}"
+        "${AGENT_27B_CANONICAL_MODEL:-}" "${AGENT_27B_MODEL_ALIASES:-}" \
+        "${AGENT_27B_QUANT:-}"
       INSTALLED_AGENT_LABELS+=("${AGENT_27B_LABEL}")
     else
       rm -f "${AGENT_27B_PLIST}"
@@ -311,7 +317,8 @@ XML
       write_companion_agent "${AGENT_122B_LABEL}" "${AGENT_122B_PLIST}" \
         "${AGENT_122B_ADDR}" "${AGENT_122B_MAX_CONTEXT}" \
         "${AGENT_122B_MODEL_ALIAS}" "${AGENT_122B_NAME}" \
-        "${AGENT_122B_CANONICAL_MODEL:-}" "${AGENT_122B_MODEL_ALIASES:-}"
+        "${AGENT_122B_CANONICAL_MODEL:-}" "${AGENT_122B_MODEL_ALIASES:-}" \
+        "${AGENT_122B_QUANT:-}"
       INSTALLED_AGENT_LABELS+=("${AGENT_122B_LABEL}")
     else
       rm -f "${AGENT_122B_PLIST}"

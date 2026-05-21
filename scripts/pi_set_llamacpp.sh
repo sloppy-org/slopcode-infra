@@ -11,7 +11,7 @@ source "${SCRIPT_DIR}/_common.sh"
 
 PLATFORM="$(detect_platform)"
 HOST="${LLAMACPP_HOST:-127.0.0.1}"
-CONTEXT_SIZE_DEFAULT=262144
+CONTEXT_SIZE_DEFAULT=180000
 if [[ "${PLATFORM}" == "mac" ]]; then
   ram_gb="$(detect_total_ram_gb)"
   [[ "${ram_gb}" -lt 64 ]] && CONTEXT_SIZE_DEFAULT=131072

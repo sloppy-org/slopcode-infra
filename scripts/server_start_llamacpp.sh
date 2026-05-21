@@ -19,7 +19,7 @@
 #   LLAMACPP_MODEL_ALIAS  alias from the model registry (default: blessed)
 #   LLAMACPP_INSTANCE     name suffix for pid/port/log files (default: empty -> .run/llamacpp.*)
 #   LLAMACPP_SERVED_ALIAS --alias served in /v1/models (default: qwen)
-#   LLAMACPP_CONTEXT      total context size across slots (default 131072)
+#   LLAMACPP_CONTEXT      total context size across slots (default 180000)
 #   LLAMACPP_PORT         listen port (default 8080; 8081 when the local
 #                         slopgate-balancer/agent unit is installed so the
 #                         proxy can take 8080)
@@ -145,7 +145,7 @@ elif slopgate_present; then
 fi
 HOST="${LLAMACPP_HOST:-${HOST_DEFAULT}}"
 PORT="${LLAMACPP_PORT:-${PORT_DEFAULT}}"
-CONTEXT="${LLAMACPP_CONTEXT:-131072}"
+CONTEXT="${LLAMACPP_CONTEXT:-180000}"
 BATCH="${LLAMACPP_BATCH:-2048}"
 # -ub sizes the GPU compute buffer. On a 16 GB RTX 5060 Ti with --n-cpu-moe 30
 # and c=262144, -ub 1024 lands at ~11.0 GB VRAM (prefill 647 t/s, decode 39.7
