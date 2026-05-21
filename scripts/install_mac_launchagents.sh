@@ -97,25 +97,53 @@ resolve_mmproj_optional() {
   fi
 }
 
-MODEL_PATH="$(resolve_model qwen3.6-35b-a3b-q4)"
-MMPROJ_PATH="$(resolve_mmproj_optional qwen3.6-35b-a3b-q4)"
-[[ -n "${MMPROJ_PATH}" ]] || die "mmproj for qwen3.6-35b-a3b-q4 not on disk. Run: python3 ${MODELS_SCRIPT} prefetch qwen3.6-35b-a3b-q4"
+# Mac path defaults to the MTP-trained Qwen variants: faepmac1-class hardware
+# has the unified-memory headroom for the MTP head (+~1 GB resident), and
+# llama.cpp >= b9180 drafts via the head for a 1.4-2.2x decode speedup.
+# Set LLAMACPP_NO_MTP=true to fall back to the plain GGUFs on Macs without
+# the headroom.
+if [[ "${LLAMACPP_NO_MTP:-false}" == "true" ]]; then
+  QWEN_35B_ALIAS=qwen3.6-35b-a3b-q4
+  QWEN_27B_ALIAS=qwen3.6-27b-q4
+  QWEN_122B_ALIAS=qwen3.5-122b-a10b-ud-q4
+else
+  QWEN_35B_ALIAS=qwen3.6-35b-a3b-mtp-q4
+  QWEN_27B_ALIAS=qwen3.6-27b-mtp-q4
+  QWEN_122B_ALIAS=qwen3.5-122b-a10b-mtp-ud-q4
+fi
+
+MODEL_PATH="$(resolve_model "${QWEN_35B_ALIAS}")"
+MMPROJ_PATH="$(resolve_mmproj_optional "${QWEN_35B_ALIAS}")"
+[[ -n "${MMPROJ_PATH}" ]] || die "mmproj for ${QWEN_35B_ALIAS} not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${QWEN_35B_ALIAS}"
 
 INSTALL_QWEN27B="${INSTALL_QWEN27B:-false}"
-MODEL_27B_PATH="$(python3 "${MODELS_SCRIPT}" resolve qwen3.6-27b-q4 2>/dev/null || true)"
-MMPROJ_27B_PATH="$(resolve_mmproj_optional qwen3.6-27b-q4)"
+MODEL_27B_PATH="$(python3 "${MODELS_SCRIPT}" resolve "${QWEN_27B_ALIAS}" 2>/dev/null || true)"
+MMPROJ_27B_PATH="$(resolve_mmproj_optional "${QWEN_27B_ALIAS}")"
 if [[ "${INSTALL_QWEN27B}" == "true" && ( -z "${MODEL_27B_PATH}" || ! -f "${MODEL_27B_PATH}" ) ]]; then
-  die "model for alias qwen3.6-27b-q4 not on disk. Run: python3 ${MODELS_SCRIPT} prefetch qwen3.6-27b-q4"
+  die "model for alias ${QWEN_27B_ALIAS} not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${QWEN_27B_ALIAS}"
 fi
 if [[ "${INSTALL_QWEN27B}" == "true" && -z "${MMPROJ_27B_PATH}" ]]; then
-  die "mmproj for qwen3.6-27b-q4 not on disk. Run: python3 ${MODELS_SCRIPT} prefetch qwen3.6-27b-q4"
+  die "mmproj for ${QWEN_27B_ALIAS} not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${QWEN_27B_ALIAS}"
 fi
 
 INSTALL_QWEN122B="${INSTALL_QWEN122B:-auto}"
-MODEL_122B_PATH="$(python3 "${MODELS_SCRIPT}" resolve qwen3.5-122b-a10b-ud-q4 2>/dev/null || true)"
-MMPROJ_122B_PATH="$(resolve_mmproj_optional qwen3.5-122b-a10b-ud-q4)"
+MODEL_122B_PATH="$(python3 "${MODELS_SCRIPT}" resolve "${QWEN_122B_ALIAS}" 2>/dev/null || true)"
+MMPROJ_122B_PATH="$(resolve_mmproj_optional "${QWEN_122B_ALIAS}")"
 if [[ "${INSTALL_QWEN122B}" == "true" && ( -z "${MODEL_122B_PATH}" || ! -f "${MODEL_122B_PATH}" ) ]]; then
-  die "model for alias qwen3.5-122b-a10b-ud-q4 not on disk. Run: python3 ${MODELS_SCRIPT} prefetch qwen3.5-122b-a10b-ud-q4"
+  die "model for alias ${QWEN_122B_ALIAS} not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${QWEN_122B_ALIAS}"
+fi
+
+# MTP flag block per plist (empty when LLAMACPP_NO_MTP=true).
+if [[ "${LLAMACPP_NO_MTP:-false}" == "true" ]]; then
+  MTP_XML=""
+  QWEN_TEMP="0.6"
+  QWEN_PRESENCE="0.0"
+else
+  MTP_XML="    <string>--spec-type</string><string>draft-mtp</string>
+    <string>--spec-draft-n-max</string><string>${LLAMACPP_SPEC_DRAFT_N_MAX:-2}</string>
+"
+  QWEN_TEMP="1.0"
+  QWEN_PRESENCE="1.5"
 fi
 
 bootout_if_loaded() {
@@ -192,13 +220,13 @@ ${mmproj_xml}    <string>-c</string><string>720000</string>
     <string>-np</string><string>4</string>
     <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
     <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
-${CACHE_REUSE_XML}    <string>--alias</string><string>qwen</string>
+${MTP_XML}${CACHE_REUSE_XML}    <string>--alias</string><string>qwen</string>
     <string>--jinja</string>
-    <string>--temp</string><string>0.6</string>
+    <string>--temp</string><string>${QWEN_TEMP}</string>
     <string>--top-p</string><string>0.95</string>
     <string>--top-k</string><string>20</string>
     <string>--min-p</string><string>0</string>
-    <string>--presence-penalty</string><string>0.0</string>
+    <string>--presence-penalty</string><string>${QWEN_PRESENCE}</string>
     <string>--repeat-penalty</string><string>1.0</string>
     <string>--reasoning-format</string><string>deepseek</string>
     <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
@@ -268,13 +296,13 @@ write_llamacpp_27b_plist() {
     <string>-np</string><string>4</string>
     <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
     <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
-${CACHE_REUSE_XML}    <string>--alias</string><string>qwen27b</string>
+${MTP_XML}${CACHE_REUSE_XML}    <string>--alias</string><string>qwen27b</string>
     <string>--jinja</string>
-    <string>--temp</string><string>0.6</string>
+    <string>--temp</string><string>${QWEN_TEMP}</string>
     <string>--top-p</string><string>0.95</string>
     <string>--top-k</string><string>20</string>
     <string>--min-p</string><string>0</string>
-    <string>--presence-penalty</string><string>0.0</string>
+    <string>--presence-penalty</string><string>${QWEN_PRESENCE}</string>
     <string>--repeat-penalty</string><string>1.0</string>
     <string>--reasoning-format</string><string>deepseek</string>
     <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
@@ -336,13 +364,13 @@ ${mmproj_xml}    <string>-c</string><string>720000</string>
     <string>-np</string><string>4</string>
     <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
     <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
-${CACHE_REUSE_XML}    <string>--alias</string><string>qwen122b</string>
+${MTP_XML}${CACHE_REUSE_XML}    <string>--alias</string><string>qwen122b</string>
     <string>--jinja</string>
-    <string>--temp</string><string>0.6</string>
+    <string>--temp</string><string>${QWEN_TEMP}</string>
     <string>--top-p</string><string>0.95</string>
     <string>--top-k</string><string>20</string>
     <string>--min-p</string><string>0</string>
-    <string>--presence-penalty</string><string>0.0</string>
+    <string>--presence-penalty</string><string>${QWEN_PRESENCE}</string>
     <string>--repeat-penalty</string><string>1.0</string>
     <string>--reasoning-format</string><string>deepseek</string>
     <string>--reasoning-budget</string><string>${REASONING_BUDGET}</string>
