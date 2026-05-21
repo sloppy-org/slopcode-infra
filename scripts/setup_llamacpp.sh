@@ -252,8 +252,13 @@ install_mac_source() {
   cp "${install}/bin/llama-server" "${LLAMACPP_HOME}/"
   local libdir="${install}/lib"
   [[ -d "${libdir}" ]] || die "${install}/lib missing"
-  find "${libdir}" -maxdepth 1 \( -name 'lib*.dylib' -o -name 'lib*.dylib.*' \) \
-    -exec cp -P {} "${LLAMACPP_HOME}/" \;
+  # libllama-server-impl.dylib lands in ${install}/bin in recent llama.cpp
+  # (>= 2026-05 restructure); older layouts kept everything under lib. Copy
+  # from both so the binary finds its @rpath companions either way.
+  for src in "${libdir}" "${install}/bin"; do
+    find "${src}" -maxdepth 1 \( -name 'lib*.dylib' -o -name 'lib*.dylib.*' \) \
+      -exec cp -P {} "${LLAMACPP_HOME}/" \;
+  done
   # ggml-metal.metallib (the precompiled Metal shaders) lives next to the
   # binary; without it llama-server fails to launch the Metal backend.
   find "${install}" \( -name 'ggml-metal*.metallib' -o -name 'default.metallib' \) \
