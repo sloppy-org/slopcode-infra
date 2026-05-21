@@ -2,18 +2,22 @@
 
 The 35B-A3B chat model is served under one routing alias (`qwen`, plus
 `35b`, `35b@180k`, `Q4`) at `-c 180000` total context across the cluster.
-The loaded GGUF is the **MTP-trained variant** from
-`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`; llama.cpp >= b9180 drafts tokens via
-the model's MTP head (`--spec-type draft-mtp --spec-draft-n-max 2`) for
-a 1.4-2.2x decode speedup at ~1 GB extra VRAM. The launcher detects the
-`*-mtp-*` alias and adds the flags automatically. Different hosts run
-different quants:
+On hosts with the resident-memory headroom the loaded GGUF is the
+**MTP-trained variant** from `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`; llama.cpp
+>= b9180 drafts tokens via the model's MTP head
+(`--spec-type draft-mtp --spec-draft-n-max 2`) for a 1.4-2.2x decode
+speedup at ~1 GB extra resident memory. The launcher detects the
+`*-mtp-*` alias and adds the flags automatically. Tight-VRAM hosts
+(Linux PC, Windows, the USB bundle) stay on the plain non-MTP GGUFs
+because the MTP head would consume the VRAM safety margin. Different
+hosts run different quants:
 
-| Host class                  | Default quant | Why                                   |
-| --------------------------- | ------------- | ------------------------------------- |
-| macOS leader (Metal)        | `UD-Q4_K_XL`  | Metal handles the heavier quant cleanly |
-| Linux workstation (CUDA)    | `UD-IQ4_XS`   | Smaller weights + more KV headroom    |
-| macOS follower / CPU-MoE    | `UD-IQ4_XS`   | Cheaper per slot under partial offload |
+| Host class                  | Default quant         | MTP head | Why                                       |
+| --------------------------- | --------------------- | -------- | ----------------------------------------- |
+| macOS leader (Metal)        | `UD-Q4_K_XL` + MTP    | yes      | Unified memory has the room               |
+| macOS follower (Metal)      | `UD-IQ4_XS` + MTP     | yes      | Unified memory has the room               |
+| Linux workstation (CUDA)    | `UD-IQ4_XS`           | no       | Tight VRAM; MTP head would erase headroom |
+| Windows (Vulkan / Arc)      | `UD-IQ4_XS` (USB)     | no       | Tight VRAM; USB stays conservative        |
 
 Slopgate's per-peer `quant` field carries the label so the dashboard shows
 which peer runs which; `canonical_model` stays family-level
@@ -54,9 +58,9 @@ so build slopgate everywhere first.
 
    ```sh
    SLOPGATE_LOCAL_MAX_CONTEXT=180000          # was 262144
-   SLOPGATE_LOCAL_CANONICAL_MODEL=unsloth/qwen3.6:35b-a3b-mtp@180k
+   SLOPGATE_LOCAL_CANONICAL_MODEL=unsloth/qwen3.6:35b-a3b@180k
    SLOPGATE_LOCAL_MODEL_ALIASES=35b,35b@180k,Q4
-   SLOPGATE_LOCAL_QUANT=UD-Q4_K_XL            # set UD-IQ4_XS on hosts running that quant
+   SLOPGATE_LOCAL_QUANT=UD-Q4_K_XL-MTP        # leader/Mac with MTP head; UD-IQ4_XS on Linux/Windows
    ```
 
    Companion 27B/122B agents on the leader pick up the new defaults

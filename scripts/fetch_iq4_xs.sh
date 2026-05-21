@@ -18,11 +18,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODELS_SCRIPT="${SCRIPT_DIR}/llamacpp_models.py"
-# MTP variant by default; set IQ4_XS_NON_MTP=true for the plain GGUF.
-if [[ "${IQ4_XS_NON_MTP:-false}" == "true" ]]; then
-  ALIAS="qwen3.6-35b-a3b-iq4_xs"
-else
+# IQ4_XS hosts (Linux PC, Windows, tight-VRAM followers) intentionally stay
+# off MTP because the MTP head wants ~1 GB extra resident memory the small
+# VRAM budget cannot spare. Set IQ4_XS_MTP=true to download the MTP variant
+# anyway (only do this on hosts with the headroom).
+if [[ "${IQ4_XS_MTP:-false}" == "true" ]]; then
   ALIAS="qwen3.6-35b-a3b-mtp-iq4_xs"
+else
+  ALIAS="qwen3.6-35b-a3b-iq4_xs"
 fi
 
 detect_default_target() {

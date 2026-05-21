@@ -6,8 +6,12 @@ Default offline model:
 
 The MTP variant ships the multi-token prediction head Qwen3.6 was trained
 with; llama.cpp >= b9180 can drive it via `--spec-type draft-mtp` for a
-1.4-2.2x decode speedup at ~1 GB extra VRAM. The non-MTP repo remains
-available as `qwen3.6-35b-a3b-q4` for hosts without enough VRAM headroom.
+1.4-2.2x decode speedup at ~1 GB extra resident memory. MTP is the right
+default on hosts with the headroom (the Mac Studio cluster leader, MTP-
+capable followers). Hosts where the MTP head would eat the VRAM safety
+margin (Linux/CUDA tight-VRAM followers, Windows-arc, the USB bundle)
+should stay on the non-MTP `qwen3.6-35b-a3b-q4` / `qwen3.6-35b-a3b-iq4_xs`
+aliases.
 
 Optional aliases live in OPTIONAL_SPECS below. They are never downloaded
 automatically; `prefetch` only touches the default.
@@ -75,10 +79,22 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     ),
     ModelSpec(
+        alias="qwen3.6-27b-mtp-q4",
+        repo_id="unsloth/Qwen3.6-27B-MTP-GGUF",
+        include=("*UD-Q4_K_XL*.gguf", "*Q4_K_M*.gguf"),
+        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
+    ),
+    ModelSpec(
         alias="qwen3.6-27b-q4",
         repo_id="bartowski/Qwen_Qwen3.6-27B-GGUF",
         include=("*Q4_K_M*.gguf",),
         mmproj_include=("mmproj-*bf16.gguf", "mmproj-*BF16.gguf", "mmproj-*f16.gguf", "mmproj-*F16.gguf"),
+    ),
+    ModelSpec(
+        alias="qwen3.5-122b-a10b-mtp-ud-q4",
+        repo_id="unsloth/Qwen3.5-122B-A10B-MTP-GGUF",
+        include=("UD-Q4_K_XL/*.gguf", "*UD-Q4_K_XL*.gguf"),
+        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     ),
     ModelSpec(
         alias="qwen3.6-35b-a3b-bartowski-q4",

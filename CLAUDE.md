@@ -459,21 +459,24 @@ separate `quant` field, so two peers serving the same family at the same
 context under different quants share alias `qwen` without raising a config
 mismatch:
 
-| Canonical                              | Aliases                                       | Quants in service        |
-|----------------------------------------|-----------------------------------------------|--------------------------|
-| `unsloth/qwen3.6:35b-a3b-mtp@180k`     | `qwen`, `35b`, `35b@180k`, `Q4`               | `UD-Q4_K_XL`, `UD-IQ4_XS` |
-| `bartowski/qwen3.6:27b@180k`           | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@180k`  | `Q4_K_M`                 |
-| `unsloth/qwen3.5:122b-a10b@180k`       | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@180k` | `UD-Q4_K_XL`           |
+| Canonical                              | Aliases                                       | Quants in service                |
+|----------------------------------------|-----------------------------------------------|----------------------------------|
+| `unsloth/qwen3.6:35b-a3b@180k`         | `qwen`, `35b`, `35b@180k`, `Q4`               | `UD-Q4_K_XL-MTP`, `UD-IQ4_XS`    |
+| `bartowski/qwen3.6:27b@180k`           | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@180k`  | `Q4_K_M-MTP`                     |
+| `unsloth/qwen3.5:122b-a10b@180k`       | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@180k` | `UD-Q4_K_XL-MTP`               |
 
-The 35B-A3B canonical name ends in `-mtp` because the loaded GGUF is the
-MTP-trained variant from `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`. llama.cpp
->= b9180 drafts tokens via the model's MTP head and verifies in parallel
-(`--spec-type draft-mtp --spec-draft-n-max 2`), for a 1.4-2.2x decode
-speedup at the cost of ~1 GB additional VRAM. The MTP-aware Qwen sampler
-block differs from the non-MTP default: `--temp 1.0 --presence-penalty 1.5`
-(top-p / top-k / min-p unchanged). Hosts without the VRAM headroom can fall
-back to the plain `qwen3.6-35b-a3b-q4` / `qwen3.6-35b-a3b-iq4_xs` aliases
-via `LLAMACPP_MODEL_ALIAS`.
+Two peers under the same alias share the family-level canonical and
+differ only via the per-peer `quant` field. The `-MTP` suffix in the
+quant label marks peers loading the multi-token-prediction variant from
+`unsloth/Qwen3.x-...-MTP-GGUF`; llama.cpp >= b9180 drafts tokens via the
+MTP head (`--spec-type draft-mtp --spec-draft-n-max 2`) for a 1.4-2.2x
+decode speedup at ~1 GB extra resident memory. MTP is the right default
+on the Mac Studio cluster leader and MTP-capable Mac followers. Linux /
+Windows / tight-VRAM followers and the USB bundle stay on the non-MTP
+GGUFs: the MTP head would eat the VRAM safety margin and bring no
+benefit. The launcher branches on `*-mtp-*` aliases for the MTP sampler
+recipe (`--temp 1.0 --presence-penalty 1.5`); non-MTP aliases keep the
+standard Qwen sampler (`--temp 0.6 --presence-penalty 0`).
 
 Reserved aliases (no live peer yet): `luna` for a future gpt-oss-120b
 instance, `tuna` for a future short-context Qwen 35B chat pool.
