@@ -57,7 +57,7 @@
 #                         chunked KV-shifting so a mid-prompt divergence can
 #                         reuse the matching suffix instead of cold-prefilling
 #                         from the divergence point. 256 is also the
-#                         FIM-recommended value for Qwen3-Coder. Set 0 to
+#                         Set 0 to
 #                         disable.
 #   LLAMACPP_DRY_RUN      true to print the command and exit
 #   LLAMACPP_EXEC         true to exec llama-server in the foreground (for
@@ -362,21 +362,6 @@ case "${MODEL_ALIAS}" in
       --reasoning-budget "${REASONING_BUDGET}"
       --spec-type draft-mtp
       --spec-draft-n-max "${LLAMACPP_SPEC_DRAFT_N_MAX:-2}"
-      --no-context-shift
-    )
-    ;;
-  qwen3-coder-*)
-    # Qwen3-Coder is non-reasoning. Do NOT pass --reasoning-format or
-    # --reasoning-budget here; the model emits raw code completions and
-    # llama-server's deepseek splitter would chop them. Sampler block is
-    # the upstream Qwen3-Coder Best Practices recipe.
-    SAMPLER_ARGS+=(
-      --temp 0.7
-      --top-p 0.8
-      --top-k 20
-      --min-p 0
-      --presence-penalty 0.0
-      --repeat-penalty 1.05
       --no-context-shift
     )
     ;;

@@ -22,11 +22,18 @@ trap cleanup EXIT
 start_mock_server() {
   python3 "${SCRIPT_DIR}/mock_server.py" --port "${MOCK_PORT}" &
   MOCK_PID=$!
-  sleep 1
-  if ! kill -0 "${MOCK_PID}" 2>/dev/null; then
-    echo "FAIL: mock server failed to start"
-    exit 1
-  fi
+  # Poll the port until it actually listens (up to 10 s). The fixed
+  # sleep 1 used to fail under heavy disk/network load when python
+  # took longer than a second to start serving.
+  local deadline=$(( $(date +%s) + 10 ))
+  while ! curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:${MOCK_PORT}/health"; do
+    if ! kill -0 "${MOCK_PID}" 2>/dev/null; then
+      echo "FAIL: mock server failed to start"
+      exit 1
+    fi
+    [[ $(date +%s) -ge ${deadline} ]] && { echo "FAIL: mock server did not become ready"; exit 1; }
+    sleep 0.2
+  done
 }
 
 test_health_endpoint() {

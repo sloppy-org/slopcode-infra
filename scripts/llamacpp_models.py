@@ -190,21 +190,6 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         ("*Q4_K_M*.gguf",),
     ),
     ModelSpec(
-        "qwen3-coder-480b-a35b",
-        "bartowski/Qwen_Qwen3-Coder-480B-A35B-Instruct-GGUF",
-        ("*IQ4_XS*.gguf",),
-    ),
-    ModelSpec(
-        "qwen3-coder-30b-a3b-q4",
-        "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
-        ("*UD-Q4_K_XL*.gguf",),
-    ),
-    ModelSpec(
-        "qwen3-coder-next",
-        "unsloth/Qwen3-Coder-Next-GGUF",
-        ("*Q5_K_M*.gguf",),
-    ),
-    ModelSpec(
         "qwen3-235b-a22b-2507",
         "bartowski/Qwen_Qwen3-235B-A22B-Instruct-2507-GGUF",
         ("*Q4_K_M*.gguf",),

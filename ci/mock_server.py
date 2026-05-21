@@ -103,13 +103,29 @@ class MockOpenAIHandler(BaseHTTPRequestHandler):
         else:
             self._send_json({"error": "not found"}, 404)
 
+class MockHTTPServer(HTTPServer):
+    """HTTPServer that skips the reverse-DNS lookup in server_bind.
+
+    Stdlib HTTPServer.server_bind() calls socket.getfqdn(), which blocks
+    for the resolver timeout when the box has no DNS or is under heavy
+    load (observed ~2 minutes on mailuefterl during the MTP GGUF
+    download). The CI mock does not need its FQDN populated.
+    """
+
+    def server_bind(self) -> None:  # type: ignore[override]
+        import socketserver
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "127.0.0.1"
+        self.server_port = self.socket.getsockname()[1]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Mock OpenAI server for testing")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8080, help="Port to bind to")
     args = parser.parse_args()
 
-    server = HTTPServer((args.host, args.port), MockOpenAIHandler)
+    server = MockHTTPServer((args.host, args.port), MockOpenAIHandler)
     print(f"Mock server listening on http://{args.host}:{args.port}", file=sys.stderr)
 
     try:
