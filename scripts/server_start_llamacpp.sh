@@ -392,12 +392,17 @@ case "${MODEL_ALIAS}" in
     )
     ;;
   qwen*)
+    # Qwen3.6-35B-A3B "Thinking + general" sampler. Same dials Qwen uses for
+    # SWE-Bench agentic-coding evals and what the cluster cohort (Jakob's
+    # config, Mac launchagents) standardizes on. The "precise coding"
+    # alternative (temp 0.6, pp 0) is also valid for one-shot generation but
+    # is not what we run agent loops on.
     SAMPLER_ARGS+=(
-      --temp 0.6
+      --temp 1.0
       --top-p 0.95
       --top-k 20
       --min-p 0
-      --presence-penalty 0.0
+      --presence-penalty 1.5
       --repeat-penalty 1.0
       --reasoning-format deepseek
       --reasoning-budget "${REASONING_BUDGET}"
