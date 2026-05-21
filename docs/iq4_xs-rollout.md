@@ -2,7 +2,12 @@
 
 The 35B-A3B chat model is served under one routing alias (`qwen`, plus
 `35b`, `35b@180k`, `Q4`) at `-c 180000` total context across the cluster.
-Different hosts run different quants:
+The loaded GGUF is the **MTP-trained variant** from
+`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`; llama.cpp >= b9180 drafts tokens via
+the model's MTP head (`--spec-type draft-mtp --spec-draft-n-max 2`) for
+a 1.4-2.2x decode speedup at ~1 GB extra VRAM. The launcher detects the
+`*-mtp-*` alias and adds the flags automatically. Different hosts run
+different quants:
 
 | Host class                  | Default quant | Why                                   |
 | --------------------------- | ------------- | ------------------------------------- |
@@ -22,24 +27,34 @@ peer that already has the KV cache.
 The slopgate binary needs the new `--quant` flag before any agent restarts,
 so build slopgate everywhere first.
 
-1. **Build slopgate** on every host that runs the balancer or an agent:
+1. **Update llama.cpp** on every host (need b9180+ for MTP support). The
+   source backends (`mac-source`, `cuda-source`) already track master:
+
+   ```sh
+   bash ~/infra/slopcode-infra/scripts/setup_llamacpp.sh
+   ```
+
+   On prebuilt-binary hosts (Vulkan), the same command re-resolves `latest`
+   and re-downloads.
+
+2. **Build slopgate** on every host that runs the balancer or an agent:
 
    ```sh
    cd ~/code/sloppy/slopgate && git pull && cd go && go build ./cmd/slopgate
    ```
 
-2. **Pull this repo** on every host:
+3. **Pull this repo** on every host:
 
    ```sh
    cd ~/infra/slopcode-infra && git pull
    ```
 
-3. **Update env files** on each host. The new and changed keys in
+4. **Update env files** on each host. The new and changed keys in
    `~/.config/slopgate/leader.env` or `~/.config/slopgate/follower.env`:
 
    ```sh
    SLOPGATE_LOCAL_MAX_CONTEXT=180000          # was 262144
-   SLOPGATE_LOCAL_CANONICAL_MODEL=unsloth/qwen3.6:35b-a3b@180k
+   SLOPGATE_LOCAL_CANONICAL_MODEL=unsloth/qwen3.6:35b-a3b-mtp@180k
    SLOPGATE_LOCAL_MODEL_ALIASES=35b,35b@180k,Q4
    SLOPGATE_LOCAL_QUANT=UD-Q4_K_XL            # set UD-IQ4_XS on hosts running that quant
    ```
@@ -47,17 +62,24 @@ so build slopgate everywhere first.
    Companion 27B/122B agents on the leader pick up the new defaults
    automatically.
 
-4. **Fetch the IQ4_XS weights** on every host that should serve that quant:
+5. **Fetch the MTP weights**. Every host pulls the MTP-GGUF; XL hosts get
+   `qwen3.6-35b-a3b-mtp-q4`, IQ4_XS hosts run `fetch_iq4_xs.sh` (defaults
+   to the MTP variant; set `IQ4_XS_NON_MTP=true` for the plain GGUF):
 
    ```sh
+   # XL host: pulls the default into the standard cache
+   python3 ~/infra/slopcode-infra/scripts/llamacpp_models.py prefetch
+
+   # IQ4_XS host: pulls the MTP variant into the host's storage mount
    ~/infra/slopcode-infra/scripts/fetch_iq4_xs.sh
    ```
 
-   The script picks a sensible target by default (a dedicated storage mount
-   when present, otherwise the standard llama.cpp cache root). Override with
-   `IQ4_XS_TARGET=/path`. The XL weights stay where they are.
+   `fetch_iq4_xs.sh` picks a sensible target by default (a dedicated
+   storage mount when present, otherwise the standard llama.cpp cache
+   root). Override with `IQ4_XS_TARGET=/path`. Old non-MTP weights can
+   stay or be removed at leisure.
 
-5. **Re-install services** so the new flags land in the unit / plist files:
+6. **Re-install services** so the new flags land in the unit / plist files:
 
    ```sh
    bash ~/infra/slopcode-infra/scripts/install_slopgate_leader.sh   # leader
@@ -66,7 +88,7 @@ so build slopgate everywhere first.
 
    The installers write the units and restart the services.
 
-6. **Verify** on the leader:
+7. **Verify** on the leader:
 
    ```sh
    curl -fsS http://127.0.0.1:8085/api/v1/agents \

@@ -18,7 +18,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODELS_SCRIPT="${SCRIPT_DIR}/llamacpp_models.py"
-ALIAS="qwen3.6-35b-a3b-iq4_xs"
+# MTP variant by default; set IQ4_XS_NON_MTP=true for the plain GGUF.
+if [[ "${IQ4_XS_NON_MTP:-false}" == "true" ]]; then
+  ALIAS="qwen3.6-35b-a3b-iq4_xs"
+else
+  ALIAS="qwen3.6-35b-a3b-mtp-iq4_xs"
+fi
 
 detect_default_target() {
   case "$(uname -s)" in

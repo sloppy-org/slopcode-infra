@@ -107,6 +107,46 @@ EOF
   fi
 }
 
+test_server_start_mtp_flags() {
+  echo "TEST: launcher emits MTP flags for *-mtp-* alias"
+  local home_dir="${TMPDIR}/home-mtp"
+  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-MTP-UD-Q4_K_XL.gguf"
+  local mmproj_path="${TMPDIR}/mmproj-mtp.gguf"
+  mkdir -p "${home_dir}/.local/llama.cpp"
+  cat > "${home_dir}/.local/llama.cpp/llama-server" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${home_dir}/.local/llama.cpp/llama-server"
+  : > "${model_path}"
+  : > "${mmproj_path}"
+
+  local output port
+  port="$(free_port)"
+  output="$(
+    HOME="${home_dir}" \
+    LLAMACPP_HOME="${home_dir}/.local/llama.cpp" \
+    LLAMACPP_MODEL="${model_path}" \
+    LLAMACPP_MMPROJ="${mmproj_path}" \
+    LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-mtp-q4 \
+    LLAMACPP_PORT="${port}" \
+    LLAMACPP_SMOKE_TEST=false \
+    LLAMACPP_DRY_RUN=true \
+    bash "${REPO_ROOT}/scripts/server_start_llamacpp.sh"
+  )"
+
+  if [[ "${output}" == *"--spec-type draft-mtp"* && \
+        "${output}" == *"--spec-draft-n-max 2"* && \
+        "${output}" == *"--temp 1.0"* && \
+        "${output}" == *"--presence-penalty 1.5"* ]]; then
+    echo "PASS: MTP alias triggers draft-mtp + recommended sampler"
+  else
+    echo "FAIL: MTP flags missing"
+    echo "${output}"
+    return 1
+  fi
+}
+
 test_server_start_thread_override() {
   echo "TEST: launcher honors LLAMACPP_THREADS override"
   local home_dir="${TMPDIR}/home-threads"
@@ -399,8 +439,8 @@ test_models_default_alias() {
   echo "TEST: llamacpp_models.py default alias"
   local alias
   alias="$(python3 "${REPO_ROOT}/scripts/llamacpp_models.py" default-alias)"
-  if [[ "${alias}" == "qwen3.6-35b-a3b-q4" ]]; then
-    echo "PASS: default alias is qwen3.6-35b-a3b-q4"
+  if [[ "${alias}" == "qwen3.6-35b-a3b-mtp-q4" ]]; then
+    echo "PASS: default alias is qwen3.6-35b-a3b-mtp-q4"
   else
     echo "FAIL: default alias was '${alias}'"
     return 1
@@ -670,6 +710,7 @@ test_install_linux_systemd_dry_run() {
 test_server_start_dry_run || FAILED=$((FAILED + 1))
 test_server_start_instance_overrides || FAILED=$((FAILED + 1))
 test_server_start_thread_override || FAILED=$((FAILED + 1))
+test_server_start_mtp_flags || FAILED=$((FAILED + 1))
 test_server_start_mmproj_offload_override || FAILED=$((FAILED + 1))
 test_server_start_loopback_slopgate || FAILED=$((FAILED + 1))
 test_server_exec_mode || FAILED=$((FAILED + 1))

@@ -44,6 +44,10 @@
 #   LLAMACPP_REASONING_BUDGET
 #                         hidden-reasoning token cap (default: 4096;
 #                         -1 restores unrestricted, 0 disables thinking)
+#   LLAMACPP_SPEC_DRAFT_N_MAX
+#                         draft tokens emitted per step under MTP speculative
+#                         decoding (default 2; Unsloth recommends testing 1-6
+#                         for your hardware). Only used by *-mtp-* aliases.
 #   LLAMACPP_NO_MMAP      true to pass --no-mmap (useful when tensor overrides
 #                         place part of the model on CPU)
 #   LLAMACPP_FIT          explicit value passed to -fit (for example: off)
@@ -339,6 +343,25 @@ case "${MODEL_ALIAS}" in
       --min-p 0
       --presence-penalty 0.0
       --repeat-penalty 1.0
+      --no-context-shift
+    )
+    ;;
+  *-mtp-*|qwen3.6-35b-a3b-mtp*)
+    # Qwen3.6 MTP variants ship a multi-token prediction head. llama.cpp
+    # >= b9180 (PR #22673, 2026-05-16) drafts tokens via the MTP head and
+    # verifies in parallel. Sampler block follows Unsloth's MTP recipe:
+    # temp 1.0 and presence-penalty 1.5 differ from the non-MTP defaults.
+    SAMPLER_ARGS+=(
+      --temp 1.0
+      --top-p 0.95
+      --top-k 20
+      --min-p 0.0
+      --presence-penalty 1.5
+      --repeat-penalty 1.0
+      --reasoning-format deepseek
+      --reasoning-budget "${REASONING_BUDGET}"
+      --spec-type draft-mtp
+      --spec-draft-n-max "${LLAMACPP_SPEC_DRAFT_N_MAX:-2}"
       --no-context-shift
     )
     ;;

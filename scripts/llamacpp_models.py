@@ -2,7 +2,12 @@
 """Manage the blessed llama.cpp models for this repo.
 
 Default offline model:
-    qwen3.6-35b-a3b-q4 -> unsloth/Qwen3.6-35B-A3B-GGUF (UD-Q4_K_XL)
+    qwen3.6-35b-a3b-mtp-q4 -> unsloth/Qwen3.6-35B-A3B-MTP-GGUF (UD-Q4_K_XL)
+
+The MTP variant ships the multi-token prediction head Qwen3.6 was trained
+with; llama.cpp >= b9180 can drive it via `--spec-type draft-mtp` for a
+1.4-2.2x decode speedup at ~1 GB extra VRAM. The non-MTP repo remains
+available as `qwen3.6-35b-a3b-q4` for hosts without enough VRAM headroom.
 
 Optional aliases live in OPTIONAL_SPECS below. They are never downloaded
 automatically; `prefetch` only touches the default.
@@ -43,14 +48,32 @@ class ModelSpec:
         return CACHE_ROOT / self.repo_id.replace("/", "_")
 
 DEFAULT_SPEC = ModelSpec(
-    alias="qwen3.6-35b-a3b-q4",
-    repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
+    alias="qwen3.6-35b-a3b-mtp-q4",
+    repo_id="unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
     include=("*UD-Q4_K_XL*.gguf",),
     mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     default=True,
 )
 
 OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
+    ModelSpec(
+        alias="qwen3.6-35b-a3b-mtp-iq4_xs",
+        repo_id="unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+        include=("*UD-IQ4_XS*.gguf",),
+        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
+    ),
+    ModelSpec(
+        alias="qwen3.6-35b-a3b-q4",
+        repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
+        include=("*UD-Q4_K_XL*.gguf",),
+        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
+    ),
+    ModelSpec(
+        alias="qwen3.6-35b-a3b-iq4_xs",
+        repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
+        include=("*UD-IQ4_XS*.gguf",),
+        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
+    ),
     ModelSpec(
         alias="qwen3.6-27b-q4",
         repo_id="bartowski/Qwen_Qwen3.6-27B-GGUF",
@@ -62,12 +85,6 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         repo_id="bartowski/Qwen_Qwen3.6-35B-A3B-GGUF",
         include=("*Q4_K_M*.gguf",),
         mmproj_include=("mmproj-*f16.gguf", "mmproj-*F16.gguf"),
-    ),
-    ModelSpec(
-        alias="qwen3.6-35b-a3b-iq4_xs",
-        repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
-        include=("*UD-IQ4_XS*.gguf",),
-        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     ),
     ModelSpec("qwen3.6-35b-a3b-q8", "unsloth/Qwen3.6-35B-A3B-GGUF", ("*Q8_0*.gguf",)),
     ModelSpec("qwen3.5-35b-a3b-q4", "unsloth/Qwen3.5-35B-A3B-GGUF", ("*Q4_K_M*.gguf",)),

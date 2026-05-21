@@ -6,10 +6,13 @@ Guidance for Claude Code working inside this repository.
 
 One blessed local coding stack, nothing else:
 
-- **Runtime**: `llama-server` from the latest upstream ggml-org/llama.cpp release.
-- **Model**: `unsloth/Qwen3.6-35B-A3B-GGUF` at `UD-Q4_K_XL` (Unsloth's
-  own recommended variant) — alias `qwen3.6-35b-a3b-q4`, served as
-  `qwen`. The 27B dense profile (`qwen3.6-27b-q4`) is a special mode
+- **Runtime**: `llama-server` from the latest upstream ggml-org/llama.cpp
+  release (b9180+ for MTP support). `setup_llamacpp.sh` defaults to the
+  latest tag for prebuilt installs and `master` for source builds.
+- **Model**: `unsloth/Qwen3.6-35B-A3B-MTP-GGUF` at `UD-Q4_K_XL` — alias
+  `qwen3.6-35b-a3b-mtp-q4`, served as `qwen`. The MTP head + llama.cpp
+  draft-mtp speculative decoding gives 1.4-2.2x decode speedup at ~1 GB
+  extra VRAM. The 27B dense profile (`qwen3.6-27b-q4`) is a special mode
   for slopgate deployments on more powerful hardware.
 - **Harness**: `opencode` CLI, title generation disabled, reasoning on.
 - **Optional load balancer**: `sloppy-org/slopgate` (fork of distantmagic/
@@ -458,9 +461,19 @@ mismatch:
 
 | Canonical                              | Aliases                                       | Quants in service        |
 |----------------------------------------|-----------------------------------------------|--------------------------|
-| `unsloth/qwen3.6:35b-a3b@180k`         | `qwen`, `35b`, `35b@180k`, `Q4`               | `UD-Q4_K_XL`, `UD-IQ4_XS` |
+| `unsloth/qwen3.6:35b-a3b-mtp@180k`     | `qwen`, `35b`, `35b@180k`, `Q4`               | `UD-Q4_K_XL`, `UD-IQ4_XS` |
 | `bartowski/qwen3.6:27b@180k`           | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@180k`  | `Q4_K_M`                 |
 | `unsloth/qwen3.5:122b-a10b@180k`       | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@180k` | `UD-Q4_K_XL`           |
+
+The 35B-A3B canonical name ends in `-mtp` because the loaded GGUF is the
+MTP-trained variant from `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`. llama.cpp
+>= b9180 drafts tokens via the model's MTP head and verifies in parallel
+(`--spec-type draft-mtp --spec-draft-n-max 2`), for a 1.4-2.2x decode
+speedup at the cost of ~1 GB additional VRAM. The MTP-aware Qwen sampler
+block differs from the non-MTP default: `--temp 1.0 --presence-penalty 1.5`
+(top-p / top-k / min-p unchanged). Hosts without the VRAM headroom can fall
+back to the plain `qwen3.6-35b-a3b-q4` / `qwen3.6-35b-a3b-iq4_xs` aliases
+via `LLAMACPP_MODEL_ALIAS`.
 
 Reserved aliases (no live peer yet): `luna` for a future gpt-oss-120b
 instance, `tuna` for a future short-context Qwen 35B chat pool.
