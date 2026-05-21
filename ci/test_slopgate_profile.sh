@@ -27,7 +27,7 @@ SLOPGATE_MANAGEMENT_ADDR=0.0.0.0:8085
 SLOPGATE_LOCAL_AGENT_NAME=leader
 SLOPGATE_LOCAL_LLAMACPP_ADDR=127.0.0.1:8081
 SLOPGATE_LLAMACPP_REQUEST_TIMEOUT=120
-SLOPGATE_LOCAL_MAX_CONTEXT=180000
+SLOPGATE_LOCAL_MAX_CONTEXT=131072
 SLOPGATE_LOCAL_MODEL_ALIAS=qwen
 EOF
 }
@@ -40,7 +40,7 @@ SLOPGATE_LOCAL_LLAMACPP_ADDR=127.0.0.1:8080
 SLOPGATE_LLAMACPP_REQUEST_TIMEOUT=120
 SLOPGATE_EXTERNAL_LLAMACPP_ADDR=10.77.0.10:8080
 SLOPGATE_AGENT_NAME=follower-1
-SLOPGATE_MAX_CONTEXT=180000
+SLOPGATE_MAX_CONTEXT=131072
 SLOPGATE_MODEL_ALIAS=qwen
 EOF
 }
@@ -84,7 +84,7 @@ test_leader_install_dry_run() {
         && grep -q '<string>--llamacpp-request-timeout</string>' "${a}" \
         && grep -q '<string>120</string>' "${a}" \
         && grep -q '<string>--max-context</string>' "${a}" \
-        && grep -q '<string>180000</string>' "${a}" \
+        && grep -q '<string>131072</string>' "${a}" \
         && grep -q '<string>--model-alias</string>' "${a}" \
         && grep -q '<string>qwen</string>' "${a}" \
         && grep -q '<string>leader</string>' "${a}" \

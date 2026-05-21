@@ -183,7 +183,7 @@ Every instance launched through `server_start_llamacpp.sh` always passes:
 --reasoning on
 ```
 
-The local offline default is single-slot 180K: `-np 1 -ub 1024 -c 180000`.
+The local offline default is single-slot 180K: `-np 1 -ub 1024 -c 131072`.
 Qwen3.6 35B-A3B is MoE. **Per-platform MoE policy diverges**:
 
 - **Linux CUDA** uses `--n-cpu-moe 35` (expert layers 0–34 on CPU, 35–39
@@ -237,8 +237,8 @@ Default deployment per platform:
 
 | Host            | Instances        | `--alias` | `-np` | `-c`   | Per-slot ctx |
 | --------------- | ---------------- | --------- | ----- | ------ | ------------ |
-| Linux / Windows | 35B-A3B on :8080 | `qwen`    | 1     | 180000 | 180000       |
-| macOS           | 35B-A3B on :8080 | `qwen`    | 1     | 180000 | 180000       |
+| Linux / Windows | 35B-A3B on :8080 | `qwen`    | 1     | 131072 | 131072       |
+| macOS           | 35B-A3B on :8080 | `qwen`    | 1     | 131072 | 131072       |
 
 The 27B dense profile (`qwen3.6-27b-q4`) remains in `scripts/llamacpp_models.py`
 for manual prefetch and explicit runs via `scripts/server_start_qwen27b.sh`. It
@@ -465,9 +465,9 @@ mismatch:
 
 | Canonical                              | Aliases                                       | Quants in service                |
 |----------------------------------------|-----------------------------------------------|----------------------------------|
-| `unsloth/qwen3.6:35b-a3b@180k`         | `qwen`, `35b`, `35b@180k`, `Q4`               | `UD-Q4_K_XL-MTP`, `UD-IQ4_XS`    |
-| `bartowski/qwen3.6:27b@180k`           | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@180k`  | `Q4_K_M-MTP`                     |
-| `unsloth/qwen3.5:122b-a10b@180k`       | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@180k` | `UD-Q4_K_XL-MTP`               |
+| `unsloth/qwen3.6:35b-a3b@128k`         | `qwen`, `35b`, `35b@128k`, `Q4`               | `UD-Q4_K_XL-MTP`, `UD-IQ4_XS`    |
+| `bartowski/qwen3.6:27b@128k`           | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@128k`  | `Q4_K_M-MTP`                     |
+| `unsloth/qwen3.5:122b-a10b@128k`       | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@128k` | `UD-Q4_K_XL-MTP`               |
 
 Two peers under the same alias share the family-level canonical and
 differ only via the per-peer `quant` field. The `-MTP` suffix in the

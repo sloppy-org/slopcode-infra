@@ -1,7 +1,7 @@
 # IQ4_XS rollout — per-host quant under a single alias
 
 The 35B-A3B chat model is served under one routing alias (`qwen`, plus
-`35b`, `35b@180k`, `Q4`) at `-c 180000` total context across the cluster.
+`35b`, `35b@128k`, `Q4`) at `-c 131072` total context across the cluster.
 On hosts with the resident-memory headroom the loaded GGUF is the
 **MTP-trained variant** from `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`; llama.cpp
 >= b9180 drafts tokens via the model's MTP head
@@ -21,7 +21,7 @@ hosts run different quants:
 
 Slopgate's per-peer `quant` field carries the label so the dashboard shows
 which peer runs which; `canonical_model` stays family-level
-(`unsloth/qwen3.6:35b-a3b@180k`) so the divergence check does not flag the
+(`unsloth/qwen3.6:35b-a3b@128k`) so the divergence check does not flag the
 split as drift. Routing is by alias, balancer picks per request, session
 affinity (`x-session-affinity` header) keeps multi-turn conversations on the
 peer that already has the KV cache.
@@ -57,9 +57,9 @@ so build slopgate everywhere first.
    `~/.config/slopgate/leader.env` or `~/.config/slopgate/follower.env`:
 
    ```sh
-   SLOPGATE_LOCAL_MAX_CONTEXT=180000          # was 262144
-   SLOPGATE_LOCAL_CANONICAL_MODEL=unsloth/qwen3.6:35b-a3b@180k
-   SLOPGATE_LOCAL_MODEL_ALIASES=35b,35b@180k,Q4
+   SLOPGATE_LOCAL_MAX_CONTEXT=131072          # was 262144
+   SLOPGATE_LOCAL_CANONICAL_MODEL=unsloth/qwen3.6:35b-a3b@128k
+   SLOPGATE_LOCAL_MODEL_ALIASES=35b,35b@128k,Q4
    SLOPGATE_LOCAL_QUANT=UD-Q4_K_XL-MTP        # leader/Mac with MTP head; UD-IQ4_XS on Linux/Windows
    ```
 
@@ -101,7 +101,7 @@ so build slopgate everywhere first.
    ```
 
    Both quants should appear under `model_alias: "qwen"` with distinct
-   `quant` values and `max_context: 180000`. The dashboard at
+   `quant` values and `max_context: 131072`. The dashboard at
    `http://<leader>:8085/` should not show a config-mismatch badge.
 
 ## Rollback

@@ -79,7 +79,7 @@ EOF
     [[ "${output}" == *"--mmproj-offload"* ]] || mmproj_offload_ok=0
   fi
 
-  local context_expected="-c 180000"
+  local context_expected="-c 131072"
   local np_expected="-np 1"
 
   if [[ "${output}" == *"${context_expected}"* && \
@@ -327,7 +327,7 @@ JSON
   grep -q '"/bin/helpy"' "${config_path}" || common_ok=0
 
   local platform_ok=1
-  local context_expected=180000
+  local context_expected=131072
   grep -q '"model": "slopgate/qwen122b"' "${config_path}" || platform_ok=0
   grep -q '"small_model": "slopgate/qwen"' "${config_path}" || platform_ok=0
   grep -q "\"context\": ${context_expected}" "${config_path}" || platform_ok=0
@@ -413,7 +413,7 @@ test_pi_config() {
   grep -q '"maxTokens": 16384' "${models}" || common_ok=0
 
   local platform_ok=1
-  local pi_context_expected=180000
+  local pi_context_expected=131072
   if [[ "$(uname -s)" == "Darwin" && "$(detect_total_ram_gb)" -lt 64 ]]; then
     pi_context_expected=131072
   fi

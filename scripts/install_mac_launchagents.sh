@@ -3,18 +3,18 @@
 # plus the whisper.cpp transcription server. faepmac1-class profile fronts
 # up to three llama-server instances behind slopgate plus one whisper-server:
 #   com.slopcode.llamacpp        -> 35B-A3B Q4 (MoE) on 127.0.0.1:8081 with
-#                                    -np 4 -c 720000 (180K per slot, 4 slots)
+#                                    -np 4 -c 524288 (180K per slot, 4 slots)
 #   com.slopcode.llamacpp-27b    -> 27B dense Q4 on 127.0.0.1:8082 with
-#                                    -np 4 -c 720000 (180K per slot, 4 slots)
+#                                    -np 4 -c 524288 (180K per slot, 4 slots)
 #   com.slopcode.llamacpp-122b   -> 122B-A10B UD-Q4 MoE on 127.0.0.1:8083 with
-#                                    -np 4 -c 720000 (180K per slot, 4 slots)
+#                                    -np 4 -c 524288 (180K per slot, 4 slots)
 #   com.slopcode.whisper-server  -> ggml-large-v3-turbo on 0.0.0.0:8427
 #                                    OpenAI-compat at /v1/audio/transcriptions
 #
 # Defaults to KV q8_0 everywhere (override with LLAMACPP_CACHE_TYPE_K/V).
 # RAM budget on a 256 GiB M3 Ultra (measured per-slot KV from llama_kv_cache
-# logs at 180000 cells, q8_0; per-slot KV scales linearly from the 262144-cell
-# baseline (35B 2.66 GiB, 27B 8.5 GiB, 122B 3.19 GiB) → ~0.687× at 180000):
+# logs at 131072 cells, q8_0; per-slot KV scales linearly from the 262144-cell
+# baseline (35B 2.66 GiB, 27B 8.5 GiB, 122B 3.19 GiB) → ~0.687× at 131072):
 #   weights  22 + 18 + 77 = 117 GiB
 #   KV (×4)  11 + 34 + 13 =  58 GiB
 #   = ~175 GiB total before OS / Slopshell / Whisper / Piper / searxng,
@@ -213,7 +213,7 @@ write_llamacpp_plist() {
   <array>
     <string>${SERVER_BIN}</string>
     <string>-m</string><string>${MODEL_PATH}</string>
-${mmproj_xml}    <string>-c</string><string>720000</string>
+${mmproj_xml}    <string>-c</string><string>524288</string>
     <string>-b</string><string>2048</string>
     <string>-ub</string><string>1024</string>
     <string>-ngl</string><string>99</string>
@@ -248,9 +248,9 @@ XML
   wait_gone "${label}" || die "failed to unload existing ${label}"
   launchctl bootstrap "gui/$(id -u)" "${plist}"
   if [[ -n "${MMPROJ_PATH}" ]]; then
-    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 720000, mmproj $(basename "${MMPROJ_PATH}"))"
+    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 524288, mmproj $(basename "${MMPROJ_PATH}"))"
   else
-    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 720000)"
+    echo "loaded ${label} (${LLAMACPP_HOST_BIND}:${LLAMACPP_PORT_BIND}, alias qwen, -np 4 -c 524288)"
   fi
 }
 
@@ -289,7 +289,7 @@ write_llamacpp_27b_plist() {
     <string>${SERVER_BIN}</string>
     <string>-m</string><string>${MODEL_27B_PATH}</string>
     <string>--mmproj</string><string>${MMPROJ_27B_PATH}</string>
-    <string>-c</string><string>720000</string>
+    <string>-c</string><string>524288</string>
     <string>-b</string><string>2048</string>
     <string>-ub</string><string>1024</string>
     <string>-ngl</string><string>99</string>
@@ -323,7 +323,7 @@ XML
   launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
   wait_gone "${label}" || die "failed to unload existing ${label}"
   launchctl bootstrap "gui/$(id -u)" "${plist}"
-  echo "loaded ${label} (127.0.0.1:8082, alias qwen27b, -np 4 -c 720000, mmproj $(basename "${MMPROJ_27B_PATH}"))"
+  echo "loaded ${label} (127.0.0.1:8082, alias qwen27b, -np 4 -c 524288, mmproj $(basename "${MMPROJ_27B_PATH}"))"
 }
 
 write_llamacpp_27b_plist
@@ -357,7 +357,7 @@ write_llamacpp_122b_plist() {
   <array>
     <string>${SERVER_BIN}</string>
     <string>-m</string><string>${MODEL_122B_PATH}</string>
-${mmproj_xml}    <string>-c</string><string>720000</string>
+${mmproj_xml}    <string>-c</string><string>524288</string>
     <string>-b</string><string>2048</string>
     <string>-ub</string><string>1024</string>
     <string>-ngl</string><string>99</string>
@@ -392,9 +392,9 @@ XML
   wait_gone "${label}" || die "failed to unload existing ${label}"
   launchctl bootstrap "gui/$(id -u)" "${plist}"
   if [[ -n "${MMPROJ_122B_PATH}" ]]; then
-    echo "loaded ${label} (127.0.0.1:8083, alias qwen122b, -np 4 -c 720000, mmproj $(basename "${MMPROJ_122B_PATH}"))"
+    echo "loaded ${label} (127.0.0.1:8083, alias qwen122b, -np 4 -c 524288, mmproj $(basename "${MMPROJ_122B_PATH}"))"
   else
-    echo "loaded ${label} (127.0.0.1:8083, alias qwen122b, -np 4 -c 720000)"
+    echo "loaded ${label} (127.0.0.1:8083, alias qwen122b, -np 4 -c 524288)"
   fi
 }
 
