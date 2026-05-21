@@ -337,9 +337,9 @@ write_vscode_helpers() {
     configure-llama-vscode.sh \
     configure-llama-vscode.bat \
     README.md
-  # FIM-tuned settings from the Qwen3-Coder Best Practices + llama.vscode
-  # package.json. Same :8080 for chat and FIM because the user swaps the
-  # underlying server (chat <-> coder), not the URL.
+  # llama.vscode settings pointing chat/tools at the local llama-server on
+  # :8080. Same endpoint for every llama-vscode role (chat, tools, FIM) —
+  # one localhost server, one model.
   cat >"${d}/settings.llamacpp.json" <<'EOF'
 {
   "llama-vscode.endpoint": "http://127.0.0.1:8080",
@@ -384,9 +384,6 @@ with open(settings_path, "w", encoding="utf-8") as f:
     f.write("\n")
 PY
 echo "configured llama.vscode for http://127.0.0.1:8080"
-echo "note: this bundle ships only the chat model (Qwen3.6-35B-A3B-IQ4_XS-MTP),"
-echo "not a FIM-trained coder model. Autocomplete responses will be poor; the"
-echo "extension is wired so chat-style queries against the running server work."
 EOF
   chmod +x "${d}/configure-llama-vscode.sh"
   cat >"${d}/configure-llama-vscode.bat" <<'EOF'
@@ -401,9 +398,6 @@ where py >nul 2>&1 && (set "PYEXE=py -3") || (set "PYEXE=python")
 %PYEXE% -c "import json,os,sys;p=sys.argv[1];q=sys.argv[2];s=json.load(open(p,encoding='utf-8')) if os.path.exists(p) else {};s.update(json.load(open(q,encoding='utf-8')));open(p,'w',encoding='utf-8').write(json.dumps(s,indent=2)+'\n')" "%SETTINGS%" "%HERE%settings.llamacpp.json"
 if errorlevel 1 exit /b 1
 echo configured llama.vscode for http://127.0.0.1:8080
-echo note: this bundle ships only the chat model ^(IQ4_XS-MTP^), not a FIM-
-echo trained coder. Autocomplete responses will be poor; chat-style queries
-echo against the running server still work.
 endlocal
 EOF
   cat >"${d}/README.md" <<'EOF'
@@ -417,12 +411,9 @@ configure-llama-vscode.bat            # Windows
 ```
 
 The settings point chat, tools, and autocomplete at the same local
-llama.cpp server on `http://127.0.0.1:8080`. The bundle ships one chat
-model: Qwen3.6-35B-A3B-IQ4_XS-MTP. It is best at agentic OpenCode and the
-chat panel; `<Tab>` autocomplete still works but the responses will be
-weak because the model is not FIM-trained. No separate coder model is
-shipped — if you need FIM autocomplete, point llama.vscode at a separate
-coder server.
+llama.cpp server on `http://127.0.0.1:8080`. The bundle ships one
+model: Qwen3.6-35B-A3B-IQ4_XS-MTP. Use it from OpenCode (agentic
+coding) or directly from the llama.vscode panel.
 EOF
 }
 
@@ -476,10 +467,8 @@ path for people who prefer LM Studio or want to configure each piece by hand.
 
 ## VS Code llama.vscode
 
-Open \`../vscode/README.md\` to install the bundled extension and point it at
-the local llama.cpp server. Note: the bundle ships only the chat model
-(IQ4_XS-MTP). Autocomplete responses will be poor because the model is
-not FIM-trained.
+Open \`../vscode/README.md\` to install the bundled extension and point
+it at the local llama.cpp server on \`127.0.0.1:8080\`.
 
 ## LM Studio fallback
 
@@ -1707,12 +1696,8 @@ or who prefer LM Studio instead of the automatic llama.cpp/whisper.cpp scripts.
 
 ## VS Code llama.vscode
 
-Open `vscode/README.md` to install the bundled extension. There is no
-sidecar: chat and FIM autocomplete share `127.0.0.1:8080`, and you pick
-which model is loaded by running either `llama-chat.{sh,bat}` (default,
-Qwen3.6-35B-A3B-Instruct, agentic) or `llama-coder.{sh,bat}` (Qwen3-Coder-
-30B-A3B-Instruct, FIM `<Tab>`). The chat-tuned model is not FIM-trained;
-the coder model is. Stop one before starting the other.
+Open `vscode/README.md` to install the bundled extension. It points
+at the same `127.0.0.1:8080` server the OpenCode install uses.
 
 ## LM Studio installers
 

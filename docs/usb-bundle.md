@@ -52,12 +52,3 @@ Generated installers:
   runs without MTP at lower decode speed).
 
 LM Studio is copied to the stick but is not wired by the scripts.
-
-## Chat-only bundle
-
-The bundle ships one model: Qwen3.6-35B-A3B-IQ4_XS-MTP. It is best
-at agentic OpenCode and chat-panel use; `<Tab>` autocomplete in the
-bundled llama.vscode extension still works but the responses will
-be weaker than a FIM-trained coder model. No separate coder model
-is shipped — if a colleague needs FIM autocomplete, they can point
-llama.vscode at a separate coder server they run independently.
