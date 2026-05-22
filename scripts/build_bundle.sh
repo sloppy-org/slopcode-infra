@@ -302,18 +302,19 @@ copy_model_alias() {
   # Do NOT glob *.gguf in the cache dir — sibling files (e.g. older quants of
   # the same repo we still serve from a running llama-server) must not leak
   # onto the USB.
-  local alias="$1" required="$2" primary mmproj
+  # Optional 3rd arg renames the primary GGUF on copy (mmproj keeps its name).
+  local alias="$1" required="$2" rename="${3:-}" primary mmproj
   primary="$(python3 "${SCRIPT_DIR}/llamacpp_models.py" resolve "${alias}" 2>/dev/null || true)"
   if [[ -z "${primary}" || ! -f "${primary}" ]]; then
     [[ "${required}" == true ]] && die "model ${alias} missing; run: python3 scripts/llamacpp_models.py prefetch ${alias}"
     return 0
   fi
-  echo "copying ${alias} ($(basename "${primary}"))"
-  if [[ ! -f "${OUT}/models/$(basename "${primary}")" ]]; then
-    rsync -a --ignore-existing "${primary}" "${OUT}/models/"
-  fi
   local pbn
-  pbn="$(basename "${primary}")"
+  if [[ -n "${rename}" ]]; then pbn="${rename}"; else pbn="$(basename "${primary}")"; fi
+  echo "copying ${alias} ($(basename "${primary}") -> ${pbn})"
+  if [[ ! -f "${OUT}/models/${pbn}" ]]; then
+    rsync -a --ignore-existing "${primary}" "${OUT}/models/${pbn}"
+  fi
   sha256sum "${primary}" | awk '{print $1}' > "${OUT}/models/${pbn}.sha256"
   mmproj="$(python3 "${SCRIPT_DIR}/llamacpp_models.py" resolve-mmproj "${alias}" 2>/dev/null || true)"
   if [[ -n "${mmproj}" && -f "${mmproj}" ]]; then
@@ -329,18 +330,27 @@ copy_model_alias() {
 
 copy_models() {
   [[ "${SKIP_MODEL}" == true ]] && return 0
-  # Single chat GGUF: Qwen3.6-35B-A3B UD-IQ4_XS from the MTP repo (~18 GB).
-  # Carries the MTP head so the bundled launchers can use --spec-type
-  # draft-mtp for the decode speedup; runs fine without the flag too if
-  # MTP misbehaves on a particular host. No coder model, no XL variant.
+  # Chat GGUFs:
+  #   Qwen3.6-35B-A3B-UD-IQ4_XS.gguf        — MTP variant from unsloth/...-MTP-GGUF (~18 GB).
+  #     Carries the MTP head so bundled launchers use --spec-type draft-mtp
+  #     for the decode speedup. Default load.
+  #   Qwen3.6-35B-A3B-UD-IQ4_XS-no-mtp.gguf — non-MTP variant from unsloth/...-GGUF (~17.7 GB).
+  #     Optional fallback for hosts under VRAM/RAM pressure: skip the MTP
+  #     head (~1 GB resident saving). To use: rename it over the MTP file
+  #     and drop --spec-type draft-mtp --spec-draft-n-max 2 from the launcher.
+  #     Soft-fail: only shipped if prefetched via
+  #       python3 scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-iq4_xs
   prune_dir_entries "${OUT}/models" \
     Qwen3.6-35B-A3B-UD-IQ4_XS.gguf \
     Qwen3.6-35B-A3B-UD-IQ4_XS.gguf.sha256 \
+    Qwen3.6-35B-A3B-UD-IQ4_XS-no-mtp.gguf \
+    Qwen3.6-35B-A3B-UD-IQ4_XS-no-mtp.gguf.sha256 \
     mmproj-BF16.gguf \
     mmproj-BF16.gguf.sha256 \
     ggml-large-v3-turbo.bin \
     ggml-large-v3-turbo.bin.partial
   copy_model_alias qwen3.6-35b-a3b-mtp-iq4_xs true
+  copy_model_alias qwen3.6-35b-a3b-iq4_xs     false Qwen3.6-35B-A3B-UD-IQ4_XS-no-mtp.gguf
   local model="${OUT}/models/ggml-large-v3-turbo.bin"
   if [[ ! -f "${model}" ]]; then
     download_file \
