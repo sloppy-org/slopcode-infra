@@ -7,9 +7,8 @@
 #   <target>/whisper.cpp/    whisper source (Linux/macOS) or Windows binaries
 #   <target>/install.*       localhost-only user install
 #   <target>/start.*         foreground localhost-only launchers
-#   local-luna/              concise manual LM Studio / llama.cpp tutorial
+#   local-luna/              concise manual llama.cpp tutorial
 #   vscode/                  latest llama.vscode VSIX + settings helpers
-#   lm-studio/               latest LM Studio desktop installers
 #   models/                  Qwen GGUF, mmproj, ggml-large-v3-turbo.bin
 #
 # No Pi, no Node, no npm cache. Do not add them here.
@@ -31,7 +30,6 @@ LLAMACPP_TAG="${LLAMACPP_TAG:-}"
 OPENCODE_TAG="${OPENCODE_TAG:-}"
 WHISPER_TAG="${WHISPER_TAG:-}"
 SKIP_MODEL="${SKIP_MODEL:-false}"
-SKIP_LMSTUDIO="${SKIP_LMSTUDIO:-false}"
 LOCAL_LUNA_SOURCE="${LOCAL_LUNA_SOURCE:-${HOME}/code/computor-dev/local-luna}"
 BUNDLE_CACHE_DIR="${BUNDLE_CACHE_DIR:-}"
 
@@ -42,7 +40,6 @@ while [[ $# -gt 0 ]]; do
     --opencode-tag) OPENCODE_TAG="$2"; shift 2 ;;
     --whisper-tag) WHISPER_TAG="$2"; shift 2 ;;
     --skip-model) SKIP_MODEL=true; shift ;;
-    --skip-lmstudio) SKIP_LMSTUDIO=true; shift ;;
     --local-luna-source) LOCAL_LUNA_SOURCE="$2"; shift 2 ;;
     all) TARGETS=(linux-cuda mac-m1 windows-arc); shift ;;
     linux-cuda|mac-m1|windows-arc) TARGETS+=("$1"); shift ;;
@@ -276,34 +273,6 @@ download_file() {
   mv "${dest}.partial" "${dest}"
 }
 
-download_lmstudio_installers() {
-  [[ "${SKIP_LMSTUDIO}" == true ]] && return 0
-  local d="${OUT}/lm-studio"
-  mkdir -p "${d}"
-  prune_dir_entries "${d}" \
-    LM-Studio-mac-arm64-latest.dmg \
-    LM-Studio-windows-x64-latest.exe \
-    LM-Studio-windows-arm64-latest.exe \
-    LM-Studio-linux-x64-latest.AppImage \
-    LM-Studio-linux-x64-latest.deb \
-    LM-Studio-linux-arm64-latest.AppImage \
-    SHA256SUMS
-  download_file "https://lmstudio.ai/download/latest/darwin/arm64" \
-    "${d}/LM-Studio-mac-arm64-latest.dmg" "LM Studio macOS arm64"
-  download_file "https://lmstudio.ai/download/latest/win32/x64" \
-    "${d}/LM-Studio-windows-x64-latest.exe" "LM Studio Windows x64"
-  download_file "https://lmstudio.ai/download/latest/win32/arm64" \
-    "${d}/LM-Studio-windows-arm64-latest.exe" "LM Studio Windows arm64"
-  download_file "https://lmstudio.ai/download/latest/linux/x64?format=AppImage" \
-    "${d}/LM-Studio-linux-x64-latest.AppImage" "LM Studio Linux x64 AppImage"
-  download_file "https://lmstudio.ai/download/latest/linux/x64?format=deb" \
-    "${d}/LM-Studio-linux-x64-latest.deb" "LM Studio Linux x64 deb"
-  download_file "https://lmstudio.ai/download/latest/linux/arm64?format=AppImage" \
-    "${d}/LM-Studio-linux-arm64-latest.AppImage" "LM Studio Linux arm64 AppImage"
-  rm -f "${d}/SHA256SUMS"
-  sha256sum "${d}"/* > "${d}/SHA256SUMS"
-}
-
 download_llama_vscode() {
   local d="${OUT}/vscode"
   local dest="${d}/llama-vscode-latest.vsix"
@@ -460,20 +429,15 @@ meeting-transcribe meeting.wav
 meeting-process meeting.wav
 \`\`\`
 
-## Manual or LM Studio path
+## Manual path
 
-Open \`../local-luna/README.md\`. That tutorial is the maintained step-by-step
-path for people who prefer LM Studio or want to configure each piece by hand.
+Open \`../local-luna/README.md\` for a step-by-step manual setup that does
+the same thing as this folder's automatic installer.
 
 ## VS Code llama.vscode
 
 Open \`../vscode/README.md\` to install the bundled extension and point
 it at the local llama.cpp server on \`127.0.0.1:8080\`.
-
-## LM Studio fallback
-
-Current LM Studio installers are in \`../lm-studio/\`. They are included for
-manual fallback only; these scripts do not auto-wire LM Studio.
 EOF
 }
 
@@ -1665,14 +1629,12 @@ done
 copy_local_luna
 download_llama_vscode
 write_vscode_helpers
-download_lmstudio_installers
 
 cat >"${OUT}/README.md" <<'EOF'
 # slopcode USB bundle
 
-A local AI coding bundle. The primary automatic path is llama.cpp + OpenCode
-plus whisper.cpp meeting transcription on localhost. LM Studio is included as a
-manual fallback.
+A local AI coding bundle: llama.cpp + OpenCode + whisper.cpp meeting
+transcription, all bound to localhost. One model, one server, no cloud.
 
 ## Automatic localhost path
 
@@ -1687,22 +1649,15 @@ Each installer binds llama.cpp to `127.0.0.1:8080`, binds whisper.cpp to
 the meeting scripts on PATH. `meeting-process <audio.wav>` transcribes PCM WAV
 through whisper.cpp and then calls `opencode run` once to write meeting notes.
 
-## Manual or LM Studio path
+## Manual path
 
-Open `local-luna/README.md`.
-
-That tutorial is copied onto this stick for people who want step-by-step setup,
-or who prefer LM Studio instead of the automatic llama.cpp/whisper.cpp scripts.
+Open `local-luna/README.md` for a step-by-step manual setup that does the
+same thing as the automatic installer.
 
 ## VS Code llama.vscode
 
 Open `vscode/README.md` to install the bundled extension. It points
 at the same `127.0.0.1:8080` server the OpenCode install uses.
-
-## LM Studio installers
-
-Current LM Studio desktop installers are in `lm-studio/`. They are included for
-manual fallback only; the slopcode scripts use llama.cpp by default.
 EOF
 
 echo "bundle ready at ${OUT}"
