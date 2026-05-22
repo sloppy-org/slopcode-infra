@@ -62,7 +62,9 @@ done
 [[ "${#TARGETS[@]}" -gt 0 ]] || die "target required: linux-cuda|mac-m1|windows-arc|all"
 mkdir -p "${OUT}/models"
 if [[ -z "${BUNDLE_CACHE_DIR}" ]]; then
-  BUNDLE_CACHE_DIR="${OUT}/.slopcode-build-cache"
+  # Persistent cache survives USB swaps and bundle rebuilds. Override
+  # with BUNDLE_CACHE_DIR=<path> for one-off builds.
+  BUNDLE_CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/slopcode-bundle"
 fi
 mkdir -p "${BUNDLE_CACHE_DIR}/downloads"
 
