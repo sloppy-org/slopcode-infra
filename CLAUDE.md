@@ -180,8 +180,41 @@ Every instance launched through `server_start_llamacpp.sh` always passes:
 ```
 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 \
 -ngl 99 -fa on --alias "${LLAMACPP_SERVED_ALIAS:-qwen}" --jinja \
---reasoning on
+--reasoning on --metrics --log-timestamps \
+-fit on --slot-save-path <per-platform default>
 ```
+
+`--metrics` exposes Prometheus counters at `/metrics` (used by the slopgate
+watchdog). `--log-timestamps` makes rotated logs readable. `-fit on` runs
+llama.cpp's VRAM-fit autosizer at startup — costs nothing on
+already-sized configs and prevents OOM on `-np > 1` or unfamiliar hosts.
+`--slot-save-path` writes a per-slot KV state directory the running server
+can save/restore via `/slots/{id}/save|restore`; default is
+`${XDG_STATE_HOME:-~/.local/state}/slopcode/llamacpp-slots` on Linux/WSL
+and `~/Library/Application Support/slopcode/llamacpp-slots` on macOS.
+Override with `LLAMACPP_SLOT_SAVE_PATH=/some/path` or disable via
+`LLAMACPP_SLOT_SAVE_PATH=off`.
+
+### Sampler (Qwen3.6 35B-A3B and MTP variants)
+
+Both `qwen*` and `*-mtp-*` aliases use Qwen's "thinking + precise coding"
+preset — the same dials Qwen recommends in the model card for code-heavy
+agent loops:
+
+```
+--temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
+--presence-penalty 0.0 --repeat-penalty 1.0 \
+--reasoning-format deepseek --reasoning-budget 4096 \
+--no-context-shift
+```
+
+The MTP branch additionally appends
+`--spec-type draft-mtp --spec-draft-n-max 2`. Both branches share the
+sampler — empirically (Jakob bench 2026-05-22, MTP UD-IQ4_XS on RTX 5060
+Ti class GPU) the precise-coding preset delivers 205 t/s decode at 0.88
+draft acceptance, so the older Unsloth "MTP-needs temp 1.0 / pp 1.5"
+recipe was a misattribution of the *general-thinking* preset and is not
+MTP-specific.
 
 The local offline default is single-slot 180K: `-np 1 -ub 1024 -c 131072`.
 Qwen3.6 35B-A3B is MoE. **Per-platform MoE policy diverges**:
@@ -478,9 +511,10 @@ decode speedup at ~1 GB extra resident memory. MTP is the right default
 on the Mac Studio cluster leader and MTP-capable Mac followers. Linux /
 Windows / tight-VRAM followers and the USB bundle stay on the non-MTP
 GGUFs: the MTP head would eat the VRAM safety margin and bring no
-benefit. The launcher branches on `*-mtp-*` aliases for the MTP sampler
-recipe (`--temp 1.0 --presence-penalty 1.5`); non-MTP aliases keep the
-standard Qwen sampler (`--temp 0.6 --presence-penalty 0`).
+benefit. The launcher branches on `*-mtp-*` aliases only to append
+`--spec-type draft-mtp --spec-draft-n-max 2`; the sampler block itself
+is identical for both branches (Qwen "thinking + precise coding":
+`--temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0`).
 
 Reserved aliases (no live peer yet): `luna` for a future gpt-oss-120b
 instance, `tuna` for a future short-context Qwen 35B chat pool.

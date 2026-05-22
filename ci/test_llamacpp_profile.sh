@@ -137,9 +137,9 @@ EOF
 
   if [[ "${output}" == *"--spec-type draft-mtp"* && \
         "${output}" == *"--spec-draft-n-max 2"* && \
-        "${output}" == *"--temp 1.0"* && \
-        "${output}" == *"--presence-penalty 1.5"* ]]; then
-    echo "PASS: MTP alias triggers draft-mtp + recommended sampler"
+        "${output}" == *"--temp 0.6"* && \
+        "${output}" == *"--presence-penalty 0.0"* ]]; then
+    echo "PASS: MTP alias triggers draft-mtp + precise-coding sampler"
   else
     echo "FAIL: MTP flags missing"
     echo "${output}"
