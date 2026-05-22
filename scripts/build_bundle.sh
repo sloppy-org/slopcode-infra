@@ -1243,7 +1243,7 @@ write_windows() {
   fetch_github_binary "${t}" sharkdp/fd          "${FD_TAG}"      "-x86_64-pc-windows-msvc.zip" fd.exe         fd.exe
   fetch_github_bare   "${t}" jqlang/jq           "${JQ_TAG}"      "jq-windows-amd64.exe"                       jq.exe
   fetch_github_binary "${t}" koalaman/shellcheck "${SHELLCHECK_TAG}" ".zip"                       shellcheck.exe shellcheck.exe
-  fetch_github_binary "${t}" mikefarah/yq        "${YQ_TAG}"      "yq_windows_amd64.zip"        yq.exe         yq.exe
+  fetch_github_binary "${t}" mikefarah/yq        "${YQ_TAG}"      "yq_windows_amd64.zip"        yq_windows_amd64.exe yq.exe
   fetch_github_binary "${t}" dandavison/delta    "${DELTA_TAG}"   "-x86_64-pc-windows-msvc.zip" delta.exe      delta.exe
   fetch_github_binary "${t}" duckdb/duckdb       "${DUCKDB_TAG}"  "duckdb_cli-windows-amd64.zip" duckdb.exe    duckdb.exe
   fetch_github_binary "${t}" sibprogrammer/xq    "${XQ_TAG}"      "_windows_amd64.zip"          xq.exe         xq.exe
