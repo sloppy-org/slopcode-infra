@@ -29,6 +29,7 @@ OUT=""
 LLAMACPP_TAG="${LLAMACPP_TAG:-}"
 OPENCODE_TAG="${OPENCODE_TAG:-}"
 WHISPER_TAG="${WHISPER_TAG:-}"
+RIPGREP_TAG="${RIPGREP_TAG:-}"
 SKIP_MODEL="${SKIP_MODEL:-false}"
 LOCAL_LUNA_SOURCE="${LOCAL_LUNA_SOURCE:-${HOME}/code/computor-dev/local-luna}"
 BUNDLE_CACHE_DIR="${BUNDLE_CACHE_DIR:-}"
@@ -39,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --llamacpp-tag) LLAMACPP_TAG="$2"; shift 2 ;;
     --opencode-tag) OPENCODE_TAG="$2"; shift 2 ;;
     --whisper-tag) WHISPER_TAG="$2"; shift 2 ;;
+    --ripgrep-tag) RIPGREP_TAG="$2"; shift 2 ;;
     --skip-model) SKIP_MODEL=true; shift ;;
     --local-luna-source) LOCAL_LUNA_SOURCE="$2"; shift 2 ;;
     all) TARGETS=(linux-cuda mac-m1 windows-arc); shift ;;
@@ -194,6 +196,28 @@ fetch_whisper_source() {
   url="https://github.com/ggml-org/whisper.cpp/archive/refs/tags/${tag}.tar.gz"
   echo "whisper.cpp source ${tag}"
   fetch_archive "${url}" "${dest}"
+}
+
+# Latest ripgrep release from BurntSushi/ripgrep, just the rg binary into
+# <target>/bin. Suffix selects the platform asset; bin_name is the binary
+# filename inside the archive (rg or rg.exe).
+fetch_ripgrep() {
+  local target_dir="$1" suffix="$2" bin_name="$3"
+  local tag url archive tmp inner
+  read -r tag url <<<"$(github_asset BurntSushi/ripgrep "${RIPGREP_TAG}" "${suffix}")"
+  echo "ripgrep ${tag} (${suffix})"
+  archive="$(download_cached "${url}" "ripgrep ${suffix}")"
+  tmp="$(mktemp -d)"
+  case "${archive}" in
+    *.tar.gz) tar -xzf "${archive}" -C "${tmp}" ;;
+    *.zip)    unzip -q -o "${archive}" -d "${tmp}" ;;
+    *) die "unknown ripgrep archive: ${archive}" ;;
+  esac
+  inner="$(find "${tmp}" -type f -name "${bin_name}" -print -quit)"
+  [[ -n "${inner}" && -f "${inner}" ]] || die "ripgrep binary ${bin_name} not found in ${archive}"
+  mkdir -p "${target_dir}/bin"
+  install -m 755 "${inner}" "${target_dir}/bin/${bin_name}"
+  rm -rf "${tmp}"
 }
 
 copy_model_alias() {
@@ -460,6 +484,7 @@ write_linux() {
   echo "linux-cuda opencode ${oc_tag}"
   fetch_archive "${oc_url}" "${t}/opencode" opencode
   fetch_whisper_source "${t}/whisper.cpp" "${WHISPER_TAG}"
+  fetch_ripgrep "${t}" "-x86_64-unknown-linux-musl.tar.gz" rg
   write_common_unix_files "${t}"
 
   # Bundle-root preview launcher (no install). Loads the MTP-trained
@@ -468,7 +493,7 @@ write_linux() {
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PATH="${HERE}/opencode:${PATH}"
+export PATH="${HERE}/bin:${HERE}/opencode:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/llama.cpp${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 exec "${HERE}/llama.cpp/llama-server" \
   -m "${HERE}/../models/Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" \
@@ -476,8 +501,8 @@ exec "${HERE}/llama.cpp/llama-server" \
   -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 \
   -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 \
   --alias qwen --jinja \
-  --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 \
-  --presence-penalty 1.5 --repeat-penalty 1.0 \
+  --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
+  --presence-penalty 0.0 --repeat-penalty 1.0 \
   --reasoning-format deepseek --reasoning-budget 4096 --reasoning on \
   --spec-type draft-mtp --spec-draft-n-max 2 \
   --no-context-shift --host 127.0.0.1 --port 8080
@@ -596,8 +621,8 @@ Prerequisite: cmake and ninja must be installed.
          -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 \
          -np 1 --threads 4 --threads-http 4 \
          --alias qwen --jinja \
-         --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 \
-         --presence-penalty 1.5 --repeat-penalty 1.0 \
+         --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
+         --presence-penalty 0.0 --repeat-penalty 1.0 \
          --reasoning-format deepseek --reasoning-budget 4096 \
          --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 \
          --no-context-shift --host 127.0.0.1 --port 8080
@@ -693,15 +718,17 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${HERE}/.." && pwd)"
 DEST="${HOME}/.local/slopcode"
-mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${DEST}/meeting" "${HOME}/.local/bin" "${HOME}/.config/systemd/user" "${HOME}/.config/opencode"
+mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${DEST}/meeting" "${DEST}/bin" "${HOME}/.local/bin" "${HOME}/.config/systemd/user" "${HOME}/.config/opencode"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
 cp -R "${HERE}/whisper.cpp/." "${DEST}/whisper.cpp/"
 cp -R "${HERE}/meeting/." "${DEST}/meeting/"
+if [[ -d "${HERE}/bin" ]]; then cp -R "${HERE}/bin/." "${DEST}/bin/"; fi
 cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 cp -n "${ROOT}/models/ggml-large-v3-turbo.bin" "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
+[[ -x "${DEST}/bin/rg" ]] && ln -sf "${DEST}/bin/rg" "${HOME}/.local/bin/rg"
 chmod +x "${DEST}/meeting/"*.sh
 ln -sf "${DEST}/meeting/record-meeting.sh" "${HOME}/.local/bin/record-meeting"
 ln -sf "${DEST}/meeting/meeting-transcribe.sh" "${HOME}/.local/bin/meeting-transcribe"
@@ -728,7 +755,7 @@ cat >"${DEST}/run-llamacpp.sh" <<RUN
 # decode speed).
 export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
-exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 RUN
 cat >"${DEST}/stop-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
@@ -788,6 +815,7 @@ write_mac() {
   echo "mac-m1 opencode ${oc_tag}"
   fetch_archive "${oc_url}" "${t}/opencode" opencode
   fetch_whisper_source "${t}/whisper.cpp" "${WHISPER_TAG}"
+  fetch_ripgrep "${t}" "-aarch64-apple-darwin.tar.gz" rg
   write_common_unix_files "${t}"
 
   cat >"${t}/README.md" <<'EOF'
@@ -999,15 +1027,17 @@ ROOT="$(cd "${HERE}/.." && pwd)"
 DEST="${HOME}/Library/Application Support/slopcode"
 LOGS="${HOME}/Library/Logs/slopcode"
 AGENTS="${HOME}/Library/LaunchAgents"
-mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${DEST}/meeting" "${LOGS}" "${AGENTS}" "${HOME}/.local/bin" "${HOME}/.config/opencode"
+mkdir -p "${DEST}/models" "${DEST}/llama.cpp" "${DEST}/opencode" "${DEST}/whisper.cpp" "${DEST}/meeting" "${DEST}/bin" "${LOGS}" "${AGENTS}" "${HOME}/.local/bin" "${HOME}/.config/opencode"
 cp -R "${HERE}/llama.cpp/." "${DEST}/llama.cpp/"
 cp -R "${HERE}/opencode/." "${DEST}/opencode/"
 cp -R "${HERE}/whisper.cpp/." "${DEST}/whisper.cpp/"
 cp -R "${HERE}/meeting/." "${DEST}/meeting/"
+if [[ -d "${HERE}/bin" ]]; then cp -R "${HERE}/bin/." "${DEST}/bin/"; fi
 cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 cp -n "${ROOT}/models/ggml-large-v3-turbo.bin" "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
+[[ -x "${DEST}/bin/rg" ]] && ln -sf "${DEST}/bin/rg" "${HOME}/.local/bin/rg"
 chmod +x "${DEST}/meeting/"*.sh
 ln -sf "${DEST}/meeting/record-meeting.sh" "${HOME}/.local/bin/record-meeting"
 ln -sf "${DEST}/meeting/meeting-transcribe.sh" "${HOME}/.local/bin/meeting-transcribe"
@@ -1033,7 +1063,7 @@ cat >"${DEST}/run-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
 export PATH="${DEST}/opencode:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:\${PATH}"
 export DYLD_LIBRARY_PATH="${DEST}/llama.cpp\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
-exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 RUN
 cat >"${DEST}/stop-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
@@ -1112,6 +1142,7 @@ write_windows() {
   read -r wh_tag wh_url <<<"$(github_asset ggml-org/whisper.cpp "${WHISPER_TAG}" whisper-bin-x64.zip)"
   echo "windows whisper.cpp ${wh_tag}"
   fetch_archive "${wh_url}" "${t}/whisper.cpp" whisper-server.exe
+  fetch_ripgrep "${t}" "-x86_64-pc-windows-msvc.zip" rg.exe
   sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
   # verify-models.bat: certutil-based SHA256 verification, no powershell.
@@ -1326,7 +1357,7 @@ OPTION 2 - MANUAL INSTALL
 
        @echo off
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" --mmproj "%USERPROFILE%\slopcode\models\mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --threads 6 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 
    On Arc 140V (Lunar Lake, 4P + 4LP = 8 physical cores) --threads 6 is
    the right value (physical - 2). On other Arc hosts substitute
@@ -1345,7 +1376,7 @@ OPTION 2 - MANUAL INSTALL
 
        @echo off
        set "PATH=%USERPROFILE%\slopcode\llama.cpp;%PATH%"
-       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+       "%USERPROFILE%\slopcode\llama.cpp\llama-server.exe" -m "%USERPROFILE%\slopcode\models\Qwen3.6-35B-A3B-UD-IQ4_XS.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads 6 --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 
 8. Create the whisper launcher %USERPROFILE%\slopcode\run-whisper.bat
    with this exact content:
@@ -1528,6 +1559,7 @@ xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
 xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
 xcopy /E /I /Y "%HERE%\whisper.cpp" "%DEST%\whisper.cpp" >nul
 xcopy /E /I /Y "%HERE%\meeting" "%DEST%\meeting" >nul
+if exist "%HERE%\bin\rg.exe" copy /Y "%HERE%\bin\rg.exe" "%DEST%\bin\" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
 copy /Y "%ROOT%\models\ggml-large-v3-turbo.bin" "%DEST%\models\" >nul
 setx OPENCODE_DISABLE_AUTOUPDATE 1 >nul
@@ -1554,17 +1586,18 @@ if !THREADS! LSS 2 set THREADS=2
 REM Per-quant launchers; switch-quant.bat below copies the active one to
 REM run-llamacpp.bat. Both load the MTP-trained GGUF and emit
 REM --spec-type draft-mtp for the 1.4-2.2x decode speedup; sampler block
-REM (temp 1.0, presence-penalty 1.5) follows Unsloth's MTP recipe.
+REM (temp 0.6, presence-penalty 0.0) is Qwen's "thinking + precise
+REM coding" preset — the right default for agent loops.
 REM Backend: SYCL (Intel oneAPI) prebuilt. No GGML_VK_* env vars needed —
 REM those workarounds were Vulkan-specific. The bundled llama-server.exe
 REM ships oneAPI runtime DLLs so no separate Intel install is required.
 >"%DEST%\run-llamacpp.bat" echo @echo off
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 REM CPU fallback (-ngl 0); always correct but ~10 tok/s.
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 >"%DEST%\stop-llamacpp.bat" echo @echo off
 >>"%DEST%\stop-llamacpp.bat" echo taskkill /F /IM llama-server.exe /T ^>nul 2^>^&1
 >>"%DEST%\stop-llamacpp.bat" echo echo stopped
@@ -1611,17 +1644,17 @@ for target in "${TARGETS[@]}"; do
     linux-cuda)
       write_linux
       write_simple_platform_readme "${OUT}/linux-cuda" "slopcode for Linux (NVIDIA CUDA)" "bash install.sh" "./prewarm-opencode.sh"
-      prune_dir_entries "${OUT}/linux-cuda" llama.cpp opencode whisper.cpp _common.sh opencode_privacy.sh prewarm-opencode.sh meeting start.sh README.md install.sh
+      prune_dir_entries "${OUT}/linux-cuda" llama.cpp opencode whisper.cpp bin _common.sh opencode_privacy.sh prewarm-opencode.sh meeting start.sh README.md install.sh
       ;;
     mac-m1)
       write_mac
       write_simple_platform_readme "${OUT}/mac-m1" "slopcode for macOS (Apple Silicon)" "bash install.sh" "./prewarm-opencode.sh"
-      prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp _common.sh opencode_privacy.sh prewarm-opencode.sh meeting README.md install.sh
+      prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp bin _common.sh opencode_privacy.sh prewarm-opencode.sh meeting README.md install.sh
       ;;
     windows-arc)
       write_windows
       write_simple_platform_readme "${OUT}/windows-arc" "slopcode for Windows (Intel Arc, Vulkan)" ".\\install.bat" ".\\prewarm-opencode.bat"
-      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp meeting verify-models.bat README.md install.bat
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp bin meeting verify-models.bat README.md install.bat
       ;;
   esac
 done
