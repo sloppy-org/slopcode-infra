@@ -30,6 +30,14 @@ LLAMACPP_TAG="${LLAMACPP_TAG:-}"
 OPENCODE_TAG="${OPENCODE_TAG:-}"
 WHISPER_TAG="${WHISPER_TAG:-}"
 RIPGREP_TAG="${RIPGREP_TAG:-}"
+FD_TAG="${FD_TAG:-}"
+JQ_TAG="${JQ_TAG:-}"
+SHELLCHECK_TAG="${SHELLCHECK_TAG:-}"
+YQ_TAG="${YQ_TAG:-}"
+DELTA_TAG="${DELTA_TAG:-}"
+DUCKDB_TAG="${DUCKDB_TAG:-}"
+XQ_TAG="${XQ_TAG:-}"
+SQLITE_TOOLS_WIN_URL="${SQLITE_TOOLS_WIN_URL:-https://www.sqlite.org/2026/sqlite-tools-win-x64-3530100.zip}"
 SKIP_MODEL="${SKIP_MODEL:-false}"
 LOCAL_LUNA_SOURCE="${LOCAL_LUNA_SOURCE:-${HOME}/code/computor-dev/local-luna}"
 BUNDLE_CACHE_DIR="${BUNDLE_CACHE_DIR:-}"
@@ -198,26 +206,93 @@ fetch_whisper_source() {
   fetch_archive "${url}" "${dest}"
 }
 
-# Latest ripgrep release from BurntSushi/ripgrep, just the rg binary into
-# <target>/bin. Suffix selects the platform asset; bin_name is the binary
-# filename inside the archive (rg or rg.exe).
-fetch_ripgrep() {
-  local target_dir="$1" suffix="$2" bin_name="$3"
-  local tag url archive tmp inner
-  read -r tag url <<<"$(github_asset BurntSushi/ripgrep "${RIPGREP_TAG}" "${suffix}")"
-  echo "ripgrep ${tag} (${suffix})"
-  archive="$(download_cached "${url}" "ripgrep ${suffix}")"
+# Download a GitHub release asset (tar.gz/tar.xz/zip), extract it, and
+# install one binary from the archive into <target>/bin/<out_name>.
+# Args: target_dir repo tag suffix archive_member out_name
+fetch_github_binary() {
+  local target_dir="$1" repo="$2" tag="$3" suffix="$4" member="$5" out="$6"
+  local rel_tag url archive tmp inner
+  read -r rel_tag url <<<"$(github_asset "${repo}" "${tag}" "${suffix}")"
+  echo "${repo} ${rel_tag} (${suffix} -> ${out})"
+  archive="$(download_cached "${url}" "${repo} ${suffix}")"
   tmp="$(mktemp -d)"
   case "${archive}" in
-    *.tar.gz) tar -xzf "${archive}" -C "${tmp}" ;;
-    *.zip)    unzip -q -o "${archive}" -d "${tmp}" ;;
-    *) die "unknown ripgrep archive: ${archive}" ;;
+    *.tar.gz|*.tgz) tar -xzf "${archive}" -C "${tmp}" ;;
+    *.tar.xz)       tar -xJf "${archive}" -C "${tmp}" ;;
+    *.zip)          unzip -q -o "${archive}" -d "${tmp}" ;;
+    *) die "unknown archive: ${archive}" ;;
   esac
-  inner="$(find "${tmp}" -type f -name "${bin_name}" -print -quit)"
-  [[ -n "${inner}" && -f "${inner}" ]] || die "ripgrep binary ${bin_name} not found in ${archive}"
+  inner="$(find "${tmp}" -type f -name "${member}" -print -quit)"
+  [[ -n "${inner}" && -f "${inner}" ]] || die "${member} not found in ${archive}"
   mkdir -p "${target_dir}/bin"
-  install -m 755 "${inner}" "${target_dir}/bin/${bin_name}"
+  install -m 755 "${inner}" "${target_dir}/bin/${out}"
   rm -rf "${tmp}"
+}
+
+# Download a bare GitHub release binary (no archive) directly into
+# <target>/bin/<out_name>. Used for jq, which ships unwrapped binaries.
+# Args: target_dir repo tag suffix out_name
+fetch_github_bare() {
+  local target_dir="$1" repo="$2" tag="$3" suffix="$4" out="$5"
+  local rel_tag url cache
+  read -r rel_tag url <<<"$(github_asset "${repo}" "${tag}" "${suffix}")"
+  echo "${repo} ${rel_tag} (${suffix} -> ${out})"
+  cache="$(download_cached "${url}" "${repo} ${suffix}")"
+  mkdir -p "${target_dir}/bin"
+  install -m 755 "${cache}" "${target_dir}/bin/${out}"
+}
+
+# Download a non-GitHub archive (sqlite.org), extract, install one binary.
+# Args: target_dir url label archive_member out_name
+fetch_direct_binary() {
+  local target_dir="$1" url="$2" label="$3" member="$4" out="$5"
+  local archive tmp inner
+  echo "${label} (${url##*/} -> ${out})"
+  archive="$(download_cached "${url}" "${label}")"
+  tmp="$(mktemp -d)"
+  case "${archive}" in
+    *.zip)          unzip -q -o "${archive}" -d "${tmp}" ;;
+    *.tar.gz|*.tgz) tar -xzf "${archive}" -C "${tmp}" ;;
+    *) die "unknown archive: ${archive}" ;;
+  esac
+  inner="$(find "${tmp}" -type f -name "${member}" -print -quit)"
+  [[ -n "${inner}" && -f "${inner}" ]] || die "${member} not found in ${archive}"
+  mkdir -p "${target_dir}/bin"
+  install -m 755 "${inner}" "${target_dir}/bin/${out}"
+  rm -rf "${tmp}"
+}
+
+# Bundle a shared offline-coding AGENTS.md hint at the target root.
+# Copied into the install dir by install.sh / install.bat; colleagues
+# can drop it into project roots so coding agents pick it up.
+write_bundle_agents_md() {
+  local target_dir="$1"
+  cat >"${target_dir}/AGENTS.md" <<'AGENTSMD'
+# AGENTS.md
+
+Offline coding box. No network.
+
+## Tools in PATH
+
+`rg` text · `fd` files · `jq` JSON · `yq` YAML · `xq` XML · `sqlite3` and `duckdb` SQL · `shellcheck` bash lint · `delta` diff · `opencode` agent · `llama-server` :8080 · `whisper-server` :8427.
+
+## Rules
+
+- Terse. No filler. No emojis in code, commits, PRs, issues.
+- Search text with `rg`, files with `fd`. Not `find` or `grep -r`.
+- JSON/YAML/XML via `jq` / `yq` / `xq`. Tabular data via `sqlite3` or `duckdb`.
+- `shellcheck` every bash script before declaring it done.
+- No `curl | sh`, no `pip install`, no `npm install`, no `gh` / `glab`. Network is closed.
+- Use repo tooling. Do not invent build or test commands.
+- Stage paths explicitly. Never `git add .` or `git add -A`.
+- Fix failing tests. Do not skip, weaken, or label them unrelated.
+- Comments say why, not what.
+- Never claim success without real command output.
+
+## Endpoint
+
+opencode points at `http://127.0.0.1:8080/v1` (alias `qwen`). Loopback only.
+AGENTSMD
 }
 
 copy_model_alias() {
@@ -484,8 +559,16 @@ write_linux() {
   echo "linux-cuda opencode ${oc_tag}"
   fetch_archive "${oc_url}" "${t}/opencode" opencode
   fetch_whisper_source "${t}/whisper.cpp" "${WHISPER_TAG}"
-  fetch_ripgrep "${t}" "-x86_64-unknown-linux-musl.tar.gz" rg
+  fetch_github_binary "${t}" BurntSushi/ripgrep "${RIPGREP_TAG}" "-x86_64-unknown-linux-musl.tar.gz"  rg                rg
+  fetch_github_binary "${t}" sharkdp/fd          "${FD_TAG}"      "-x86_64-unknown-linux-musl.tar.gz"  fd                fd
+  fetch_github_bare   "${t}" jqlang/jq           "${JQ_TAG}"      "jq-linux-amd64"                                       jq
+  fetch_github_binary "${t}" koalaman/shellcheck "${SHELLCHECK_TAG}" ".linux.x86_64.tar.xz"           shellcheck        shellcheck
+  fetch_github_binary "${t}" mikefarah/yq        "${YQ_TAG}"      "yq_linux_amd64.tar.gz"             yq_linux_amd64    yq
+  fetch_github_binary "${t}" dandavison/delta    "${DELTA_TAG}"   "-x86_64-unknown-linux-musl.tar.gz" delta             delta
+  fetch_github_binary "${t}" duckdb/duckdb       "${DUCKDB_TAG}"  "duckdb_cli-linux-amd64.zip"        duckdb            duckdb
+  fetch_github_binary "${t}" sibprogrammer/xq    "${XQ_TAG}"      "_linux_amd64.tar.gz"               xq                xq
   write_common_unix_files "${t}"
+  write_bundle_agents_md "${t}"
 
   # Bundle-root preview launcher (no install). Loads the MTP-trained
   # IQ4_XS GGUF and enables --spec-type draft-mtp for the decode speedup.
@@ -724,11 +807,14 @@ cp -R "${HERE}/opencode/." "${DEST}/opencode/"
 cp -R "${HERE}/whisper.cpp/." "${DEST}/whisper.cpp/"
 cp -R "${HERE}/meeting/." "${DEST}/meeting/"
 if [[ -d "${HERE}/bin" ]]; then cp -R "${HERE}/bin/." "${DEST}/bin/"; fi
+[[ -f "${HERE}/AGENTS.md" ]] && cp "${HERE}/AGENTS.md" "${DEST}/AGENTS.md"
 cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 cp -n "${ROOT}/models/ggml-large-v3-turbo.bin" "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
-[[ -x "${DEST}/bin/rg" ]] && ln -sf "${DEST}/bin/rg" "${HOME}/.local/bin/rg"
+for binname in rg fd jq yq xq shellcheck delta duckdb; do
+  [[ -x "${DEST}/bin/${binname}" ]] && ln -sf "${DEST}/bin/${binname}" "${HOME}/.local/bin/${binname}"
+done
 chmod +x "${DEST}/meeting/"*.sh
 ln -sf "${DEST}/meeting/record-meeting.sh" "${HOME}/.local/bin/record-meeting"
 ln -sf "${DEST}/meeting/meeting-transcribe.sh" "${HOME}/.local/bin/meeting-transcribe"
@@ -815,8 +901,16 @@ write_mac() {
   echo "mac-m1 opencode ${oc_tag}"
   fetch_archive "${oc_url}" "${t}/opencode" opencode
   fetch_whisper_source "${t}/whisper.cpp" "${WHISPER_TAG}"
-  fetch_ripgrep "${t}" "-aarch64-apple-darwin.tar.gz" rg
+  fetch_github_binary "${t}" BurntSushi/ripgrep "${RIPGREP_TAG}" "-aarch64-apple-darwin.tar.gz" rg                rg
+  fetch_github_binary "${t}" sharkdp/fd          "${FD_TAG}"      "-aarch64-apple-darwin.tar.gz" fd                fd
+  fetch_github_bare   "${t}" jqlang/jq           "${JQ_TAG}"      "jq-macos-arm64"                                 jq
+  fetch_github_binary "${t}" koalaman/shellcheck "${SHELLCHECK_TAG}" ".darwin.aarch64.tar.xz"    shellcheck        shellcheck
+  fetch_github_binary "${t}" mikefarah/yq        "${YQ_TAG}"      "yq_darwin_arm64.tar.gz"       yq_darwin_arm64   yq
+  fetch_github_binary "${t}" dandavison/delta    "${DELTA_TAG}"   "-aarch64-apple-darwin.tar.gz" delta             delta
+  fetch_github_binary "${t}" duckdb/duckdb       "${DUCKDB_TAG}"  "duckdb_cli-osx-universal.zip" duckdb            duckdb
+  fetch_github_binary "${t}" sibprogrammer/xq    "${XQ_TAG}"      "_darwin_arm64.tar.gz"         xq                xq
   write_common_unix_files "${t}"
+  write_bundle_agents_md "${t}"
 
   cat >"${t}/README.md" <<'EOF'
 slopcode for macOS (Apple Silicon)
@@ -1033,11 +1127,14 @@ cp -R "${HERE}/opencode/." "${DEST}/opencode/"
 cp -R "${HERE}/whisper.cpp/." "${DEST}/whisper.cpp/"
 cp -R "${HERE}/meeting/." "${DEST}/meeting/"
 if [[ -d "${HERE}/bin" ]]; then cp -R "${HERE}/bin/." "${DEST}/bin/"; fi
+[[ -f "${HERE}/AGENTS.md" ]] && cp "${HERE}/AGENTS.md" "${DEST}/AGENTS.md"
 cp "${HERE}/_common.sh" "${DEST}/_common.sh"
 cp -n "${ROOT}/models/"*.gguf "${DEST}/models/"
 cp -n "${ROOT}/models/ggml-large-v3-turbo.bin" "${DEST}/models/"
 ln -sf "${DEST}/opencode/opencode" "${HOME}/.local/bin/opencode"
-[[ -x "${DEST}/bin/rg" ]] && ln -sf "${DEST}/bin/rg" "${HOME}/.local/bin/rg"
+for binname in rg fd jq yq xq shellcheck delta duckdb; do
+  [[ -x "${DEST}/bin/${binname}" ]] && ln -sf "${DEST}/bin/${binname}" "${HOME}/.local/bin/${binname}"
+done
 chmod +x "${DEST}/meeting/"*.sh
 ln -sf "${DEST}/meeting/record-meeting.sh" "${HOME}/.local/bin/record-meeting"
 ln -sf "${DEST}/meeting/meeting-transcribe.sh" "${HOME}/.local/bin/meeting-transcribe"
@@ -1142,7 +1239,16 @@ write_windows() {
   read -r wh_tag wh_url <<<"$(github_asset ggml-org/whisper.cpp "${WHISPER_TAG}" whisper-bin-x64.zip)"
   echo "windows whisper.cpp ${wh_tag}"
   fetch_archive "${wh_url}" "${t}/whisper.cpp" whisper-server.exe
-  fetch_ripgrep "${t}" "-x86_64-pc-windows-msvc.zip" rg.exe
+  fetch_github_binary "${t}" BurntSushi/ripgrep "${RIPGREP_TAG}" "-x86_64-pc-windows-msvc.zip" rg.exe         rg.exe
+  fetch_github_binary "${t}" sharkdp/fd          "${FD_TAG}"      "-x86_64-pc-windows-msvc.zip" fd.exe         fd.exe
+  fetch_github_bare   "${t}" jqlang/jq           "${JQ_TAG}"      "jq-windows-amd64.exe"                       jq.exe
+  fetch_github_binary "${t}" koalaman/shellcheck "${SHELLCHECK_TAG}" ".zip"                       shellcheck.exe shellcheck.exe
+  fetch_github_binary "${t}" mikefarah/yq        "${YQ_TAG}"      "yq_windows_amd64.zip"        yq.exe         yq.exe
+  fetch_github_binary "${t}" dandavison/delta    "${DELTA_TAG}"   "-x86_64-pc-windows-msvc.zip" delta.exe      delta.exe
+  fetch_github_binary "${t}" duckdb/duckdb       "${DUCKDB_TAG}"  "duckdb_cli-windows-amd64.zip" duckdb.exe    duckdb.exe
+  fetch_github_binary "${t}" sibprogrammer/xq    "${XQ_TAG}"      "_windows_amd64.zip"          xq.exe         xq.exe
+  fetch_direct_binary "${t}" "${SQLITE_TOOLS_WIN_URL}" "sqlite-tools-win-x64" sqlite3.exe sqlite3.exe
+  write_bundle_agents_md "${t}"
   sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
   # verify-models.bat: certutil-based SHA256 verification, no powershell.
@@ -1559,7 +1665,8 @@ xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
 xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
 xcopy /E /I /Y "%HERE%\whisper.cpp" "%DEST%\whisper.cpp" >nul
 xcopy /E /I /Y "%HERE%\meeting" "%DEST%\meeting" >nul
-if exist "%HERE%\bin\rg.exe" copy /Y "%HERE%\bin\rg.exe" "%DEST%\bin\" >nul
+if exist "%HERE%\bin" xcopy /E /I /Y "%HERE%\bin" "%DEST%\bin" >nul
+if exist "%HERE%\AGENTS.md" copy /Y "%HERE%\AGENTS.md" "%DEST%\AGENTS.md" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
 copy /Y "%ROOT%\models\ggml-large-v3-turbo.bin" "%DEST%\models\" >nul
 setx OPENCODE_DISABLE_AUTOUPDATE 1 >nul
@@ -1644,17 +1751,17 @@ for target in "${TARGETS[@]}"; do
     linux-cuda)
       write_linux
       write_simple_platform_readme "${OUT}/linux-cuda" "slopcode for Linux (NVIDIA CUDA)" "bash install.sh" "./prewarm-opencode.sh"
-      prune_dir_entries "${OUT}/linux-cuda" llama.cpp opencode whisper.cpp bin _common.sh opencode_privacy.sh prewarm-opencode.sh meeting start.sh README.md install.sh
+      prune_dir_entries "${OUT}/linux-cuda" llama.cpp opencode whisper.cpp bin _common.sh opencode_privacy.sh prewarm-opencode.sh meeting start.sh README.md AGENTS.md install.sh
       ;;
     mac-m1)
       write_mac
       write_simple_platform_readme "${OUT}/mac-m1" "slopcode for macOS (Apple Silicon)" "bash install.sh" "./prewarm-opencode.sh"
-      prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp bin _common.sh opencode_privacy.sh prewarm-opencode.sh meeting README.md install.sh
+      prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp bin _common.sh opencode_privacy.sh prewarm-opencode.sh meeting README.md AGENTS.md install.sh
       ;;
     windows-arc)
       write_windows
       write_simple_platform_readme "${OUT}/windows-arc" "slopcode for Windows (Intel Arc, Vulkan)" ".\\install.bat" ".\\prewarm-opencode.bat"
-      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp bin meeting verify-models.bat README.md install.bat
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp bin meeting verify-models.bat README.md AGENTS.md install.bat
       ;;
   esac
 done
