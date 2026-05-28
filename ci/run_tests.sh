@@ -21,9 +21,20 @@ run_test() {
 
 run_test "llama.cpp Profile" "${SCRIPT_DIR}/test_llamacpp_profile.sh"
 run_test "slopgate Profile"  "${SCRIPT_DIR}/test_slopgate_profile.sh"
+run_test "Serve Switch"      "${SCRIPT_DIR}/test_serve_switch.sh"
 run_test "SearXNG Profile"   "${SCRIPT_DIR}/test_searxng_profile.sh"
 run_test "Mock Server Health" "${SCRIPT_DIR}/test_server_health.sh"
 run_test "Meeting Chunking" "${SCRIPT_DIR}/test_meeting_chunking.sh"
+
+echo "---- Helper Scripts ----"
+if bash -n "${SCRIPT_DIR}/../scripts/tts_swap.sh" \
+   && TTS_SWAP_DRY_RUN=true bash "${SCRIPT_DIR}/../scripts/tts_swap.sh" free >/dev/null \
+   && TTS_SWAP_DRY_RUN=true bash "${SCRIPT_DIR}/../scripts/tts_swap.sh" restore >/dev/null; then
+  echo
+else
+  echo "FAILED: Helper Scripts"
+  FAILED=1
+fi
 
 echo "---- USB Scripts ----"
 if bash -n "${SCRIPT_DIR}/../scripts/build_bundle.sh" \

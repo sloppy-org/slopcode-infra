@@ -91,6 +91,15 @@ scripts/
                                 Qwen3.6 27B Q4_K_M, Q8 KV, 128K context,
                                 loopback :8080. Not the standard local default.
   server_stop_llamacpp.sh
+  serve_switch.sh               dual-GPU host model switch: flip between the
+                                35B-A3B (slopgate alias qwen) and 27B dense
+                                (alias qwen27b), GPU-only, and re-stamp the
+                                slopgate follower identity. Edits the local
+                                llama-server drop-in + follower.env, restarts
+                                both user services.
+  tts_swap.sh                   free this host's GPU(s) for an ad-hoc Qwen3-TTS
+                                render by stopping llama-server, then restore.
+                                Fallback for when TTS can't run on faepmac1.
   install_linux_systemd.sh      write & enable ~/.config/systemd/user/slopcode-
                                 llamacpp.service; enable-linger for boot autostart
   install_mac_launchagents.sh   macOS launchd user agent (single 35B-A3B instance)
@@ -160,6 +169,9 @@ scripts/
   install_voxtype_windows.bat   documented manual path (upstream is
                                 Linux-only).
 
+config/slopcode/
+  llamacpp-dual-gpu.conf.example systemd drop-in template for a 32 GB dual-GPU
+                                host: GPU-only (LLAMACPP_N_CPU_MOE=0), WG bind.
 config/slopgate/
   leader.env.example            template for ~/.config/slopgate/leader.env
   follower.env.example          template for ~/.config/slopgate/follower.env
@@ -169,6 +181,9 @@ ci/
   test_llamacpp_profile.sh      launcher dry-run + opencode config assertions
   test_slopgate_profile.sh      install_slopgate_{leader,follower} dry-run +
                                 gitignore behaviour
+  test_serve_switch.sh          serve_switch.sh dry-run: model switch stamps
+                                the llama drop-in + slopgate identity, keeps
+                                host-specific keys, round-trips 35b<->27b
   test_server_health.sh         pure-stdlib mock server
   mock_server.py
 ```
@@ -232,8 +247,19 @@ Qwen3.6 35B-A3B is MoE. **Per-platform MoE policy diverges**:
   with less unified VRAM should fall back to `--n-cpu-moe 20` and
   upward (40 ≡ `--cpu-moe`).
 - **macOS** uses unified memory — no MoE split.
+- **Dual-GPU CUDA (~32 GB, e.g. 2x RTX 5060 Ti 16 GB)** drops `--n-cpu-moe`
+  entirely (`LLAMACPP_N_CPU_MOE=0`) and serves GPU-only: all 40 expert
+  layers split across the two cards **by layer** (MoE has no tensor-parallel
+  / `-sm row` path in llama.cpp, so this is pipeline-parallel). Qwen3.6-35B-A3B
+  is hybrid (full attention every 4th layer + SSM), so its KV is tiny
+  (~1.4 GB at 131072 q8_0) and the whole VRAM budget goes to weights —
+  UD-Q4_K_XL MTP (~23 GB) + KV + compute fit with room for the co-resident
+  whisper-server. Measured reference on this hardware: ~108 t/s decode /
+  ~3545 t/s prefill, i.e. ~3x decode and ~6x prefill vs single-GPU CPU-MoE.
+  Use `scripts/serve_switch.sh` to flip the served model; see "Dual-GPU
+  model switch" below.
 
-On Linux CUDA partial MoE offload replaces the old blanket `--cpu-moe`.
+On single-GPU Linux CUDA partial MoE offload replaces the old blanket `--cpu-moe`.
 Benchmark on RTX 5060 Ti 16 GB with Qwen3.6-35B-A3B UD-Q4_K_XL at c=262144
 (same relative numbers held with UD-Q4_K_M earlier; the XL bench was not
 rerun but the layer-cost ratios are unchanged):
@@ -279,6 +305,41 @@ is not the default opencode path — use it only on slopgate deployments backed
 by more powerful hardware.
 
 Override per invocation with `LLAMACPP_PARALLEL` and `LLAMACPP_CONTEXT`.
+
+## Dual-GPU model switch (serve_switch.sh)
+
+A 32 GB-class dual-GPU host serves the whole model GPU-only and can swap
+between two Qwen3.6 profiles without editing units by hand:
+
+| Profile | llama alias              | slopgate alias | canonical                       |
+| ------- | ----------------------- | -------------- | ------------------------------- |
+| `35b`   | `qwen3.6-35b-a3b-mtp-q4`| `qwen`         | `unsloth/qwen3.6:35b-a3b@128k`  |
+| `27b`   | `qwen3.6-27b-mtp-q4`    | `qwen27b`      | `unsloth/qwen3.6:27b@128k`      |
+
+Both run the UD-Q4_K_XL MTP GGUF GPU-only. The 35B-A3B is the fast MoE
+default (only ~3 B active/token). The dense 27B activates all 27 B/token, so
+on two mid-bandwidth cards in pipeline split it decodes ~3x slower — it is a
+quality-comparison / heavier-host option, not the everyday default.
+
+```bash
+scripts/serve_switch.sh            # show the active profile
+scripts/serve_switch.sh 35b        # serve 35B-A3B as `qwen`
+scripts/serve_switch.sh 27b        # serve 27B dense as `qwen27b`
+```
+
+The switch edits two host-local (untracked) files in place and restarts both
+user services:
+- `~/.config/systemd/user/slopcode-llamacpp.service.d/wg-only.conf`
+  (`LLAMACPP_MODEL_ALIAS`, `LLAMACPP_N_CPU_MOE=0`, `LLAMACPP_CONTEXT`) — seed
+  it from `config/slopcode/llamacpp-dual-gpu.conf.example`.
+- `~/.config/slopgate/follower.env` — re-stamps `SLOPGATE_CANONICAL_MODEL`,
+  `SLOPGATE_MODEL_ALIAS`, `SLOPGATE_MODEL_ALIASES`, `SLOPGATE_QUANT`,
+  `SLOPGATE_MAX_CONTEXT` so the cluster sees the right model identity.
+
+WG addresses, agent name, machine profile, and digest are left untouched. It
+refuses to switch onto a GGUF that isn't on disk (override with
+`SERVE_SWITCH_FORCE=true`); `SERVE_SWITCH_DRY_RUN=true` edits the files but
+skips the restarts.
 
 ## Windows-arc USB bundle (Intel Arc iGPU, SYCL / oneAPI)
 

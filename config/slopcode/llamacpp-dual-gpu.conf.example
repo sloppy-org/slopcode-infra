@@ -1,0 +1,21 @@
+# Dual-GPU GPU-only profile for slopcode-llamacpp.service.
+#
+# Copy to ~/.config/systemd/user/slopcode-llamacpp.service.d/wg-only.conf
+# (the directory and ".conf" name matter; any *.conf in the .d dir is a
+# drop-in), set the WG bind address for THIS host, then:
+#   systemctl --user daemon-reload && systemctl --user restart slopcode-llamacpp
+#
+# This is the profile for a ~32 GB box (e.g. 2x RTX 5060 Ti 16 GB) that
+# serves the whole model GPU-only. LLAMACPP_N_CPU_MOE=0 drops --n-cpu-moe so
+# all MoE expert layers run on the GPUs (layer split; MoE has no tensor-
+# parallel path in llama.cpp). scripts/serve_switch.sh flips the model alias
+# and context here and re-stamps the slopgate follower identity to match.
+[Service]
+# Bind to this host's WireGuard address so the local slopgate-agent can
+# register it with the cluster leader. Replace 10.x.x.x with your WG IP.
+Environment=LLAMACPP_HOST=10.0.0.2
+Environment=LLAMACPP_PORT=8080
+Environment=LLAMACPP_CONTEXT=131072
+Environment=LLAMACPP_CACHE_ROOT=/mnt/storage/slopcode/models
+Environment=LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-mtp-q4
+Environment=LLAMACPP_N_CPU_MOE=0

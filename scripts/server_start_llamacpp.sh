@@ -387,6 +387,13 @@ case "${MODEL_ALIAS}" in
       --reasoning-budget "${REASONING_BUDGET}"
       --spec-type draft-mtp
       --spec-draft-n-max "${LLAMACPP_SPEC_DRAFT_N_MAX:-2}"
+      # Default the MTP draft KV to the same quant as the main KV. llama.cpp's
+      # draft context otherwise defaults to f16, which on Qwen3.6-35B-A3B costs
+      # ~1.5 GB more than q8_0 for no measurable acceptance gain. Matching the
+      # main cache type keeps "q8_0 everywhere" and frees that VRAM (e.g. so a
+      # 32 GB dual-GPU host can keep the vision projector on the GPU).
+      --cache-type-k-draft "${CACHE_TYPE_K}"
+      --cache-type-v-draft "${CACHE_TYPE_V}"
       --no-context-shift
     )
     ;;
