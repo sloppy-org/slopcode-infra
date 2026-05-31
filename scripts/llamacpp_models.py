@@ -239,7 +239,7 @@ def find_cli() -> str:
         path = shutil.which(candidate)
         if path:
             return path
-    raise RuntimeError("missing hf or huggingface-cli in PATH; install with: pip install --user huggingface_hub[cli]")
+    raise RuntimeError('missing hf or huggingface-cli in PATH; install with: uv tool install "huggingface_hub[cli]"')
 
 
 def positive_int_env(name: str, default: int) -> int:
