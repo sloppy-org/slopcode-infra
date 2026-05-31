@@ -178,10 +178,12 @@ UNIT
     AGENT_LABEL=com.slopcode.slopgate-agent
     AGENT_27B_LABEL=com.slopcode.slopgate-agent-27b
     AGENT_122B_LABEL=com.slopcode.slopgate-agent-122b
+    AGENT_FIM_LABEL=com.slopcode.slopgate-agent-fim
     BALANCER_PLIST="${AGENTS_DIR}/${BALANCER_LABEL}.plist"
     AGENT_PLIST="${AGENTS_DIR}/${AGENT_LABEL}.plist"
     AGENT_27B_PLIST="${AGENTS_DIR}/${AGENT_27B_LABEL}.plist"
     AGENT_122B_PLIST="${AGENTS_DIR}/${AGENT_122B_LABEL}.plist"
+    AGENT_FIM_PLIST="${AGENTS_DIR}/${AGENT_FIM_LABEL}.plist"
 
     # Per-companion agent params. Each companion is registered automatically
     # iff its llama-server launchd plist is present in this directory (see
@@ -200,6 +202,14 @@ UNIT
     AGENT_122B_CANONICAL_MODEL="${SLOPGATE_AGENT_122B_CANONICAL_MODEL:-unsloth/qwen3.5:122b-a10b@128k}"
     AGENT_122B_MODEL_ALIASES="${SLOPGATE_AGENT_122B_MODEL_ALIASES:-qwen3.5-122b,qwen3.5-122b@128k}"
     AGENT_122B_QUANT="${SLOPGATE_AGENT_122B_QUANT:-UD-Q4_K_XL-MTP}"
+    AGENT_FIM_ADDR="${SLOPGATE_AGENT_FIM_ADDR:-127.0.0.1:8084}"
+    AGENT_FIM_MAX_CONTEXT="${SLOPGATE_AGENT_FIM_MAX_CONTEXT:-32768}"
+    AGENT_FIM_MODEL_ALIAS="${SLOPGATE_AGENT_FIM_MODEL_ALIAS:-qwenfim}"
+    AGENT_FIM_NAME="${SLOPGATE_AGENT_FIM_NAME:-leader-fim}"
+    AGENT_FIM_CANONICAL_MODEL="${SLOPGATE_AGENT_FIM_CANONICAL_MODEL:-qwen/qwen3-coder-next:80b-a3b-q4km@32k}"
+    AGENT_FIM_MODEL_ALIASES="${SLOPGATE_AGENT_FIM_MODEL_ALIASES:-qwen3-coder-next,qwen3-coder-next@32k,fim}"
+    AGENT_FIM_QUANT="${SLOPGATE_AGENT_FIM_QUANT:-Q4_K_M}"
+    AGENT_FIM_DIGEST_EXTRA="${SLOPGATE_AGENT_FIM_DIGEST_EXTRA:-kv=q8_0 np=4 c=131072}"
 
     cat > "${BALANCER_PLIST}" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -324,6 +334,17 @@ XML
       rm -f "${AGENT_122B_PLIST}"
     fi
 
+    if [[ -f "${AGENTS_DIR}/com.slopcode.llamacpp-fim.plist" ]]; then
+      write_companion_agent "${AGENT_FIM_LABEL}" "${AGENT_FIM_PLIST}" \
+        "${AGENT_FIM_ADDR}" "${AGENT_FIM_MAX_CONTEXT}" \
+        "${AGENT_FIM_MODEL_ALIAS}" "${AGENT_FIM_NAME}" \
+        "${AGENT_FIM_CANONICAL_MODEL:-}" "${AGENT_FIM_MODEL_ALIASES:-}" \
+        "${AGENT_FIM_QUANT:-}" "${AGENT_FIM_DIGEST_EXTRA:-}"
+      INSTALLED_AGENT_LABELS+=("${AGENT_FIM_LABEL}")
+    else
+      rm -f "${AGENT_FIM_PLIST}"
+    fi
+
     if [[ "${DRY_RUN}" == "true" ]]; then
       echo "INSTALL_DRY_RUN=true; skipping launchctl bootstrap."
       exit 0
@@ -363,7 +384,8 @@ echo "balancer management:     ${SLOPGATE_MANAGEMENT_ADDR:-(see env file)}"
 echo "remember to run scripts/server_start_llamacpp.sh (or restart its service)"
 echo "so llama-server flips to the loopback port that the proxy expects."
 echo
-echo "macOS companion agents (qwen27b on :8082, qwen122b on :8083) are installed"
+echo "macOS companion agents (qwen27b on :8082, qwen122b on :8083, qwenfim on :8084) are installed"
 echo "automatically when the corresponding com.slopcode.llamacpp-{27b,122b}"
-echo "launchd plist is present. Run scripts/install_mac_launchagents.sh first"
-echo "with INSTALL_QWEN27B=true / INSTALL_QWEN122B=true to enable them."
+echo "or com.slopcode.llamacpp-fim launchd plist is present. Run"
+echo "scripts/install_mac_launchagents.sh first with INSTALL_QWEN27B=true,"
+echo "INSTALL_QWEN122B=true, or INSTALL_QWENFIM=true to enable them."

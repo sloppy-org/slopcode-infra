@@ -8,6 +8,8 @@
 #                                    -np 4 -c 524288 (180K per slot, 4 slots)
 #   com.slopcode.llamacpp-122b   -> 122B-A10B UD-Q4 MoE on 127.0.0.1:8083 with
 #                                    -np 4 -c 524288 (180K per slot, 4 slots)
+#   com.slopcode.llamacpp-fim    -> Qwen3-Coder-Next Q4 on 127.0.0.1:8084 with
+#                                    -np 4 -c 131072 (32K per slot, 4 slots)
 #   com.slopcode.whisper-server  -> ggml-large-v3-turbo on 0.0.0.0:8427
 #                                    OpenAI-compat at /v1/audio/transcriptions
 #
@@ -50,6 +52,10 @@
 #                        any previously installed 27B agent.
 #   INSTALL_QWEN122B     auto (default), true, or false. auto installs when
 #                        qwen3.5-122b-a10b-ud-q4 is cached on this host.
+#   INSTALL_QWENFIM      auto (default), true, or false. auto installs when
+#                        qwen3-coder-next-q4 is cached on this host.
+#   QWEN_FIM_ALIAS       model registry alias for the FIM endpoint
+#                        (default: qwen3-coder-next-q4).
 #   SKIP_WHISPER         set to true to install only the llama agents.
 set -euo pipefail
 
@@ -131,6 +137,13 @@ MODEL_122B_PATH="$(python3 "${MODELS_SCRIPT}" resolve "${QWEN_122B_ALIAS}" 2>/de
 MMPROJ_122B_PATH="$(resolve_mmproj_optional "${QWEN_122B_ALIAS}")"
 if [[ "${INSTALL_QWEN122B}" == "true" && ( -z "${MODEL_122B_PATH}" || ! -f "${MODEL_122B_PATH}" ) ]]; then
   die "model for alias ${QWEN_122B_ALIAS} not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${QWEN_122B_ALIAS}"
+fi
+
+INSTALL_QWENFIM="${INSTALL_QWENFIM:-auto}"
+QWEN_FIM_ALIAS="${QWEN_FIM_ALIAS:-qwen3-coder-next-q4}"
+MODEL_FIM_PATH="$(python3 "${MODELS_SCRIPT}" resolve "${QWEN_FIM_ALIAS}" 2>/dev/null || true)"
+if [[ "${INSTALL_QWENFIM}" == "true" && ( -z "${MODEL_FIM_PATH}" || ! -f "${MODEL_FIM_PATH}" ) ]]; then
+  die "model for alias ${QWEN_FIM_ALIAS} not on disk. Run: python3 ${MODELS_SCRIPT} prefetch ${QWEN_FIM_ALIAS}"
 fi
 
 # MTP flag block per plist (empty when LLAMACPP_NO_MTP=true). Sampler dials
@@ -400,6 +413,71 @@ XML
 
 write_llamacpp_122b_plist
 
+FIM_INSTALLED=false
+write_llamacpp_fim_plist() {
+  if [[ "${INSTALL_QWENFIM}" == "false" ]]; then
+    bootout_if_loaded com.slopcode.llamacpp-fim
+    return 0
+  fi
+  [[ -n "${MODEL_FIM_PATH}" && -f "${MODEL_FIM_PATH}" ]] || {
+    echo "skipping com.slopcode.llamacpp-fim (model ${QWEN_FIM_ALIAS} not cached)"
+    return 0
+  }
+
+  local label="com.slopcode.llamacpp-fim"
+  local plist="${AGENTS_DIR}/${label}.plist"
+  local log="${LOG_DIR_ABS}/llamacpp-fim.log"
+  cat > "${plist}" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${SERVER_BIN}</string>
+    <string>-m</string><string>${MODEL_FIM_PATH}</string>
+    <string>-c</string><string>131072</string>
+    <string>-b</string><string>2048</string>
+    <string>-ub</string><string>1024</string>
+    <string>-ngl</string><string>99</string>
+    <string>-fa</string><string>on</string>
+    <string>-np</string><string>4</string>
+    <string>--cache-type-k</string><string>${KV_TYPE_K}</string>
+    <string>--cache-type-v</string><string>${KV_TYPE_V}</string>
+${CACHE_REUSE_XML}    <string>--alias</string><string>qwenfim</string>
+    <string>--jinja</string>
+    <string>--temp</string><string>0.15</string>
+    <string>--top-p</string><string>0.9</string>
+    <string>--top-k</string><string>40</string>
+    <string>--min-p</string><string>0</string>
+    <string>--presence-penalty</string><string>0.0</string>
+    <string>--repeat-penalty</string><string>1.0</string>
+    <string>--no-context-shift</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8084</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DYLD_LIBRARY_PATH</key><string>${SERVER_DIR}</string>
+  </dict>
+  <key>StandardOutPath</key><string>${log}</string>
+  <key>StandardErrorPath</key><string>${log}</string>
+</dict>
+</plist>
+XML
+  launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
+  wait_gone "${label}" || die "failed to unload existing ${label}"
+  launchctl bootstrap "gui/$(id -u)" "${plist}"
+  FIM_INSTALLED=true
+  echo "loaded ${label} (127.0.0.1:8084, alias qwenfim, -np 4 -c 131072)"
+}
+
+write_llamacpp_fim_plist
+
 # whisper.cpp transcription server. Runs on Metal GPU (built with
 # -DGGML_METAL=1). Used by voxtype dictation, slopbox voice-memo classifier,
 # and the meeting-notes pipeline. OpenAI-compatible at /v1/audio/transcriptions
@@ -490,6 +568,9 @@ wait_ready() {
   done
 }
 wait_ready "${LLAMACPP_PORT_BIND}"
+if [[ "${FIM_INSTALLED}" == "true" ]]; then
+  wait_ready 8084
+fi
 if [[ "${SKIP_WHISPER:-false}" != "true" ]]; then
   wait_ready 8427 /
 fi

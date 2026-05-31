@@ -97,6 +97,16 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     ),
     ModelSpec(
+        alias="qwen3-coder-next-q4",
+        repo_id="Qwen/Qwen3-Coder-Next-GGUF",
+        include=("Qwen3-Coder-Next-Q4_K_M/*.gguf", "*Qwen3-Coder-Next-Q4_K_M*.gguf"),
+    ),
+    ModelSpec(
+        alias="qwen3-coder-next-q5",
+        repo_id="Qwen/Qwen3-Coder-Next-GGUF",
+        include=("Qwen3-Coder-Next-Q5_K_M/*.gguf", "*Qwen3-Coder-Next-Q5_K_M*.gguf"),
+    ),
+    ModelSpec(
         alias="qwen3.6-35b-a3b-bartowski-q4",
         repo_id="bartowski/Qwen_Qwen3.6-35B-A3B-GGUF",
         include=("*Q4_K_M*.gguf",),

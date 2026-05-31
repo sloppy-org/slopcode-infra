@@ -488,6 +488,28 @@ test_models_default_alias() {
   fi
 }
 
+test_models_fim_alias() {
+  echo "TEST: llamacpp_models.py FIM alias"
+  if python3 - "${REPO_ROOT}/scripts/llamacpp_models.py" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("llamacpp_models", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+model = mod.MODEL_BY_ALIAS["qwen3-coder-next-q4"]
+assert model.repo_id == "Qwen/Qwen3-Coder-Next-GGUF"
+assert "Qwen3-Coder-Next-Q4_K_M/*.gguf" in model.include
+PY
+  then
+    echo "PASS: qwen3-coder-next-q4 resolves to the Qwen3-Coder-Next GGUF split"
+  else
+    echo "FAIL: qwen3-coder-next-q4 alias missing or wrong"
+    return 1
+  fi
+}
+
 test_setup_backend_selection() {
   echo "TEST: setup_llamacpp.sh backend selection"
   local home_dir="${TMPDIR}/home-setup"
@@ -762,6 +784,7 @@ test_opencode_config || FAILED=$((FAILED + 1))
 test_opencode_config_slopgate || FAILED=$((FAILED + 1))
 test_pi_config || FAILED=$((FAILED + 1))
 test_models_default_alias || FAILED=$((FAILED + 1))
+test_models_fim_alias || FAILED=$((FAILED + 1))
 test_setup_backend_selection || FAILED=$((FAILED + 1))
 test_install_linux_systemd_dry_run || FAILED=$((FAILED + 1))
 
