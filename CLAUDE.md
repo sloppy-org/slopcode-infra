@@ -196,19 +196,16 @@ Every instance launched through `server_start_llamacpp.sh` always passes:
 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 \
 -ngl 99 -fa on --alias "${LLAMACPP_SERVED_ALIAS:-qwen}" --jinja \
 --reasoning on --metrics --log-timestamps \
--fit on --slot-save-path <per-platform default>
+-fit on
 ```
 
 `--metrics` exposes Prometheus counters at `/metrics` (used by the slopgate
 watchdog). `--log-timestamps` makes rotated logs readable. `-fit on` runs
-llama.cpp's VRAM-fit autosizer at startup — costs nothing on
-already-sized configs and prevents OOM on `-np > 1` or unfamiliar hosts.
-`--slot-save-path` writes a per-slot KV state directory the running server
-can save/restore via `/slots/{id}/save|restore`; default is
-`${XDG_STATE_HOME:-~/.local/state}/slopcode/llamacpp-slots` on Linux/WSL
-and `~/Library/Application Support/slopcode/llamacpp-slots` on macOS.
-Override with `LLAMACPP_SLOT_SAVE_PATH=/some/path` or disable via
-`LLAMACPP_SLOT_SAVE_PATH=off`.
+llama.cpp's VRAM-fit autosizer at startup. It costs nothing on already-sized
+configs and prevents OOM on `-np > 1` or unfamiliar hosts.
+The launcher does not pass `--slot-save-path`. llama.cpp slot
+save/restore remains disabled, including when `LLAMACPP_SLOT_SAVE_PATH` is set
+in the environment.
 
 ### Sampler (Qwen3.6 35B-A3B and MTP variants)
 

@@ -85,6 +85,8 @@ EOF
   if [[ "${output}" == *"${context_expected}"* && \
         "${output}" == *"--cache-type-k q8_0"* && \
         "${output}" == *"--cache-type-v q8_0"* && \
+        "${output}" != *"--slot-save-path"* && \
+        "${output}" != *"- slot-save-path:"* && \
         "${output}" == *"-fa on"* && \
         "${output}" == *"--alias qwen"* && \
         "${output}" == *"--jinja"* && \
@@ -102,6 +104,45 @@ EOF
     echo "PASS: launcher emits the blessed profile for $(uname -s) (${np_expected}, ${context_expected})"
   else
     echo "FAIL: launcher profile mismatch (moe_ok=${moe_ok} threads_ok=${threads_ok} mmproj_offload_ok=${mmproj_offload_ok})"
+    echo "${output}"
+    return 1
+  fi
+}
+
+test_server_start_ignores_slot_save_path() {
+  echo "TEST: launcher keeps llama.cpp slot save disabled"
+  local home_dir="${TMPDIR}/home-slot-save"
+  local model_path="${TMPDIR}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+  local mmproj_path="${TMPDIR}/mmproj-slot-save.gguf"
+  mkdir -p "${home_dir}/.local/llama.cpp"
+  cat > "${home_dir}/.local/llama.cpp/llama-server" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${home_dir}/.local/llama.cpp/llama-server"
+  : > "${model_path}"
+  : > "${mmproj_path}"
+
+  local output port
+  port="$(free_port)"
+  output="$(
+    HOME="${home_dir}" \
+    LLAMACPP_HOME="${home_dir}/.local/llama.cpp" \
+    LLAMACPP_MODEL="${model_path}" \
+    LLAMACPP_MMPROJ="${mmproj_path}" \
+    LLAMACPP_PORT="${port}" \
+    LLAMACPP_SLOT_SAVE_PATH="${TMPDIR}/slots" \
+    LLAMACPP_SMOKE_TEST=false \
+    LLAMACPP_DRY_RUN=true \
+    bash "${REPO_ROOT}/scripts/server_start_llamacpp.sh"
+  )"
+
+  if [[ "${output}" != *"--slot-save-path"* && \
+        "${output}" != *"- slot-save-path:"* && \
+        ! -d "${TMPDIR}/slots" ]]; then
+    echo "PASS: LLAMACPP_SLOT_SAVE_PATH does not enable slot save"
+  else
+    echo "FAIL: launcher emitted slot-save support"
     echo "${output}"
     return 1
   fi
@@ -548,6 +589,7 @@ EOF
   ub_value=1024
   if grep -qx -- '-np' "${stamp}" \
     && grep -qx -- "${np_value}" "${stamp}" \
+    && ! grep -qx -- '--slot-save-path' "${stamp}" \
     && grep -qx -- '--port' "${stamp}" \
     && grep -qx -- "${port}" "${stamp}" \
     && grep -qx -- '--reasoning-budget' "${stamp}" \
@@ -712,6 +754,7 @@ test_server_start_instance_overrides || FAILED=$((FAILED + 1))
 test_server_start_thread_override || FAILED=$((FAILED + 1))
 test_server_start_mtp_flags || FAILED=$((FAILED + 1))
 test_server_start_mmproj_offload_override || FAILED=$((FAILED + 1))
+test_server_start_ignores_slot_save_path || FAILED=$((FAILED + 1))
 test_server_start_loopback_slopgate || FAILED=$((FAILED + 1))
 test_server_exec_mode || FAILED=$((FAILED + 1))
 test_server_legacy_cpu_moe_fallback || FAILED=$((FAILED + 1))

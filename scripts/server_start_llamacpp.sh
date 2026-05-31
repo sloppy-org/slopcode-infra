@@ -52,12 +52,6 @@
 #                         place part of the model on CPU)
 #   LLAMACPP_FIT          explicit value passed to -fit (default: on; set to
 #                         "off" to disable VRAM-fit autosizer)
-#   LLAMACPP_SLOT_SAVE_PATH
-#                         directory passed to --slot-save-path for /slots
-#                         save/restore. Per-platform default:
-#                           Linux/WSL: ${XDG_STATE_HOME:-~/.local/state}/slopcode/llamacpp-slots
-#                           macOS:    ~/Library/Application Support/slopcode/llamacpp-slots
-#                         Set to "off" or empty to disable.
 #   LLAMACPP_CACHE_RAM    explicit value passed to --cache-ram; 0 disables the
 #                         prompt cache
 #   LLAMACPP_CACHE_REUSE  N tokens for --cache-reuse (default 256). Enables
@@ -214,19 +208,6 @@ fi
 REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
 NO_MMAP="${LLAMACPP_NO_MMAP:-false}"
 FIT="${LLAMACPP_FIT:-on}"
-
-case "${PLATFORM}" in
-  mac)
-    SLOT_SAVE_PATH_DEFAULT="${HOME}/Library/Application Support/slopcode/llamacpp-slots"
-    ;;
-  *)
-    SLOT_SAVE_PATH_DEFAULT="${XDG_STATE_HOME:-${HOME}/.local/state}/slopcode/llamacpp-slots"
-    ;;
-esac
-SLOT_SAVE_PATH="${LLAMACPP_SLOT_SAVE_PATH-${SLOT_SAVE_PATH_DEFAULT}}"
-if [[ "${SLOT_SAVE_PATH}" == "off" ]]; then
-  SLOT_SAVE_PATH=""
-fi
 
 CACHE_RAM="${LLAMACPP_CACHE_RAM:-}"
 CACHE_REUSE="${LLAMACPP_CACHE_REUSE:-256}"
@@ -465,12 +446,6 @@ fi
 if [[ -n "${FIT}" ]]; then
   CMD+=(-fit "${FIT}")
 fi
-if [[ -n "${SLOT_SAVE_PATH}" ]]; then
-  if [[ "${DRY_RUN:-false}" != "true" ]]; then
-    mkdir -p "${SLOT_SAVE_PATH}" || die "could not create slot-save-path: ${SLOT_SAVE_PATH}"
-  fi
-  CMD+=(--slot-save-path "${SLOT_SAVE_PATH}")
-fi
 if [[ -n "${CACHE_RAM}" ]]; then
   CMD+=(--cache-ram "${CACHE_RAM}")
 fi
@@ -507,7 +482,6 @@ echo "- batch:   b=${BATCH} ub=${UBATCH}"
 echo "- KV:      ${CACHE_TYPE_K} / ${CACHE_TYPE_V}"
 [[ "${NO_MMAP}" == "true" ]] && echo "- mmap:    off"
 [[ -n "${FIT}" ]] && echo "- fit:     ${FIT}"
-[[ -n "${SLOT_SAVE_PATH}" ]] && echo "- slot-save-path: ${SLOT_SAVE_PATH}"
 [[ -n "${CACHE_RAM}" ]] && echo "- cache-ram: ${CACHE_RAM}"
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   echo "- n-cpu-moe: ${N_CPU_MOE} (first N expert layers on CPU; rest on GPU)"
