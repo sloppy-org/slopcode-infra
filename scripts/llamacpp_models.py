@@ -106,11 +106,11 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         repo_id="Qwen/Qwen3-Coder-Next-GGUF",
         include=("Qwen3-Coder-Next-Q5_K_M/*.gguf", "*Qwen3-Coder-Next-Q5_K_M*.gguf"),
     ),
-    # Small dense Coder models for the FIM/autocomplete endpoint on memory-tight
-    # hosts (the 32 GB laptop side-by-side). The Coder line ships the infill
-    # tokens (<|fim_prefix|> etc.) the chat models lack. 3B Q4_K_M (~2 GB
-    # wired) is the default FIM model beside a 35B-A3B chat model; 7B/1.5B
-    # trade quality for memory. See docs/fim-autocomplete.md.
+    # Small dense Coder models for a dedicated FIM/autocomplete endpoint. The
+    # whole Qwen line ships the infill tokens (<|fim_prefix|> etc.), so a Qwen
+    # chat model can serve FIM itself; on a 32 GB host that is the default and
+    # these are unused. Prefetch one only when you want a separate low-latency
+    # FIM slot. See docs/fim-autocomplete.md.
     ModelSpec(
         alias="qwen2.5-coder-3b-q4",
         repo_id="Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
