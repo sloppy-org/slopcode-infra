@@ -107,6 +107,11 @@ scripts/
                                 (sources ~/.config/slopgate/leader.env)
   install_slopgate_follower.sh  install slopgate agent only (sources
                                 ~/.config/slopgate/follower.env)
+  install_slopgate_edge.sh      install a slopgate agent that registers the
+                                local llama-server with a separate edge
+                                balancer, tagged with a privacy tier
+                                (sources ~/.config/slopgate/edge.env). Linux
+                                only; independent of the leader cluster.
   install_slopgate_watchdog.sh  install slopgate watchdog (primary +
                                 weekly summary on leader via launchd,
                                 reverse on chat.computor.at via systemd).
@@ -175,6 +180,7 @@ config/slopcode/
 config/slopgate/
   leader.env.example            template for ~/.config/slopgate/leader.env
   follower.env.example          template for ~/.config/slopgate/follower.env
+  edge.env.example              template for ~/.config/slopgate/edge.env
 
 ci/
   run_tests.sh                  runs the three suites below
