@@ -45,6 +45,20 @@ SLOPGATE_MODEL_ALIAS=qwen
 EOF
 }
 
+edge_env_file() {
+  local env_file="$1"
+  cat > "${env_file}" <<EOF
+SLOPGATE_EDGE_MANAGEMENT_ADDR=10.77.0.1:8089
+SLOPGATE_LOCAL_LLAMACPP_ADDR=10.77.0.10:8080
+SLOPGATE_LLAMACPP_REQUEST_TIMEOUT=120
+SLOPGATE_EXTERNAL_LLAMACPP_ADDR=10.77.0.10:8080
+SLOPGATE_AGENT_NAME=mailuefterl-edge
+SLOPGATE_MAX_CONTEXT=131072
+SLOPGATE_MODEL_ALIAS=qwen
+SLOPGATE_PRIVACY_LEVEL=local
+EOF
+}
+
 test_leader_install_dry_run() {
   echo "TEST: install_slopgate_leader.sh dry-run writes balancer + agent units"
   local home_dir="${TMPDIR}/leader-home"
@@ -212,6 +226,71 @@ test_follower_install_dry_run() {
   esac
 }
 
+test_edge_install_dry_run() {
+  echo "TEST: install_slopgate_edge.sh dry-run writes the edge agent unit"
+  case "$(uname -s)" in
+    Linux) ;;
+    *) echo "SKIP: edge install (linux only)"; return 0 ;;
+  esac
+  local home_dir="${TMPDIR}/edge-home"
+  local env_file="${home_dir}/.config/slopgate/edge.env"
+  mkdir -p "$(dirname "${env_file}")"
+  edge_env_file "${env_file}"
+
+  local unit_dir="${TMPDIR}/edge-units"
+  mkdir -p "${unit_dir}"
+  HOME="${home_dir}" \
+  INSTALL_DRY_RUN=true \
+  UNIT_DIR="${unit_dir}" \
+  SLOPGATE_BIN="${fake_bin}/slopgate" \
+  bash "${REPO_ROOT}/scripts/install_slopgate_edge.sh" >/dev/null
+
+  local a="${unit_dir}/slopgate-agent-edge.service"
+  local b="${unit_dir}/slopgate-balancer.service"
+  if [[ -f "${a}" ]] && [[ ! -f "${b}" ]] \
+    && grep -q "^EnvironmentFile=${env_file}$" "${a}" \
+    && grep -q -- '--management-addr ${SLOPGATE_EDGE_MANAGEMENT_ADDR}' "${a}" \
+    && grep -q -- '--external-llamacpp-addr ${SLOPGATE_EXTERNAL_LLAMACPP_ADDR}' "${a}" \
+    && grep -q -- '--privacy-level ${SLOPGATE_PRIVACY_LEVEL}' "${a}" \
+    && grep -q -- '--name ${SLOPGATE_AGENT_NAME}' "${a}" \
+    && ! grep -q -- 'SLOPGATE_LEADER_MANAGEMENT_ADDR' "${a}" \
+    && ! grep -q -- '--slots' "${a}"; then
+    echo "PASS: edge agent unit sources ${env_file} with privacy tier, no balancer or leader addr"
+  else
+    echo "FAIL: edge unit missing expected fields"
+    cat "${a}" 2>/dev/null
+    return 1
+  fi
+}
+
+test_edge_install_refuses_without_privacy() {
+  echo "TEST: edge installer refuses an env file with no privacy tier"
+  case "$(uname -s)" in
+    Linux) ;;
+    *) echo "SKIP: edge install (linux only)"; return 0 ;;
+  esac
+  local home_dir="${TMPDIR}/edge-nopriv"
+  local env_file="${home_dir}/.config/slopgate/edge.env"
+  mkdir -p "$(dirname "${env_file}")"
+  edge_env_file "${env_file}"
+  grep -v '^SLOPGATE_PRIVACY_LEVEL=' "${env_file}" > "${env_file}.tmp" && mv "${env_file}.tmp" "${env_file}"
+  local out
+  out="$(
+    HOME="${home_dir}" \
+    INSTALL_DRY_RUN=true \
+    UNIT_DIR="${TMPDIR}/edge-nopriv-units" \
+    SLOPGATE_BIN="${fake_bin}/slopgate" \
+    bash "${REPO_ROOT}/scripts/install_slopgate_edge.sh" 2>&1 || true
+  )"
+  if [[ "${out}" == *"SLOPGATE_PRIVACY_LEVEL"* ]]; then
+    echo "PASS: edge installer requires a privacy tier"
+  else
+    echo "FAIL: edge installer did not refuse a missing privacy tier"
+    echo "${out}"
+    return 1
+  fi
+}
+
 test_install_refuses_without_env_file() {
   echo "TEST: install scripts refuse to run without an env file"
   local home_dir="${TMPDIR}/no-env"
@@ -233,10 +312,11 @@ test_install_refuses_without_env_file() {
 }
 
 test_env_examples_present() {
-  echo "TEST: config/slopgate/{leader,follower}.env.example are tracked"
+  echo "TEST: config/slopgate/{leader,follower,edge}.env.example are tracked"
   local lex="${REPO_ROOT}/config/slopgate/leader.env.example"
   local fex="${REPO_ROOT}/config/slopgate/follower.env.example"
-  if [[ -f "${lex}" && -f "${fex}" ]]; then
+  local eex="${REPO_ROOT}/config/slopgate/edge.env.example"
+  if [[ -f "${lex}" && -f "${fex}" && -f "${eex}" ]]; then
     echo "PASS: env example templates present"
   else
     echo "FAIL: missing env example templates"
@@ -268,6 +348,7 @@ test_install_scripts_reference_go_binary() {
   local files=(
     "${REPO_ROOT}/scripts/install_slopgate_leader.sh"
     "${REPO_ROOT}/scripts/install_slopgate_follower.sh"
+    "${REPO_ROOT}/scripts/install_slopgate_edge.sh"
   )
   if grep -Eq 'cargo|target/release' "${files[@]}"; then
     echo "FAIL: installer still references the old Rust build path"
@@ -284,6 +365,8 @@ test_install_scripts_reference_go_binary() {
 
 test_leader_install_dry_run           || FAILED=$((FAILED + 1))
 test_follower_install_dry_run         || FAILED=$((FAILED + 1))
+test_edge_install_dry_run             || FAILED=$((FAILED + 1))
+test_edge_install_refuses_without_privacy || FAILED=$((FAILED + 1))
 test_install_refuses_without_env_file || FAILED=$((FAILED + 1))
 test_env_examples_present             || FAILED=$((FAILED + 1))
 test_gitignore_blocks_env_files       || FAILED=$((FAILED + 1))
