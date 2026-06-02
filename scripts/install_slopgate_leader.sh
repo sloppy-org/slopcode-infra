@@ -260,6 +260,7 @@ XML
     <string>--machine-profile</string><string>${SLOPGATE_LOCAL_MACHINE_PROFILE:-}</string>
     <string>--digest-extra</string><string>${SLOPGATE_LOCAL_DIGEST_EXTRA:-}</string>
     <string>--quant</string><string>${SLOPGATE_LOCAL_QUANT}</string>
+    <string>--privacy-level</string><string>${SLOPGATE_LOCAL_PRIVACY_LEVEL:-local}</string>
     <string>--name</string><string>${SLOPGATE_LOCAL_AGENT_NAME}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent.log</string>
@@ -300,6 +301,7 @@ XML
     <string>--machine-profile</string><string>${profile}</string>
     <string>--digest-extra</string><string>${digest_extra}</string>
     <string>--quant</string><string>${quant}</string>
+    <string>--privacy-level</string><string>${SLOPGATE_LOCAL_PRIVACY_LEVEL:-local}</string>
     <string>--name</string><string>${name}</string>
   </array>
   <key>StandardOutPath</key><string>${RUN_DIR}/slopgate-agent-${alias}.log</string>
