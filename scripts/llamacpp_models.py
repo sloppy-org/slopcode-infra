@@ -6,12 +6,14 @@ Default offline model:
 
 The MTP variant ships the multi-token prediction head Qwen3.6 was trained
 with; llama.cpp >= b9180 can drive it via `--spec-type draft-mtp` for a
-1.4-2.2x decode speedup at ~1 GB extra resident memory. MTP is the right
-default on hosts with the headroom (the Mac Studio cluster leader, MTP-
-capable followers). Hosts where the MTP head would eat the VRAM safety
-margin (Linux/CUDA tight-VRAM followers, Windows-arc, the USB bundle)
-should stay on the non-MTP `qwen3.6-35b-a3b-q4` / `qwen3.6-35b-a3b-iq4_xs`
-aliases.
+1.4-2.2x decode speedup at ~1 GB extra resident memory. MTP is the default
+on hosts with the headroom: the Mac Studio cluster leader and MTP-capable
+followers, the Windows-arc bundle target (Arc 140V with the 32 GB Shared-
+GPU-Memory-Override has room for the head), and the USB bundle generally
+(its Linux launcher runs partial-MoE `--n-cpu-moe 35` and macOS uses
+unified memory, so the head fits there too). Only genuinely tight-VRAM
+Linux/CUDA followers should fall back to the non-MTP
+`qwen3.6-35b-a3b-q4` / `qwen3.6-35b-a3b-iq4_xs` aliases.
 
 Optional aliases live in OPTIONAL_SPECS below. They are never downloaded
 automatically; `prefetch` only touches the default.

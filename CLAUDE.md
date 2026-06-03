@@ -148,8 +148,10 @@ scripts/
   opencode_install.sh           curl|bash (online) or OPENCODE_OFFLINE_ARCHIVE
   build_bundle.sh               USB bundle builder for linux-cuda, mac-m1,
                                 windows-arc. Includes llama.cpp, opencode,
-                                whisper.cpp, Qwen GGUF/mmproj, and
-                                ggml-large-v3-turbo. No Pi/Node/npm cache.
+                                whisper.cpp, Qwen UD-Q4_K_XL-MTP GGUF/mmproj,
+                                ggml-large-v3-turbo, and the VS Code VSIX
+                                pair (llama.vscode + hackl, the latter built
+                                from HACKL_SOURCE). No Pi/Node/npm cache.
   usb_format.sh                 exFAT USB formatter + empty bundle skeleton.
   opencode_set_llamacpp.sh      write ~/.config/opencode/opencode.json. SLOPGATE_LEADER
                                 points baseURL at the proxy + emits
@@ -348,12 +350,21 @@ skips the restarts.
 
 **As of 2026-05-22 the windows-arc bundle ships the upstream Windows
 SYCL prebuilt (`llama-bN-bin-win-sycl-x64.zip`) instead of the older
-Vulkan prebuilt.** The Vulkan-coopmat / F16 workarounds and the
-`GGML_VK_DISABLE_*` env vars below no longer apply — they were
-Vulkan-specific. SYCL gives ~2x prefill on Lunar Lake / Arc 140V and
+Vulkan prebuilt.** SYCL gives ~2x prefill on Lunar Lake / Arc 140V and
 sidesteps the active Vulkan-Arc bugs (#18808 agentic-use, #22275 silent
-exits, #20554 coopmat TDR). The historical Vulkan notes are kept for
-context but the live bundle is SYCL.
+exits, #20554 coopmat TDR). The Vulkan-coopmat / F16 workarounds and the
+`GGML_VK_DISABLE_*` env vars below no longer apply; they were
+Vulkan-specific. The historical Vulkan notes are kept for context but the
+live bundle is SYCL.
+
+Upstream paused the `win-sycl-x64` prebuilt on 2026-05-26 (PR #23705: the
+SYCL and CANN builds alone ate more than a third of the 10 GB CI cache).
+The pause is explicitly temporary, to return once dedicated runners land.
+Until then `build_bundle.sh`'s `llama_asset` walks the release list
+newest-first and pins windows-arc to the newest release that still ships
+the asset: b9334, the 2026-05-26 build. mac-m1 and linux-cuda stay on the
+absolute latest (b9488 at time of writing). When upstream re-enables SYCL
+the same walk picks the latest again with no edit.
 
 ### Historical: Vulkan profile (no longer used)
 
@@ -512,8 +523,10 @@ without addressing any real bug. Reverted.
 
 ### Release pin
 
-The Windows Vulkan release is no longer pinned. Re-pin via `LLAMACPP_TAG`
-if a future upstream release introduces an Arc-specific regression.
+The windows-arc SYCL release is not hardcoded. `llama_asset` resolves it
+to the newest release still shipping `win-sycl-x64` (b9334 today, while
+upstream's pause holds). Force a specific build with `LLAMACPP_TAG` if a
+later SYCL release introduces an Arc regression.
 
 ### CPU fallback
 
@@ -571,11 +584,14 @@ differ only via the per-peer `quant` field. The `-MTP` suffix in the
 quant label marks peers loading the multi-token-prediction variant from
 `unsloth/Qwen3.x-...-MTP-GGUF`; llama.cpp >= b9180 drafts tokens via the
 MTP head (`--spec-type draft-mtp --spec-draft-n-max 2`) for a 1.4-2.2x
-decode speedup at ~1 GB extra resident memory. MTP is the right default
-on the Mac Studio cluster leader and MTP-capable Mac followers. Linux /
-Windows / tight-VRAM followers and the USB bundle stay on the non-MTP
-GGUFs: the MTP head would eat the VRAM safety margin and bring no
-benefit. The launcher branches on `*-mtp-*` aliases only to append
+decode speedup at ~1 GB extra resident memory. MTP is the default on the
+Mac Studio cluster leader, MTP-capable Mac followers, and the USB bundle:
+the bundle ships one quant, `UD-Q4_K_XL-MTP`, on all three targets (the
+Arc 140V holds the head under the 32 GB Shared-GPU-Memory cap, the Linux
+launcher runs partial-MoE `--n-cpu-moe 35`, macOS uses unified memory).
+Only genuinely tight-VRAM Linux / CUDA followers fall back to the non-MTP
+GGUFs, where the MTP head would eat the VRAM safety margin. The launcher
+branches on `*-mtp-*` aliases only to append
 `--spec-type draft-mtp --spec-draft-n-max 2`; the sampler block itself
 is identical for both branches (Qwen "thinking + precise coding":
 `--temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0`).
@@ -731,8 +747,9 @@ add it deliberately and update this file.
 Repo-first for our own machines; USB bundles for colleagues. The USB path is
 `scripts/build_bundle.sh all --out <mountpoint>` after formatting with
 `scripts/usb_format.sh` when needed. USB bundles include llama.cpp,
-opencode, whisper.cpp, the meeting workflow scripts, the Qwen GGUF/mmproj,
-and `ggml-large-v3-turbo.bin`.
+opencode, whisper.cpp, the meeting workflow scripts, the Qwen
+UD-Q4_K_XL-MTP GGUF/mmproj, `ggml-large-v3-turbo.bin`, and the VS Code
+VSIX pair (llama.vscode + hackl built from `HACKL_SOURCE`).
 
 **Automatic install scope.** The bundled `install.sh` / `install.bat`
 auto-installs and autostarts llama.cpp on `127.0.0.1:8080`, opencode,
