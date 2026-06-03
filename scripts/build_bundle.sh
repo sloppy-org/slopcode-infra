@@ -360,14 +360,23 @@ copy_models() {
   #     speedup. UD-Q4_K_XL is Unsloth's recommended quant; the weights + MTP
   #     head + tiny hybrid-SSM KV at 128K q8_0 fit a 32 GB GPU budget (the
   #     Arc 140V Shared-GPU-Memory-Override target) with headroom.
+  # Optional second chat GGUF (soft-fail, only shipped if prefetched):
+  #   gpt-oss-20b-mxfp4.gguf — OpenAI gpt-oss-20b, native MXFP4 (~11.3 GB).
+  #     A chat-only profile for 16 GB-class machines that cannot hold the
+  #     35B-A3B. Served GPU-only by run-gpt-oss.{bat,sh}; no FIM, no MTP.
+  #     Ship it with:
+  #       python3 scripts/llamacpp_models.py prefetch gpt-oss-20b
   prune_dir_entries "${OUT}/models" \
     Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
     Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf.sha256 \
+    gpt-oss-20b-mxfp4.gguf \
+    gpt-oss-20b-mxfp4.gguf.sha256 \
     mmproj-BF16.gguf \
     mmproj-BF16.gguf.sha256 \
     ggml-large-v3-turbo.bin \
     ggml-large-v3-turbo.bin.partial
   copy_model_alias qwen3.6-35b-a3b-mtp-q4 true
+  copy_model_alias gpt-oss-20b false
   local model="${OUT}/models/ggml-large-v3-turbo.bin"
   if [[ ! -f "${model}" ]]; then
     download_file \
@@ -912,6 +921,16 @@ export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
 exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 RUN
+# Optional chat-only profile for 16 GB machines: OpenAI gpt-oss-20b (MXFP4,
+# ~11.3 GB), GPU-only (no --n-cpu-moe), harmony sampler, no MTP, no FIM, no
+# repeat penalty. Only works if gpt-oss-20b-mxfp4.gguf was shipped. Run it
+# instead of run-llamacpp.sh; serves the same "qwen" alias on :8080.
+cat >"${DEST}/run-gpt-oss.sh" <<RUN
+#!/usr/bin/env bash
+export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
+export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa on -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --host 127.0.0.1 --port 8080
+RUN
 cat >"${DEST}/stop-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
 set -euo pipefail
@@ -919,7 +938,7 @@ systemctl --user stop slopcode-llamacpp.service 2>/dev/null || true
 pkill -f "${DEST}/llama.cpp/llama-server" 2>/dev/null || true
 echo "stopped"
 RUN
-chmod +x "${DEST}/stop-llamacpp.sh"
+chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/run-gpt-oss.sh" "${DEST}/stop-llamacpp.sh"
 
 cat >"${DEST}/run-whisper.sh" <<RUN
 #!/usr/bin/env bash
@@ -1231,6 +1250,14 @@ export PATH="${DEST}/opencode:${HOME}/.local/bin:/usr/bin:/bin:/usr/local/bin:/o
 export DYLD_LIBRARY_PATH="${DEST}/llama.cpp\${DYLD_LIBRARY_PATH:+:\${DYLD_LIBRARY_PATH}}"
 exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 RUN
+# Optional chat-only profile for 16 GB Macs: OpenAI gpt-oss-20b (MXFP4,
+# ~11.3 GB), unified-memory (no MoE split), harmony sampler, no MTP, no FIM,
+# no repeat penalty. Only works if gpt-oss-20b-mxfp4.gguf was shipped. Run it
+# instead of run-llamacpp.sh; serves the same "qwen" alias on :8080.
+cat >"${DEST}/run-gpt-oss.sh" <<RUN
+#!/usr/bin/env bash
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --host 127.0.0.1 --port 8080
+RUN
 cat >"${DEST}/stop-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1238,7 +1265,7 @@ launchctl bootout "gui/\$(id -u)/com.slopcode.llamacpp" 2>/dev/null || true
 pkill -f "${DEST}/llama.cpp/llama-server" 2>/dev/null || true
 echo "stopped"
 RUN
-chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/stop-llamacpp.sh"
+chmod +x "${DEST}/run-llamacpp.sh" "${DEST}/run-gpt-oss.sh" "${DEST}/stop-llamacpp.sh"
 
 cat >"${DEST}/run-whisper.sh" <<RUN
 #!/usr/bin/env bash
@@ -1428,6 +1455,11 @@ its window or via Task Manager (Ctrl-Shift-Esc).
 run-llamacpp.bat      GPU (SYCL) launcher. All experts on the iGPU, no
                       --n-cpu-moe. -c 131072, q8_0 KV, MTP draft.
 run-llamacpp-cpu.bat  Pure-CPU fallback (-ngl 0). Always correct, ~10 t/s.
+run-gpt-oss.bat       Optional: OpenAI gpt-oss-20b (~11.3 GB) instead of the
+                      35B, for 16 GB machines. GPU-only, chat-only (no FIM),
+                      -c 131072 (sliding-window attention keeps the 128K KV
+                      ~1.7 GB). Only present if the gpt-oss GGUF was shipped
+                      on this USB. Serves the same "qwen" alias on :8080.
 run-whisper.bat       whisper.cpp transcription on 127.0.0.1:8427.
 
 If opencode shows repeated slashes ("/////") or garbled output, or
@@ -1477,6 +1509,7 @@ del /Q "%DEST%\run-llamacpp-iq4xs.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-xl.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-coder.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-cpu.bat" 2>nul
+del /Q "%DEST%\run-gpt-oss.bat" 2>nul
 del /Q "%DEST%\switch-quant.bat" 2>nul
 del /Q "%DEST%\start-slopcode.bat" 2>nul
 del /Q "%DEST%\run-whisper.bat" 2>nul
@@ -1533,12 +1566,11 @@ for /f "skip=1 tokens=*" %%C in ('wmic cpu get NumberOfCores 2^>nul') do (
 )
 if defined PHYS (set /a THREADS=%PHYS% - 2) else (set /a THREADS=%NUMBER_OF_PROCESSORS%/2 - 1)
 if !THREADS! LSS 2 set THREADS=2
-REM Per-quant launchers; switch-quant.bat below copies the active one to
-REM run-llamacpp.bat. Both load the MTP-trained GGUF and emit
-REM --spec-type draft-mtp for the 1.4-2.2x decode speedup; sampler block
-REM (temp 0.6, presence-penalty 0.0) is Qwen's "thinking + precise
-REM coding" preset — the right default for agent loops.
-REM Backend: SYCL (Intel oneAPI) prebuilt. No GGML_VK_* env vars needed —
+REM run-llamacpp.bat loads the MTP-trained UD-Q4_K_XL GGUF and emits
+REM --spec-type draft-mtp for the 1.4-2.2x decode speedup; sampler is
+REM Qwen's "thinking + precise coding" preset (temp 0.6, presence 0.0),
+REM the right default for agent loops. All experts stay on the Arc iGPU.
+REM Backend: SYCL (Intel oneAPI) prebuilt. No GGML_VK_* env vars needed;
 REM those workarounds were Vulkan-specific. The bundled llama-server.exe
 REM ships oneAPI runtime DLLs so no separate Intel install is required.
 >"%DEST%\run-llamacpp.bat" echo @echo off
@@ -1548,6 +1580,16 @@ REM CPU fallback (-ngl 0); always correct but ~10 tok/s.
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
 >>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+REM Optional chat-only profile for 16 GB machines: OpenAI gpt-oss-20b
+REM (MXFP4, ~11.3 GB), GPU-only, harmony sampler, no MTP, no FIM, no repeat
+REM penalty. Only works if gpt-oss-20b-mxfp4.gguf was shipped on the USB.
+REM Serves the same alias "qwen" on :8080, so opencode/hackl need no change.
+REM Run it instead of run-llamacpp.bat. -c 131072 (full 128K): gpt-oss uses
+REM sliding-window attention, so the KV stays ~1.7 GB at q8_0 and fits 16 GB
+REM GPU-only. See ..\..\docs\gpt-oss-20b.md.
+>"%DEST%\run-gpt-oss.bat" echo @echo off
+>>"%DEST%\run-gpt-oss.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+>>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --host 127.0.0.1 --port 8080
 >"%DEST%\stop-llamacpp.bat" echo @echo off
 >>"%DEST%\stop-llamacpp.bat" echo taskkill /F /IM llama-server.exe /T ^>nul 2^>^&1
 >>"%DEST%\stop-llamacpp.bat" echo echo stopped

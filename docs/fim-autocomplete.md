@@ -6,7 +6,10 @@ line carries them, Qwen3.6-A3B instruct included, not just the Coder variants.
 A Qwen chat model therefore drives autocomplete through `/infill` while still
 answering chat through `/v1/chat/completions`. The `/infill` path skips the
 chat template, so FIM never enters a reasoning phase even on a thinking model.
-Plain Gemma instruct models carry no infill tokens and cannot do FIM.
+Plain Gemma instruct models carry no infill tokens and cannot do FIM, and
+neither does gpt-oss-20b (the optional 16 GB chat-only profile in
+[gpt-oss-20b.md](gpt-oss-20b.md)): on a gpt-oss box point autocomplete at a
+separate Coder endpoint or leave it off.
 
 So FIM can run two ways. One model serves both roles when memory is tight (the
 32 GB laptop below). A separate Coder endpoint serves FIM when memory allows a

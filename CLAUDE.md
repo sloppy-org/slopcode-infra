@@ -751,6 +751,17 @@ opencode, whisper.cpp, the meeting workflow scripts, the Qwen
 UD-Q4_K_XL-MTP GGUF/mmproj, `ggml-large-v3-turbo.bin`, and the VS Code
 VSIX pair (llama.vscode + hackl built from `HACKL_SOURCE`).
 
+Optionally the bundle also ships `gpt-oss-20b-mxfp4.gguf` (~11.3 GB) when
+`scripts/llamacpp_models.py prefetch gpt-oss-20b` ran before the build: a
+chat-only profile for 16 GB-class machines that cannot hold the 35B-A3B.
+Each installer writes `run-gpt-oss.{bat,sh}` beside the default launcher,
+served GPU-only (no `--n-cpu-moe`, the user constraint), harmony sampler, no
+MTP, no FIM, full 128K context (sliding-window attention keeps the KV
+~1.7 GB). It serves the same `qwen` alias on `:8080`, so opencode/hackl need
+no change. See `docs/gpt-oss-20b.md`. The launcher's `gpt-oss-*` sampler
+branch and the optional `gpt-oss-20b` alias make this in-policy with the
+manual-alias rule below; the reserved `luna` alias remains the future 120b.
+
 **Automatic install scope.** The bundled `install.sh` / `install.bat`
 auto-installs and autostarts llama.cpp on `127.0.0.1:8080`, opencode,
 whisper.cpp on `127.0.0.1:8427`, and the meeting workflow scripts. Voxtype is

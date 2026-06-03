@@ -98,6 +98,17 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         include=("UD-Q4_K_XL/*.gguf", "*UD-Q4_K_XL*.gguf"),
         mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     ),
+    # gpt-oss-20b: OpenAI's open MoE (20.9B total, ~3.6B active), native MXFP4
+    # (~11.3 GB). Optional chat-only profile for 16 GB-class machines that
+    # cannot hold the 35B-A3B: ~3.6B active decodes ~26-64 t/s GPU-only, well
+    # above a dense 8/9B. No FIM (no infill tokens; point hackl autocomplete at
+    # a separate Coder endpoint or leave it off), no MTP head. See
+    # docs/gpt-oss-20b.md. Reserved cluster alias `luna` is the future 120b.
+    ModelSpec(
+        alias="gpt-oss-20b",
+        repo_id="ggml-org/gpt-oss-20b-GGUF",
+        include=("*mxfp4*.gguf", "*MXFP4*.gguf"),
+    ),
     ModelSpec(
         alias="qwen3-coder-next-q4",
         repo_id="Qwen/Qwen3-Coder-Next-GGUF",

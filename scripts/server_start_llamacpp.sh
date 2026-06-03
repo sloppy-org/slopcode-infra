@@ -395,6 +395,26 @@ case "${MODEL_ALIAS}" in
       --no-context-shift
     )
     ;;
+  gpt-oss-*)
+    # OpenAI gpt-oss (harmony response format). Per the llama.cpp gpt-oss
+    # guide (discussion #15396): temp 1.0, top-p 1.0, and NO repetition
+    # penalties (repeat-penalty 1.0 is neutral). top-k 40 is kept: the guide
+    # warns that disabling top-k adds CPU overhead and a small chance of
+    # sampling low-probability tokens. Reasoning rides the harmony "analysis"
+    # channel, so --reasoning-format none (not deepseek) and no token budget.
+    # No MTP head, so no --spec-type. Served GPU-only: the alias does not match
+    # the *a3b* CPU-MoE rule above, so no --n-cpu-moe is emitted.
+    SAMPLER_ARGS+=(
+      --temp 1.0
+      --top-p 1.0
+      --top-k 40
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --reasoning-format none
+      --no-context-shift
+    )
+    ;;
   qwen*)
     # Qwen3.6-35B-A3B "Thinking + precise coding" sampler — Qwen's own
     # recommendation for code-heavy agent loops (model card "precise coding
