@@ -1320,7 +1320,14 @@ write_windows() {
   write_bundle_agents_md "${t}"
   sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
-  # verify-models.bat: certutil-based SHA256 verification, no powershell.
+  # verify-models.bat: SHA256 verification via PowerShell Get-FileHash.
+  # We do NOT parse `certutil -hashfile` output: its hash line is uppercase
+  # on some Windows builds and space-separated on others, so a lowercase
+  # contiguous findstr filter drops it and every file falsely "mismatches".
+  # Get-FileHash returns one deterministic uppercase hex string; the compare
+  # is case-insensitive (/I) against the lowercase sidecar. Windows
+  # PowerShell 5.1 ships on every Windows 10/11 host and -Command does not
+  # hit script execution policy.
   cat >"${t}/verify-models.bat" <<'BAT'
 @echo off
 setlocal EnableDelayedExpansion
@@ -1337,10 +1344,7 @@ for %%S in ("%MODELS_DIR%\*.sha256") do (
     set "EXPECTED="
     for /f "usebackq tokens=1 delims= " %%H in ("!SHA_FILE!") do if not defined EXPECTED set "EXPECTED=%%H"
     set "ACTUAL="
-    for /f "tokens=*" %%H in ('certutil -hashfile "!GGUF!" SHA256 ^| findstr /R "^[0-9a-f][0-9a-f][0-9a-f]"') do (
-      if not defined ACTUAL set "ACTUAL=%%H"
-    )
-    set "ACTUAL=!ACTUAL: =!"
+    for /f "usebackq delims=" %%H in (`powershell -NoProfile -Command "(Get-FileHash -LiteralPath '!GGUF!' -Algorithm SHA256).Hash"`) do if not defined ACTUAL set "ACTUAL=%%H"
     if /I "!EXPECTED!"=="!ACTUAL!" (
       echo OK  %%~nxS
     ) else (
