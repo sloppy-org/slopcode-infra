@@ -9,11 +9,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/_common.sh"
 
-# Default to talking to the local llama-server. When SLOPGATE_LEADER is set
-# (a host:port or bare host on the operator's WireGuard / LAN), point opencode
-# at the slopgate balancer there instead. The balancer fronts every node's
-# llama-server on a single port, so the rest of the config (model alias,
-# context window, sampler) is identical to the local-only setup.
+# Default to talking to the local llama-server through a plain `llamacpp`
+# provider (model id `llamacpp/qwen`), matching the USB bundle, the meeting
+# scripts, and pi_set_llamacpp.sh. When SLOPGATE_LEADER is set (a host:port or
+# bare host on the operator's WireGuard / LAN), point opencode at the slopgate
+# balancer there instead and switch to the `slopgate` provider with sticky
+# session affinity. The balancer fronts every node's llama-server on a single
+# port, so the model aliases, context window, and sampler stay identical.
 SLOPGATE_LEADER="${SLOPGATE_LEADER:-}"
 if [[ -n "${SLOPGATE_LEADER}" ]]; then
   if [[ "${SLOPGATE_LEADER}" == *:* ]]; then
@@ -21,9 +23,13 @@ if [[ -n "${SLOPGATE_LEADER}" ]]; then
   else
     BASE_URL="http://${SLOPGATE_LEADER}:8080/v1"
   fi
+  PROVIDER_ID="slopgate"
+  PROVIDER_NAME="slopgate"
 else
   HOST="${LLAMACPP_HOST:-127.0.0.1}"
   BASE_URL="http://${HOST}:8080/v1"
+  PROVIDER_ID="llamacpp"
+  PROVIDER_NAME="llama.cpp (Local)"
 fi
 CONTEXT_SIZE_DEFAULT=131072
 CONTEXT_SIZE="${OPENCODE_LOCAL_CONTEXT:-${CONTEXT_SIZE_DEFAULT}}"
@@ -82,14 +88,20 @@ session_id() {
 }
 
 providers_block() {
-  local sid
-  sid="$(session_id)"
+  local options
+  if [[ -n "${SLOPGATE_LEADER}" ]]; then
+    local sid
+    sid="$(session_id)"
+    options="{\"baseURL\": \"${BASE_URL}\", \"headers\": {\"x-session-affinity\": \"${sid}\"}}"
+  else
+    options="{\"baseURL\": \"${BASE_URL}\"}"
+  fi
   cat <<EOF
   "provider": {
-    "slopgate": {
+    "${PROVIDER_ID}": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "slopgate",
-      "options": {"baseURL": "${BASE_URL}", "headers": {"x-session-affinity": "${sid}"}},
+      "name": "${PROVIDER_NAME}",
+      "options": ${options},
       "models": {
 $(model_block "qwen122b" "qwen122b"),
 $(model_block "qwen" "qwen"),
@@ -100,8 +112,8 @@ $(model_block "qwen27b" "qwen27b")
 EOF
 }
 
-DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-slopgate/qwen}"
-SMALL_MODEL="${OPENCODE_LOCAL_SMALL_MODEL:-slopgate/qwen}"
+DEFAULT_MODEL="${OPENCODE_LOCAL_DEFAULT_MODEL:-${PROVIDER_ID}/qwen}"
+SMALL_MODEL="${OPENCODE_LOCAL_SMALL_MODEL:-${PROVIDER_ID}/qwen}"
 PROVIDER_BLOCK="$(providers_block)"
 DISABLED='"disabled_providers": ["exa", "opencode", "llmgateway", "github-copilot", "copilot", "openai", "anthropic", "google", "mistral", "groq", "xai", "ollama"]'
 
