@@ -1,0 +1,23 @@
+# RTX A2000 laptop profile (8 GB dedicated GDDR6, CUDA).
+#
+# Copy to ~/.config/systemd/user/slopcode-llamacpp.service.d/a2000.conf
+# then:  systemctl --user daemon-reload && systemctl --user restart slopcode-llamacpp
+#
+# Uses the non-MTP Q4_K_XL (~22.9 GB total) with heavy CPU offload.
+# Non-MTP saves ~1 GB VRAM that the draft head would claim.
+#
+# Tuning -ngl: start at 20, raise while watching nvidia-smi. Stay under
+# ~7.5 GB dedicated VRAM. Do NOT spill into Windows shared GPU memory --
+# performance collapses below CPU-only. Expected: 15-30 tok/s partial
+# offload depending on layer split.
+#
+# No whisper-server or TTS coexistence (GPU too small).
+[Service]
+Environment=LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-q4
+Environment=LLAMACPP_CONTEXT=16384
+Environment=LLAMACPP_N_CPU_MOE=35
+Environment=LLAMACPP_NGL=20
+Environment=LLAMACPP_UBATCH=512
+Environment=LLAMACPP_BATCH=1024
+Environment=LLAMACPP_CACHE_TYPE_K=q4_0
+Environment=LLAMACPP_CACHE_TYPE_V=q4_0

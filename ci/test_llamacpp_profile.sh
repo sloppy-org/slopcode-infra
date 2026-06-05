@@ -510,6 +510,50 @@ PY
   fi
 }
 
+test_models_nonmtp_q4_alias() {
+  echo "TEST: llamacpp_models.py non-MTP Q4 alias (A2000 profile)"
+  if python3 - "${REPO_ROOT}/scripts/llamacpp_models.py" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("llamacpp_models", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+model = mod.MODEL_BY_ALIAS["qwen3.6-35b-a3b-q4"]
+assert model.repo_id == "unsloth/Qwen3.6-35B-A3B-GGUF"
+assert any("Q4_K_XL" in p for p in model.include)
+assert "MTP" not in model.repo_id
+PY
+  then
+    echo "PASS: qwen3.6-35b-a3b-q4 resolves to non-MTP repo Q4_K_XL"
+  else
+    echo "FAIL: qwen3.6-35b-a3b-q4 alias missing or wrong"
+    return 1
+  fi
+}
+
+test_models_no_iq4() {
+  echo "TEST: llamacpp_models.py has no IQ4 aliases"
+  if python3 - "${REPO_ROOT}/scripts/llamacpp_models.py" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("llamacpp_models", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+iq4 = [a for a in mod.MODEL_BY_ALIAS if "iq4" in a.lower()]
+assert not iq4, f"IQ4 aliases still present: {iq4}"
+PY
+  then
+    echo "PASS: no IQ4 aliases in the model registry"
+  else
+    echo "FAIL: IQ4 aliases still present"
+    return 1
+  fi
+}
+
 test_models_q4ks_alias() {
   echo "TEST: llamacpp_models.py Q4_K_S alias"
   if python3 - "${REPO_ROOT}/scripts/llamacpp_models.py" <<'PY'
@@ -808,6 +852,8 @@ test_pi_config || FAILED=$((FAILED + 1))
 test_models_default_alias || FAILED=$((FAILED + 1))
 test_models_fim_alias || FAILED=$((FAILED + 1))
 test_models_q4ks_alias || FAILED=$((FAILED + 1))
+test_models_nonmtp_q4_alias || FAILED=$((FAILED + 1))
+test_models_no_iq4 || FAILED=$((FAILED + 1))
 test_setup_backend_selection || FAILED=$((FAILED + 1))
 test_install_linux_systemd_dry_run || FAILED=$((FAILED + 1))
 

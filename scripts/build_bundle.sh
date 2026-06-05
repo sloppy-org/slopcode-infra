@@ -1322,13 +1322,17 @@ EOF
 
 write_windows() {
   local t="${OUT}/windows-arc"
-  mkdir -p "${t}/llama.cpp" "${t}/opencode" "${t}/whisper.cpp"
-  local tag url oc_tag oc_url wh_tag wh_url
+  mkdir -p "${t}/llama.cpp" "${t}/llama.cpp-cuda" "${t}/opencode" "${t}/whisper.cpp"
+  local tag url cuda_tag cuda_url oc_tag oc_url wh_tag wh_url
   # Vulkan: always on the latest release. Upstream paused win-sycl-x64
   # builds (PR #23705); Vulkan is universally available and tracks latest.
   read -r tag url <<<"$(llama_asset win-vulkan-x64)"
   echo "windows-arc llama.cpp ${tag} (Vulkan)"
   fetch_archive "${url}" "${t}/llama.cpp" llama-server.exe
+  # CUDA: for NVIDIA laptop GPUs (RTX A2000 8 GB profile).
+  read -r cuda_tag cuda_url <<<"$(llama_asset win-cuda-cu12.2.0-x64)"
+  echo "windows-arc llama.cpp ${cuda_tag} (CUDA)"
+  fetch_archive "${cuda_url}" "${t}/llama.cpp-cuda" llama-server.exe
   read -r oc_tag oc_url <<<"$(github_asset sst/opencode "${OPENCODE_TAG}" opencode-windows-x64.zip)"
   echo "windows-arc opencode ${oc_tag}"
   fetch_archive "${oc_url}" "${t}/opencode" opencode.exe
@@ -1468,16 +1472,16 @@ TROUBLESHOOTING
 The llama.cpp service runs as a visible Command Prompt window. Stop it
 by closing its window or via Task Manager (Ctrl-Shift-Esc).
 
-run-llamacpp.bat         GPU (Vulkan, Q4_K_XL). Default launcher.
-run-llamacpp-q4ks.bat    GPU (Vulkan, Q4_K_S ~21.4 GB). Smaller quant for
-                         tighter VRAM. Only present if Q4_K_S was shipped.
+run-llamacpp.bat         GPU (Vulkan, Q4_K_XL). Default for Intel Arc.
+run-llamacpp-q4ks.bat    GPU (Vulkan, Q4_K_S ~21.4 GB). Smaller quant.
+run-llamacpp-cuda.bat    NVIDIA CUDA (Q4_K_XL, 8 GB profile). For RTX
+                         A2000 / laptop GPUs with heavy CPU offload.
+                         Tune -ngl upward while watching nvidia-smi.
 run-llamacpp-cpu.bat     Pure-CPU fallback (-ngl 0). ~10 t/s.
 run-gpt-oss.bat          OpenAI gpt-oss-20b (~11.3 GB) for 16 GB machines.
-                         Only present if the gpt-oss GGUF was shipped.
 stop-llamacpp.bat        Kill all llama-server.exe processes.
-keepalive.bat            Pings the server every 30 s to prevent Intel GPU
-                         power-off on idle. Run alongside the server if it
-                         dies after periods of no activity.
+keepalive.bat            Pings the server every 30 s to prevent GPU
+                         power-off on idle (Intel Arc issue).
 run-whisper.bat          whisper.cpp on 127.0.0.1:8427 (after install-whisper).
 
 GPU STABILITY
@@ -1533,6 +1537,7 @@ del /Q "%DEST%\start-slopcode.bat" 2>nul
 del /Q "%DEST%\run-whisper.bat" 2>nul
 del /Q "%DEST%\stop-llamacpp.bat" 2>nul
 del /Q "%DEST%\keepalive.bat" 2>nul
+del /Q "%DEST%\run-llamacpp-cuda.bat" 2>nul
 del /Q "%DEST%\llama-chat.bat" 2>nul
 del /Q "%DEST%\llama-coder.bat" 2>nul
 del /Q "%DEST%\bin\prewarm-opencode.bat" 2>nul
@@ -1543,6 +1548,7 @@ del /Q "%DEST%\bin\meeting-process.bat" 2>nul
 del /Q "%USERPROFILE%\.config\opencode\opencode.json" 2>nul
 echo Removing old llama.cpp + opencode dirs...
 rmdir /S /Q "%DEST%\llama.cpp" 2>nul
+rmdir /S /Q "%DEST%\llama.cpp-cuda" 2>nul
 rmdir /S /Q "%DEST%\opencode" 2>nul
 rmdir /S /Q "%DEST%\whisper.cpp" 2>nul
 rmdir /S /Q "%DEST%\meeting" 2>nul
@@ -1566,6 +1572,7 @@ if not defined HERE set "HERE=%~dp0"
 if not defined ROOT for %%I in ("%HERE%\..") do set "ROOT=%%~fI"
 mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\meeting" "%DEST%\bin" "%DEST%\cache" 2>nul
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
+if exist "%HERE%\llama.cpp-cuda" xcopy /E /I /Y "%HERE%\llama.cpp-cuda" "%DEST%\llama.cpp-cuda" >nul
 xcopy /E /I /Y "%HERE%\meeting" "%DEST%\meeting" >nul
 if exist "%HERE%\bin" xcopy /E /I /Y "%HERE%\bin" "%DEST%\bin" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
@@ -1618,6 +1625,15 @@ if exist "%DEST%\models\gpt-oss-20b-mxfp4.gguf" (
   >>"%DEST%\run-gpt-oss.bat" echo timeout /t 5 /nobreak ^>nul
   >>"%DEST%\run-gpt-oss.bat" echo goto start
 )
+REM CUDA A2000 profile (8 GB NVIDIA, non-MTP Q4_K_XL, heavy CPU offload).
+REM No Vulkan env vars, no --no-mmap. Tune -ngl upward while watching nvidia-smi.
+>"%DEST%\run-llamacpp-cuda.bat" echo @echo off
+>>"%DEST%\run-llamacpp-cuda.bat" echo set "PATH=%DEST%\llama.cpp-cuda;%%PATH%%"
+>>"%DEST%\run-llamacpp-cuda.bat" echo :start
+>>"%DEST%\run-llamacpp-cuda.bat" echo "%DEST%\llama.cpp-cuda\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 16384 --cache-type-k q4_0 --cache-type-v q4_0 -b 1024 -ub 512 -ngl 20 --n-cpu-moe 35 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cuda.bat" echo echo llama-server exited, restarting in 5 seconds...
+>>"%DEST%\run-llamacpp-cuda.bat" echo timeout /t 5 /nobreak ^>nul
+>>"%DEST%\run-llamacpp-cuda.bat" echo goto start
 >"%DEST%\stop-llamacpp.bat" echo @echo off
 >>"%DEST%\stop-llamacpp.bat" echo taskkill /F /IM llama-server.exe /T ^>nul 2^>^&1
 >>"%DEST%\stop-llamacpp.bat" echo echo stopped
@@ -1749,7 +1765,7 @@ for target in "${TARGETS[@]}"; do
       # driver + Shared-GPU-Memory prerequisites, so we do NOT overwrite it
       # with the generic write_simple_platform_readme used by linux/mac.
       write_windows
-      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp bin meeting verify-models.bat fix-tdr.reg README.md AGENTS.md install.bat install-cleanup.bat install-llama.bat install-opencode.bat install-whisper.bat
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp llama.cpp-cuda opencode whisper.cpp bin meeting verify-models.bat fix-tdr.reg README.md AGENTS.md install.bat install-cleanup.bat install-llama.bat install-opencode.bat install-whisper.bat
       ;;
   esac
 done

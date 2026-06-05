@@ -110,8 +110,9 @@ All three are in the bundle's `windows-arc/README.md` under "PREREQUISITES".
 
 | Launcher                   | Backend | Model   | Notes                          |
 | -------------------------- | ------- | ------- | ------------------------------ |
-| `run-llamacpp.bat`         | Vulkan  | Q4_K_XL | Default, auto-restart          |
+| `run-llamacpp.bat`         | Vulkan  | Q4_K_XL | Default (Intel Arc)            |
 | `run-llamacpp-q4ks.bat`    | Vulkan  | Q4_K_S  | Smaller quant (~21.4 GB)       |
+| `run-llamacpp-cuda.bat`    | CUDA    | Q4_K_XL | NVIDIA 8 GB (RTX A2000)        |
 | `run-llamacpp-cpu.bat`     | CPU     | Q4_K_XL | Guaranteed correct, ~10 t/s    |
 | `run-gpt-oss.bat`          | Vulkan  | gpt-oss | 16 GB machines                 |
 | `keepalive.bat`            | --      | --      | Pings server every 30 s        |
