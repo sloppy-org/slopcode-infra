@@ -39,6 +39,12 @@ DUCKDB_TAG="${DUCKDB_TAG:-}"
 XQ_TAG="${XQ_TAG:-}"
 SQLITE_TOOLS_WIN_URL="${SQLITE_TOOLS_WIN_URL:-https://www.sqlite.org/2026/sqlite-tools-win-x64-3530100.zip}"
 SKIP_MODEL="${SKIP_MODEL:-false}"
+# Extra model directories for llamacpp_models.py (colon-separated).
+# Checked after ~/.cache/llama.cpp; avoids re-downloading GGUFs that
+# already exist on a storage mount.
+if [[ -z "${LLAMACPP_EXTRA_MODEL_DIRS:-}" && -d /mnt/storage/slopcode/models ]]; then
+  export LLAMACPP_EXTRA_MODEL_DIRS=/mnt/storage/slopcode/models
+fi
 LOCAL_LUNA_SOURCE="${LOCAL_LUNA_SOURCE:-${HOME}/code/computor-dev/local-luna}"
 HACKL_SOURCE="${HACKL_SOURCE:-${HOME}/code/computor-dev/hackl}"
 BUNDLE_CACHE_DIR="${BUNDLE_CACHE_DIR:-}"

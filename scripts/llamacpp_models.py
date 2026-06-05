@@ -41,6 +41,14 @@ def cache_root() -> Path:
 
 CACHE_ROOT = cache_root()
 
+def extra_model_dirs() -> list[Path]:
+    raw = os.environ.get("LLAMACPP_EXTRA_MODEL_DIRS", "").strip()
+    if not raw:
+        return []
+    return [Path(p).expanduser() for p in raw.split(":") if p.strip()]
+
+EXTRA_MODEL_DIRS = extra_model_dirs()
+
 @dataclass(frozen=True)
 class ModelSpec:
     alias: str
@@ -297,6 +305,18 @@ def matching_paths(model: ModelSpec, patterns: tuple[str, ...]) -> list[Path]:
     for path in sorted(CACHE_ROOT.glob(f"{flat_prefix}*.gguf")):
         if any(fnmatch.fnmatch(path.name, f"{flat_prefix}{p}") or fnmatch.fnmatch(path.name, p) for p in patterns):
             files.append(path)
+    if not files:
+        subdir = model.repo_id.replace("/", "_")
+        for extra in EXTRA_MODEL_DIRS:
+            d = extra / subdir
+            if not d.exists():
+                continue
+            for path in sorted(d.rglob("*.gguf")):
+                rel = path.relative_to(d).as_posix()
+                if any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(path.name, p) for p in patterns):
+                    files.append(path)
+            if files:
+                break
     return files
 
 def record(model: ModelSpec) -> dict:
