@@ -8,49 +8,55 @@ scripts/build_bundle.sh all --out /mnt/usb
 
 The bundle includes:
 
-- llama.cpp (latest release): Vulkan on Linux, Metal on macOS,
-  **SYCL / oneAPI on Windows** (sidesteps the active Vulkan-Arc bugs and
-  gives ~2x prefill on Lunar Lake; upstream paused the win-sycl prebuilt,
-  so the builder auto-pins windows-arc to the newest release that still
-  ships it, see CLAUDE.md).
+- llama.cpp (latest release): Vulkan on Linux and Windows, Metal on
+  macOS. Upstream paused win-sycl-x64 builds (PR #23705); the bundle
+  ships Vulkan, which tracks the latest release.
 - opencode (latest), whisper.cpp.
-- Qwen3.6-35B-A3B **UD-Q4_K_XL** from `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`
-  (~22 GB), the default chat GGUF. It carries the MTP head, so the
-  generated launchers run `--spec-type draft-mtp` for the 1.4-2.2x decode
-  speedup; the sampler is Qwen's "thinking + precise coding" preset
-  (`--temp 0.6 --top-p 0.95 --top-k 20 --presence-penalty 0`).
-- Optionally `gpt-oss-20b-mxfp4.gguf` (~11.3 GB) when prefetched: a
-  chat-only profile for 16 GB machines, run via the generated
-  `run-gpt-oss.{bat,sh}`. See [gpt-oss-20b.md](gpt-oss-20b.md). Ship it with
-  `scripts/llamacpp_models.py prefetch gpt-oss-20b` before building.
+- Qwen3.6-35B-A3B **UD-Q4_K_XL** (~22.9 GB) from
+  `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`, the default chat GGUF. MTP head
+  enables `--spec-type draft-mtp` for 1.4-2.2x decode; sampler is Qwen's
+  "thinking + precise coding" preset.
+- Optional alternatives (soft-fail, only shipped if prefetched):
+  - **UD-Q4_K_S** (~21.4 GB): smaller K-quant for tighter VRAM. Ship with
+    `scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-mtp-q4ks`.
+  - **gpt-oss-20b-mxfp4** (~11.3 GB): chat-only for 16 GB machines.
+    See [gpt-oss-20b.md](gpt-oss-20b.md). Ship with
+    `scripts/llamacpp_models.py prefetch gpt-oss-20b`.
 - The Qwen mmproj and `ggml-large-v3-turbo.bin`.
 - The `local-luna` tutorial and two VS Code VSIX files with settings
   helpers: llama.vscode and hackl (built from `HACKL_SOURCE`).
 
-Bundle size is roughly 26 GB on disk (~22 GGUF + ~0.9 mmproj + ~1.6
-whisper + binaries / opencode / docs), plus ~11.3 GB if the optional
-gpt-oss GGUF is shipped. A 64 GB USB stick is the sane minimum.
+Bundle size is roughly 26 GB on disk (~23 GGUF + ~0.9 mmproj + ~1.6
+whisper + binaries / opencode / docs), plus ~21.4 GB for the optional
+Q4_K_S and ~11.3 GB for gpt-oss. A 64 GB USB stick is the sane minimum.
 
 It does not include Pi, Node, or an npm cache.
 
-Each per-platform directory ships a single `install.{sh,bat}` that runs the
-full install: copies the bundled llama.cpp / opencode / whisper.cpp /
-meeting scripts into the user profile, writes the launcher, registers the
-service, and configures opencode against the local endpoint.
+Linux and macOS ship a single `install.sh`. Windows ships composable
+bat files:
+
+| Script              | Purpose                                    | Called by install.bat |
+| ------------------- | ------------------------------------------ | --------------------- |
+| `install.bat`       | Orchestrator: checksum, cleanup, llama, oc | yes (entry point)     |
+| `install-cleanup.bat` | Kill processes, remove old install        | yes                   |
+| `install-llama.bat`   | llama.cpp binaries, models, launchers    | yes                   |
+| `install-opencode.bat` | opencode binary, env vars, PATH         | yes                   |
+| `install-whisper.bat`  | whisper.cpp transcription (optional)     | **no**                |
+
+Whisper is not installed by default. Run `install-whisper.bat` manually
+for meeting transcription on `127.0.0.1:8427`.
+
+All generated Windows launchers pass `--no-mmap` to avoid mmap
+double-counting on UMA systems.
 
 Generated installers:
 
 - bind llama.cpp to `127.0.0.1:8080`,
-- bind whisper.cpp to `127.0.0.1:8427`,
 - put the meeting scripts on PATH,
-- configure opencode only against the local llama.cpp endpoint with
-  telemetry, share, update, and model-fetch paths disabled,
+- configure opencode against the local endpoint with telemetry, share,
+  update, and model-fetch paths disabled,
 - enable MTP speculative decoding (`--spec-type draft-mtp
-  --spec-draft-n-max 2`) for the ~1.4-2.2x decode speedup. A llama.cpp
-  binary too old for MTP refuses to start; rerun the installer after
-  updating the bundled binary, or delete the `--spec-type` flag from the
-  generated launcher (the same GGUF runs without MTP at lower decode
-  speed).
+  --spec-draft-n-max 2`) for the ~1.4-2.2x decode speedup.
 
 ## windows-arc
 
@@ -58,12 +64,9 @@ Target hardware: Intel Arc 140V iGPU (Lunar Lake, Xe2) on Windows 11,
 64 GB unified RAM shared with the iGPU. Other Arc generations (MTL, ARL-H,
 dGPU B-series) should also work but are not validated end-to-end.
 
-As of 2026-05-22 the bundle ships the upstream Windows SYCL prebuilt
-(`llama-bN-bin-win-sycl-x64.zip`), not the older Vulkan prebuilt. SYCL
-gives ~2x prefill on Lunar Lake and sidesteps the active Vulkan-Arc bugs
-(#18808 agentic-use, #22275 silent exits, #20554 coopmat TDR). The
-Vulkan-coopmat / F16 workarounds in the historical section below no longer
-apply; they were Vulkan-specific.
+The bundle ships the Vulkan prebuilt (`win-vulkan-x64`), which tracks the
+latest llama.cpp release. Upstream paused win-sycl-x64 builds (PR #23705);
+Vulkan is universally available and works on Intel Arc, AMD, and NVIDIA.
 
 Upstream paused the `win-sycl-x64` prebuilt on 2026-05-26 (PR #23705: SYCL
 and CANN builds alone ate over a third of the 10 GB CI cache). The pause is
@@ -94,12 +97,17 @@ bundle OOMs.
 
 Both are in the bundle's `windows-arc/README.md` under "PREREQUISITES".
 
-### CPU fallback
+### Launchers
 
-`run-llamacpp-cpu.bat` (`-ngl 0`, no mmproj, `--threads 8`) ships as a
-guaranteed-correct fallback. If the GPU path produces garbage or any sign
-of instability, kill the service, start `run-llamacpp-cpu.bat`, and update
-the Startup shortcut.
+| Launcher                   | Backend | Model   | Notes                          |
+| -------------------------- | ------- | ------- | ------------------------------ |
+| `run-llamacpp.bat`         | Vulkan  | Q4_K_XL | Default                        |
+| `run-llamacpp-q4ks.bat`    | Vulkan  | Q4_K_S  | Smaller quant (~21.4 GB)       |
+| `run-llamacpp-cpu.bat`     | CPU     | Q4_K_XL | Guaranteed correct, ~10 t/s    |
+| `run-gpt-oss.bat`          | Vulkan  | gpt-oss | 16 GB machines                 |
+
+If the GPU path produces garbage or instability, fall back to
+`run-llamacpp-cpu.bat` and update the Startup shortcut.
 
 ### Historical: Vulkan profile (no longer used)
 
@@ -140,11 +148,11 @@ recommended quant. `UD-Q4_K_M` produced slash-storm on a 155H Meteor Lake
 Xe-LPG iGPU even after coopmat was disabled; Bartowski's `Q4_K_M` is
 available as `qwen3.6-35b-a3b-bartowski-q4` if a third variant is needed.
 
-`install.bat` is aggressive: it `taskkill`s running `llama-server.exe` /
-`opencode.exe`, removes old Startup shortcuts, launchers, `opencode.json`,
-the `llama.cpp` and `opencode` dirs, all old `*.gguf`, and the
-`%LOCALAPPDATA%\Intel\ShaderCache` before writing the new install.
-Re-running it always produces a clean state.
+`install.bat` calls `install-cleanup.bat` first: `taskkill` running
+processes, remove old Startup shortcuts, launchers, `opencode.json`,
+the `llama.cpp` / `opencode` dirs, all old
+`*.gguf`, and the `%LOCALAPPDATA%\Intel\ShaderCache`. Re-running
+always produces a clean state.
 
 #### Slash-storm history (May 2026)
 

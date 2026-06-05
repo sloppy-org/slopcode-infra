@@ -510,6 +510,28 @@ PY
   fi
 }
 
+test_models_q4ks_alias() {
+  echo "TEST: llamacpp_models.py Q4_K_S alias"
+  if python3 - "${REPO_ROOT}/scripts/llamacpp_models.py" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("llamacpp_models", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+model = mod.MODEL_BY_ALIAS["qwen3.6-35b-a3b-mtp-q4ks"]
+assert model.repo_id == "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"
+assert any("Q4_K_S" in p for p in model.include)
+PY
+  then
+    echo "PASS: qwen3.6-35b-a3b-mtp-q4ks resolves to MTP repo Q4_K_S"
+  else
+    echo "FAIL: qwen3.6-35b-a3b-mtp-q4ks alias missing or wrong"
+    return 1
+  fi
+}
+
 test_setup_backend_selection() {
   echo "TEST: setup_llamacpp.sh backend selection"
   local home_dir="${TMPDIR}/home-setup"
@@ -785,6 +807,7 @@ test_opencode_config_slopgate || FAILED=$((FAILED + 1))
 test_pi_config || FAILED=$((FAILED + 1))
 test_models_default_alias || FAILED=$((FAILED + 1))
 test_models_fim_alias || FAILED=$((FAILED + 1))
+test_models_q4ks_alias || FAILED=$((FAILED + 1))
 test_setup_backend_selection || FAILED=$((FAILED + 1))
 test_install_linux_systemd_dry_run || FAILED=$((FAILED + 1))
 

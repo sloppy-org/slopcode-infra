@@ -353,22 +353,21 @@ copy_model_alias() {
 
 copy_models() {
   [[ "${SKIP_MODEL}" == true ]] && return 0
-  # One chat GGUF for every target:
-  #   Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf — Unsloth UD-Q4_K_XL (~22 GB) from the
-  #     MTP repo unsloth/Qwen3.6-35B-A3B-MTP-GGUF. It carries the MTP head, so
-  #     every launcher passes --spec-type draft-mtp for the 1.4-2.2x decode
-  #     speedup. UD-Q4_K_XL is Unsloth's recommended quant; the weights + MTP
-  #     head + tiny hybrid-SSM KV at 128K q8_0 fit a 32 GB GPU budget (the
-  #     Arc 140V Shared-GPU-Memory-Override target) with headroom.
-  # Optional second chat GGUF (soft-fail, only shipped if prefetched):
-  #   gpt-oss-20b-mxfp4.gguf — OpenAI gpt-oss-20b, native MXFP4 (~11.3 GB).
-  #     A chat-only profile for 16 GB-class machines that cannot hold the
-  #     35B-A3B. Served GPU-only by run-gpt-oss.{bat,sh}; no FIM, no MTP.
-  #     Ship it with:
-  #       python3 scripts/llamacpp_models.py prefetch gpt-oss-20b
+  # Primary chat GGUF (required):
+  #   Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf (~22.9 GB) from the MTP repo. The
+  #   MTP head gives 1.4-2.2x decode via --spec-type draft-mtp. Fits a
+  #   32 GB Shared-GPU-Memory-Override budget with headroom.
+  # Optional alternatives (soft-fail, only shipped if prefetched):
+  #   UD-Q4_K_S (~21.4 GB) — smaller K-quant for tighter VRAM budgets.
+  #   gpt-oss-20b-mxfp4 (~11.3 GB) — chat-only for 16 GB machines.
+  #   Ship with:
+  #     python3 scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-mtp-q4ks
+  #     python3 scripts/llamacpp_models.py prefetch gpt-oss-20b
   prune_dir_entries "${OUT}/models" \
     Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
     Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf.sha256 \
+    Qwen3.6-35B-A3B-UD-Q4_K_S.gguf \
+    Qwen3.6-35B-A3B-UD-Q4_K_S.gguf.sha256 \
     gpt-oss-20b-mxfp4.gguf \
     gpt-oss-20b-mxfp4.gguf.sha256 \
     mmproj-BF16.gguf \
@@ -376,6 +375,9 @@ copy_models() {
     ggml-large-v3-turbo.bin \
     ggml-large-v3-turbo.bin.partial
   copy_model_alias qwen3.6-35b-a3b-mtp-q4 true
+  # Optional smaller quant: UD-Q4_K_S (~21.4 GB) for tighter VRAM budgets.
+  # Ship with: python3 scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-mtp-q4ks
+  copy_model_alias qwen3.6-35b-a3b-mtp-q4ks false
   copy_model_alias gpt-oss-20b false
   local model="${OUT}/models/ggml-large-v3-turbo.bin"
   if [[ ! -f "${model}" ]]; then
@@ -1322,12 +1324,10 @@ write_windows() {
   local t="${OUT}/windows-arc"
   mkdir -p "${t}/llama.cpp" "${t}/opencode" "${t}/whisper.cpp"
   local tag url oc_tag oc_url wh_tag wh_url
-  # SYCL prebuilt instead of Vulkan: ~2x prefill on Lunar Lake / Arc 140V,
-  # sidesteps Vulkan-Arc bugs (#18808 agentic-use, #22275 silent exits,
-  # #20554 coopmat TDR). Upstream Windows SYCL zip now ships oneAPI runtime
-  # DLLs so colleagues need no separate Intel install.
-  read -r tag url <<<"$(llama_asset win-sycl-x64)"
-  echo "windows-arc llama.cpp ${tag} (SYCL)"
+  # Vulkan: always on the latest release. Upstream paused win-sycl-x64
+  # builds (PR #23705); Vulkan is universally available and tracks latest.
+  read -r tag url <<<"$(llama_asset win-vulkan-x64)"
+  echo "windows-arc llama.cpp ${tag} (Vulkan)"
   fetch_archive "${url}" "${t}/llama.cpp" llama-server.exe
   read -r oc_tag oc_url <<<"$(github_asset sst/opencode "${OPENCODE_TAG}" opencode-windows-x64.zip)"
   echo "windows-arc opencode ${oc_tag}"
@@ -1387,25 +1387,20 @@ exit /b 0
 BAT
 
   cat >"${t}/README.md" <<'EOF'
-slopcode for Windows (Intel Arc, SYCL / oneAPI)
-===============================================
+slopcode for Windows (Intel Arc, Vulkan)
+========================================
 
 A local AI coding assistant. Everything runs on your machine: no cloud,
-no account, no data leaves the computer. Two background services bind to
-localhost only:
+no account, no data leaves the computer.
 
   http://127.0.0.1:8080/v1   llama.cpp   (the LLM, alias "qwen")
-  http://127.0.0.1:8427      whisper.cpp (meeting transcription)
 
-Backend: Intel oneAPI / SYCL. SYCL prefill is ~2x faster than Vulkan on
-Lunar Lake / Arc 140V and avoids the Vulkan-coopmat TDR bugs. The bundled
-llama-server.exe ships its oneAPI runtime DLLs, so you do NOT need to
-install Intel oneAPI separately.
+Backend: Vulkan. Works on Intel Arc, AMD, and NVIDIA GPUs.
 
-Model: Qwen3.6-35B-A3B UD-Q4_K_XL (~22 GB) with the MTP head, served at
-128K context. All 40 MoE expert layers run on the Arc iGPU (zero CPU
-offload); MTP speculative decoding (--spec-type draft-mtp) gives the
-decode speedup.
+Model: Qwen3.6-35B-A3B UD-Q4_K_XL (~22.9 GB) with the MTP head, served at
+128K context. All 40 MoE expert layers run on the GPU (zero CPU offload);
+MTP speculative decoding gives the decode speedup. If Q4_K_S (~21.4 GB)
+was shipped, run-llamacpp-q4ks.bat uses it instead.
 
 
 PREREQUISITES (do these ONCE, BEFORE install.bat)
@@ -1428,13 +1423,21 @@ Skipping either is the most likely reason the bundle OOMs or BSODs.
 
 INSTALL
 -------
-Double-click install.bat. A Command Prompt opens, verifies the model
-checksums, copies files into %USERPROFILE%\slopcode, sets the six privacy
-environment variables, adds opencode to PATH, creates a Startup shortcut,
-and launches the background services. If Windows SmartScreen blocks it,
-click "More info" -> "Run anyway".
+Double-click install.bat. It verifies model checksums, copies files into
+%USERPROFILE%\slopcode, sets the privacy environment variables, adds
+opencode to PATH, creates a Startup shortcut, and launches llama.cpp.
+
+Whisper (meeting transcription) is NOT installed by default. To add it:
+  Double-click install-whisper.bat
 
 For a step-by-step manual install, see ..\local-luna\README.md.
+
+The installer is split into composable scripts you can also run
+individually:
+  install-cleanup.bat    remove a prior slopcode install
+  install-llama.bat      llama.cpp binaries, models, launchers
+  install-opencode.bat   opencode binary, env vars, PATH
+  install-whisper.bat    whisper.cpp transcription (optional)
 
 
 AFTER INSTALL
@@ -1449,18 +1452,17 @@ model. No cloud, no account.
 
 TROUBLESHOOTING
 ---------------
-The services run as visible Command Prompt windows. Stop one by closing
-its window or via Task Manager (Ctrl-Shift-Esc).
+The llama.cpp service runs as a visible Command Prompt window. Stop it
+by closing its window or via Task Manager (Ctrl-Shift-Esc).
 
-run-llamacpp.bat      GPU (SYCL) launcher. All experts on the iGPU, no
-                      --n-cpu-moe. -c 131072, q8_0 KV, MTP draft.
-run-llamacpp-cpu.bat  Pure-CPU fallback (-ngl 0). Always correct, ~10 t/s.
-run-gpt-oss.bat       Optional: OpenAI gpt-oss-20b (~11.3 GB) instead of the
-                      35B, for 16 GB machines. GPU-only, chat-only (no FIM),
-                      -c 131072 (sliding-window attention keeps the 128K KV
-                      ~1.7 GB). Only present if the gpt-oss GGUF was shipped
-                      on this USB. Serves the same "qwen" alias on :8080.
-run-whisper.bat       whisper.cpp transcription on 127.0.0.1:8427.
+run-llamacpp.bat         GPU (Vulkan, Q4_K_XL). Default launcher.
+run-llamacpp-q4ks.bat    GPU (Vulkan, Q4_K_S ~21.4 GB). Smaller quant for
+                         tighter VRAM. Only present if Q4_K_S was shipped.
+run-llamacpp-cpu.bat     Pure-CPU fallback (-ngl 0). ~10 t/s.
+run-gpt-oss.bat          OpenAI gpt-oss-20b (~11.3 GB) for 16 GB machines.
+                         Only present if the gpt-oss GGUF was shipped.
+stop-llamacpp.bat        Kill all llama-server.exe processes.
+run-whisper.bat          whisper.cpp on 127.0.0.1:8427 (after install-whisper).
 
 If opencode shows repeated slashes ("/////") or garbled output, or
 Windows BSODs with VIDEO_TDR_FAILURE:
@@ -1478,33 +1480,24 @@ HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers, then reboot. This
 only gives long GPU dispatches more time; it does not fix hangs.
 EOF
 
-  cat >"${t}/install.bat" <<'EOF'
+  # --- install-cleanup.bat: remove any prior slopcode install ---
+  cat >"${t}/install-cleanup.bat" <<'EOF'
 @echo off
-setlocal EnableDelayedExpansion
-set "HERE=%~dp0"
-for %%I in ("%HERE%\..") do set "ROOT=%%~fI"
-set "DEST=%USERPROFILE%\slopcode"
-echo Verifying model checksums...
-call "%HERE%\verify-models.bat" "%ROOT%\models"
-if errorlevel 1 (
-  echo ERROR: model checksum mismatch - USB may be corrupted.
-  echo Re-run build_bundle.sh to rebuild a fresh bundle with new checksums.
-  pause
-  exit /b 1
-)
-echo.
-echo === Aggressive cleanup of any prior slopcode install ===
+REM Called by install.bat. Expects: DEST (defaults to %USERPROFILE%\slopcode).
+if not defined DEST set "DEST=%USERPROFILE%\slopcode"
+echo === Cleanup of any prior slopcode install ===
 echo Stopping any running llama-server / opencode...
 taskkill /F /IM llama-server.exe /T >nul 2>&1
 taskkill /F /IM whisper-server.exe /T >nul 2>&1
 taskkill /F /IM opencode.exe /T >nul 2>&1
-REM Brief pause so Windows releases file handles before we rmdir.
 ping -n 3 127.0.0.1 >nul 2>&1
 echo Removing old Startup shortcuts...
 del /Q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" 2>nul
 del /Q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper.bat" 2>nul
 echo Removing old launchers and opencode config...
 del /Q "%DEST%\run-llamacpp.bat" 2>nul
+del /Q "%DEST%\run-llamacpp-q4ks.bat" 2>nul
+del /Q "%DEST%\run-llamacpp-vulkan.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-iq4xs.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-xl.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-coder.bat" 2>nul
@@ -1533,72 +1526,56 @@ del /Q "%DEST%\models\*.sha256" 2>nul
 del /Q "%DEST%\models\ggml-large-v3-turbo.bin" 2>nul
 echo Clearing Intel shader cache...
 rmdir /S /Q "%LOCALAPPDATA%\Intel\ShaderCache" 2>nul
-echo === Cleanup done; installing fresh ===
+echo === Cleanup done ===
 echo.
-mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\opencode" "%DEST%\whisper.cpp" "%DEST%\meeting" "%DEST%\bin" "%DEST%\cache" 2>nul
+EOF
+
+  # --- install-llama.bat: llama.cpp binaries, models, launchers ---
+  cat >"${t}/install-llama.bat" <<'EOF'
+@echo off
+setlocal EnableDelayedExpansion
+REM Called by install.bat. Expects: DEST, ROOT, HERE.
+if not defined DEST set "DEST=%USERPROFILE%\slopcode"
+if not defined HERE set "HERE=%~dp0"
+if not defined ROOT for %%I in ("%HERE%\..") do set "ROOT=%%~fI"
+mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\meeting" "%DEST%\bin" "%DEST%\cache" 2>nul
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
-xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
-xcopy /E /I /Y "%HERE%\whisper.cpp" "%DEST%\whisper.cpp" >nul
 xcopy /E /I /Y "%HERE%\meeting" "%DEST%\meeting" >nul
 if exist "%HERE%\bin" xcopy /E /I /Y "%HERE%\bin" "%DEST%\bin" >nul
-if exist "%HERE%\AGENTS.md" copy /Y "%HERE%\AGENTS.md" "%DEST%\AGENTS.md" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
-copy /Y "%ROOT%\models\ggml-large-v3-turbo.bin" "%DEST%\models\" >nul
-setx OPENCODE_DISABLE_AUTOUPDATE 1 >nul
-setx OPENCODE_DISABLE_SHARE 1 >nul
-setx OPENCODE_DISABLE_MODELS_FETCH 1 >nul
-setx OPENCODE_DISABLE_LSP_DOWNLOAD 1 >nul
-setx OPENCODE_DISABLE_DEFAULT_PLUGINS 1 >nul
-setx OPENCODE_DISABLE_EMBEDDED_WEB_UI 1 >nul
-REM Single chat GGUF: Qwen3.6-35B-A3B UD-Q4_K_XL-MTP (~22 GB). All experts
-REM stay on the Arc iGPU (zero --n-cpu-moe); the weights + MTP head + 128K
-REM q8_0 KV fit the 32 GB Shared-GPU-Memory-Override cap with headroom.
+copy /Y "%ROOT%\models\*.sha256" "%DEST%\models\" >nul
 set "MODEL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
 set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
-REM Detect physical cores via wmic; --threads = physical - 2 (min 2). On Lunar
-REM Lake Arc 140V (4P + 4LP = 8 physical) this lands on --threads 6. If wmic
-REM is not installed (Windows 11 24H2+ without the optional feature) we fall
-REM back to logical cores / 2 - 1, which approximates physical on hyperthreaded
-REM hosts.
+REM Detect physical cores; --threads = physical - 2 (min 2).
 set "PHYS="
 for /f "skip=1 tokens=*" %%C in ('wmic cpu get NumberOfCores 2^>nul') do (
   if not defined PHYS for /f "tokens=1" %%N in ("%%C") do set "PHYS=%%N"
 )
 if defined PHYS (set /a THREADS=%PHYS% - 2) else (set /a THREADS=%NUMBER_OF_PROCESSORS%/2 - 1)
 if !THREADS! LSS 2 set THREADS=2
-REM run-llamacpp.bat loads the MTP-trained UD-Q4_K_XL GGUF and emits
-REM --spec-type draft-mtp for the 1.4-2.2x decode speedup; sampler is
-REM Qwen's "thinking + precise coding" preset (temp 0.6, presence 0.0),
-REM the right default for agent loops. All experts stay on the Arc iGPU.
-REM Backend: SYCL (Intel oneAPI) prebuilt. No GGML_VK_* env vars needed;
-REM those workarounds were Vulkan-specific. The bundled llama-server.exe
-REM ships oneAPI runtime DLLs so no separate Intel install is required.
+REM Vulkan GPU launcher (default): Q4_K_XL, MTP draft, --no-mmap.
 >"%DEST%\run-llamacpp.bat" echo @echo off
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
 REM CPU fallback (-ngl 0); always correct but ~10 tok/s.
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
-REM Optional chat-only profile for 16 GB machines: OpenAI gpt-oss-20b
-REM (MXFP4, ~11.3 GB), GPU-only, harmony sampler, no MTP, no FIM, no repeat
-REM penalty. Only works if gpt-oss-20b-mxfp4.gguf was shipped on the USB.
-REM Serves the same alias "qwen" on :8080, so opencode/hackl need no change.
-REM Run it instead of run-llamacpp.bat. -c 131072 (full 128K): gpt-oss uses
-REM sliding-window attention, so the KV stays ~1.7 GB at q8_0 and fits 16 GB
-REM GPU-only. See ..\..\docs\gpt-oss-20b.md.
->"%DEST%\run-gpt-oss.bat" echo @echo off
->>"%DEST%\run-gpt-oss.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+REM Q4_K_S alternative (smaller quant, ~21.4 GB). Only if shipped on USB.
+if exist "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" (
+  >"%DEST%\run-llamacpp-q4ks.bat" echo @echo off
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+)
+REM gpt-oss-20b chat-only profile for 16 GB machines. Only if shipped on USB.
+if exist "%DEST%\models\gpt-oss-20b-mxfp4.gguf" (
+  >"%DEST%\run-gpt-oss.bat" echo @echo off
+  >>"%DEST%\run-gpt-oss.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+  >>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+)
 >"%DEST%\stop-llamacpp.bat" echo @echo off
 >>"%DEST%\stop-llamacpp.bat" echo taskkill /F /IM llama-server.exe /T ^>nul 2^>^&1
 >>"%DEST%\stop-llamacpp.bat" echo echo stopped
->"%DEST%\run-whisper.bat" echo @echo off
->>"%DEST%\run-whisper.bat" echo set "PATH=%DEST%\whisper.cpp;%%PATH%%"
->>"%DEST%\run-whisper.bat" echo "%DEST%\whisper.cpp\whisper-server.exe" -m "%DEST%\models\ggml-large-v3-turbo.bin" --host 127.0.0.1 --port 8427 -l auto -t 4 -fa --inference-path /v1/audio/transcriptions --tmp-dir "%%TEMP%%"
-mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
->"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
->"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper.bat" echo start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
 >"%DEST%\bin\record-meeting.bat" echo @echo off
 >>"%DEST%\bin\record-meeting.bat" echo start "" "%DEST%\meeting\record-meeting.html"
 >"%DEST%\bin\meeting-transcribe.bat" echo @echo off
@@ -1610,9 +1587,30 @@ mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%DEST%\bin\meeting-process.bat" echo @echo off
 >>"%DEST%\bin\meeting-process.bat" echo where pwsh ^>nul 2^>^&1 ^|^| ^(echo PowerShell 7 pwsh is required for meeting scripts. Install it from https://aka.ms/powershell ^& exit /b 1^)
 >>"%DEST%\bin\meeting-process.bat" echo pwsh -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-process.ps1" %%*
+mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
+>"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
+start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
+echo Installed llama.cpp (Vulkan), models, launchers, meeting scripts (--threads !THREADS!).
+EOF
+
+  # --- install-opencode.bat: opencode binary, env vars, config, PATH ---
+  cat >"${t}/install-opencode.bat" <<'EOF'
+@echo off
+setlocal EnableDelayedExpansion
+REM Called by install.bat. Expects: DEST, HERE.
+if not defined DEST set "DEST=%USERPROFILE%\slopcode"
+if not defined HERE set "HERE=%~dp0"
+mkdir "%DEST%\opencode" 2>nul
+xcopy /E /I /Y "%HERE%\opencode" "%DEST%\opencode" >nul
+if exist "%HERE%\AGENTS.md" copy /Y "%HERE%\AGENTS.md" "%DEST%\AGENTS.md" >nul
+setx OPENCODE_DISABLE_AUTOUPDATE 1 >nul
+setx OPENCODE_DISABLE_SHARE 1 >nul
+setx OPENCODE_DISABLE_MODELS_FETCH 1 >nul
+setx OPENCODE_DISABLE_LSP_DOWNLOAD 1 >nul
+setx OPENCODE_DISABLE_DEFAULT_PLUGINS 1 >nul
+setx OPENCODE_DISABLE_EMBEDDED_WEB_UI 1 >nul
 mkdir "%USERPROFILE%\.config\opencode" 2>nul
->"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP (Arc SYCL)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
-REM Update user PATH (HKCU\Environment) without touching system entries.
+>"%USERPROFILE%\.config\opencode\opencode.json" echo {"model":"llamacpp/qwen","small_model":"llamacpp/qwen","share":"disabled","autoupdate":false,"tools":{"websearch":false},"experimental":{"openTelemetry":false},"disabled_providers":["exa","opencode","llmgateway","github-copilot","copilot","openai","anthropic","google","mistral","groq","xai","ollama"],"provider":{"llamacpp":{"npm":"@ai-sdk/openai-compatible","name":"llama.cpp (Local)","options":{"baseURL":"http://127.0.0.1:8080/v1"},"models":{"qwen":{"name":"Qwen3.6 35B A3B MTP (Vulkan)","limit":{"context":131072,"output":16384},"reasoning":true,"interleaved":{"field":"reasoning_content"},"attachment":true,"tool_call":true,"modalities":{"input":["text","image"],"output":["text"]}}}}}}
 set "USERPATH="
 for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul ^| findstr /I "Path"') do set "USERPATH=%%B"
 set "NEWPATH=%DEST%\opencode;%DEST%\bin"
@@ -1621,11 +1619,62 @@ if defined USERPATH (
   if "!NEWPATH:%DEST%\opencode=!"=="!NEWPATH!" set "NEWPATH=!USERPATH!"
 )
 setx Path "!NEWPATH!" >nul
-start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
+echo Installed opencode, env vars, PATH.
+EOF
+
+  # --- install-whisper.bat: optional whisper.cpp transcription ---
+  cat >"${t}/install-whisper.bat" <<'EOF'
+@echo off
+setlocal EnableDelayedExpansion
+REM Optional: installs whisper.cpp meeting transcription.
+REM Not called by install.bat; run manually if needed.
+if not defined DEST set "DEST=%USERPROFILE%\slopcode"
+set "HERE=%~dp0"
+for %%I in ("%HERE%\..") do set "ROOT=%%~fI"
+mkdir "%DEST%\whisper.cpp" 2>nul
+xcopy /E /I /Y "%HERE%\whisper.cpp" "%DEST%\whisper.cpp" >nul
+if exist "%ROOT%\models\ggml-large-v3-turbo.bin" copy /Y "%ROOT%\models\ggml-large-v3-turbo.bin" "%DEST%\models\" >nul
+set "PHYS="
+for /f "skip=1 tokens=*" %%C in ('wmic cpu get NumberOfCores 2^>nul') do (
+  if not defined PHYS for /f "tokens=1" %%N in ("%%C") do set "PHYS=%%N"
+)
+if defined PHYS (set /a THR=%PHYS% - 2) else (set /a THR=%NUMBER_OF_PROCESSORS%/2 - 1)
+if !THR! LSS 2 set THR=2
+>"%DEST%\run-whisper.bat" echo @echo off
+>>"%DEST%\run-whisper.bat" echo set "PATH=%DEST%\whisper.cpp;%%PATH%%"
+>>"%DEST%\run-whisper.bat" echo "%DEST%\whisper.cpp\whisper-server.exe" -m "%DEST%\models\ggml-large-v3-turbo.bin" --host 127.0.0.1 --port 8427 -l auto -t !THR! -fa --inference-path /v1/audio/transcriptions --tmp-dir "%%TEMP%%"
+mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
+>"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper.bat" echo start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
 start "slopcode-whisper" /MIN "%DEST%\run-whisper.bat"
-echo Installed localhost-only llama.cpp 8080, whisper.cpp 8427, opencode, and meeting scripts (--threads !THREADS!).
-echo If you see repeated slashes in opencode thinking, run: %DEST%\run-llamacpp-cpu.bat
-echo and update the Startup shortcut to point at run-llamacpp-cpu.bat instead.
+echo Installed whisper.cpp on 127.0.0.1:8427 (--threads !THR!).
+EOF
+
+  # --- install.bat: orchestrator ---
+  cat >"${t}/install.bat" <<'EOF'
+@echo off
+setlocal EnableDelayedExpansion
+set "HERE=%~dp0"
+for %%I in ("%HERE%\..") do set "ROOT=%%~fI"
+set "DEST=%USERPROFILE%\slopcode"
+echo Verifying model checksums...
+call "%HERE%\verify-models.bat" "%ROOT%\models"
+if errorlevel 1 (
+  echo ERROR: model checksum mismatch - USB may be corrupted.
+  echo Re-run build_bundle.sh to rebuild a fresh bundle with new checksums.
+  pause
+  exit /b 1
+)
+echo.
+call "%HERE%\install-cleanup.bat"
+call "%HERE%\install-llama.bat"
+call "%HERE%\install-opencode.bat"
+echo.
+echo Installed localhost-only llama.cpp :8080 and opencode.
+echo Whisper NOT installed by default. For meeting transcription, run:
+echo   %HERE%\install-whisper.bat
+echo.
+echo If you see repeated slashes in opencode thinking, try run-llamacpp-cpu.bat
+echo and update the Startup shortcut.
 echo Open a new terminal before running opencode.
 EOF
 }
@@ -1644,11 +1693,11 @@ for target in "${TARGETS[@]}"; do
       prune_dir_entries "${OUT}/mac-m1" llama.cpp opencode whisper.cpp bin _common.sh opencode_privacy.sh prewarm-opencode.sh meeting README.md AGENTS.md install.sh
       ;;
     windows-arc)
-      # write_windows writes its own Arc/SYCL README with the mandatory
+      # write_windows writes its own Arc/Vulkan README with the mandatory
       # driver + Shared-GPU-Memory prerequisites, so we do NOT overwrite it
       # with the generic write_simple_platform_readme used by linux/mac.
       write_windows
-      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp bin meeting verify-models.bat README.md AGENTS.md install.bat
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp bin meeting verify-models.bat README.md AGENTS.md install.bat install-cleanup.bat install-llama.bat install-opencode.bat install-whisper.bat
       ;;
   esac
 done

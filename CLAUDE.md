@@ -27,7 +27,7 @@ One blessed local coding stack, nothing else:
 | OS      | Backend | Instances | Model + alias        | User service       |
 | ------- | ------- | --------- | -------------------- | ------------------ |
 | Linux   | CUDA    | 1         | 35B-A3B `qwen` :8080 | `systemd --user`   |
-| Windows | SYCL    | 1         | 35B-A3B `qwen` :8080 | `schtasks ONLOGON` |
+| Windows | Vulkan  | 1         | 35B-A3B `qwen` :8080 | `schtasks ONLOGON` |
 | macOS   | Metal   | on demand | 35B-A3B `qwen` :8080 | none by default    |
 
 No root or admin anywhere. The only automatic downloads are the single GGUF
@@ -297,21 +297,23 @@ useful again, add it deliberately and update this file.
 
 Repo-first for our own machines; USB bundles for colleagues via
 `scripts/build_bundle.sh all --out <mountpoint>` (format with
-`scripts/usb_format.sh` first). The bundle ships llama.cpp, opencode,
-whisper.cpp, the meeting scripts, the Qwen UD-Q4_K_XL-MTP GGUF/mmproj,
-`ggml-large-v3-turbo.bin`, and the VSIX pair (llama.vscode + hackl from
-`HACKL_SOURCE`); optionally `gpt-oss-20b-mxfp4.gguf` (chat-only profile for
-16 GB machines) when prefetched. Full detail, prerequisites, and the
-windows-arc / gpt-oss profiles in `docs/usb-bundle.md` and
-`docs/gpt-oss-20b.md`.
+`scripts/usb_format.sh` first). The bundle ships llama.cpp (Vulkan on Windows), opencode, whisper.cpp,
+the meeting scripts, the Qwen
+UD-Q4_K_XL-MTP GGUF/mmproj, `ggml-large-v3-turbo.bin`, and the VSIX pair
+(llama.vscode + hackl from `HACKL_SOURCE`); optionally UD-Q4_K_S (~21.4 GB,
+smaller quant) and `gpt-oss-20b-mxfp4.gguf` (chat-only for 16 GB machines)
+when prefetched. Full detail, prerequisites, and the windows-arc / gpt-oss
+profiles in `docs/usb-bundle.md` and `docs/gpt-oss-20b.md`.
 
-The bundled `install.{sh,bat}` auto-installs and autostarts llama.cpp on
-`127.0.0.1:8080`, opencode (localhost-only, same privacy lockdown),
-whisper.cpp on `127.0.0.1:8427`, and the meeting scripts. Voxtype is not
-bundled. Meeting transcription is PCM WAV only (no ffmpeg dependency);
-`meeting-process` calls `opencode run` once after transcription. Pi is a
-developer-only convenience via system `npm` (`scripts/pi_install.sh`); no
-bundled Node or npm cache on any path.
+The Windows installer is split into composable bat files (`install.bat`
+calls `install-cleanup.bat`, `install-llama.bat`, `install-opencode.bat`).
+Whisper (`install-whisper.bat`) is not installed by default. Linux/macOS
+use a single `install.sh`. All paths bind llama.cpp to `127.0.0.1:8080`;
+Windows launchers pass `--no-mmap`. Voxtype is not bundled. Meeting
+transcription is PCM WAV only (no ffmpeg dependency); `meeting-process`
+calls `opencode run` once after transcription. Pi is a developer-only
+convenience via system `npm` (`scripts/pi_install.sh`); no bundled Node or
+npm cache on any path.
 
 ## Testing
 
