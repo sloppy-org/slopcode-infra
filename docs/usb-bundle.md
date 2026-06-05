@@ -8,9 +8,8 @@ scripts/build_bundle.sh all --out /mnt/usb
 
 The bundle includes:
 
-- llama.cpp (latest release): Vulkan on Linux and Windows, Metal on
-  macOS. Upstream paused win-sycl-x64 builds (PR #23705); the bundle
-  ships Vulkan, which tracks the latest release.
+- llama.cpp (latest release): SYCL FP16 on Windows (custom build),
+  Vulkan fallback, CUDA for NVIDIA laptops, Metal on macOS.
 - opencode (latest), whisper.cpp.
 - Qwen3.6-35B-A3B **UD-Q4_K_XL** (~22.9 GB) from
   `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`, the default chat GGUF. MTP head
@@ -73,19 +72,23 @@ Target hardware: Intel Arc 140V iGPU (Lunar Lake, Xe2) on Windows 11,
 64 GB unified RAM shared with the iGPU. Other Arc generations (MTL, ARL-H,
 dGPU B-series) should also work but are not validated end-to-end.
 
-The bundle ships the Vulkan prebuilt (`win-vulkan-x64`), which tracks the
-latest llama.cpp release. Upstream paused win-sycl-x64 builds (PR #23705);
-Vulkan is universally available and works on Intel Arc, AMD, and NVIDIA.
+The default backend is a custom SYCL FP16 build (`-DGGML_SYCL_F16=ON`)
+compiled with Intel oneAPI 2026.0 against MSVC 14.44. The binary ships
+with its oneAPI runtime DLLs (sycl9, dnnl, MKL, TBB, UR adapters) so
+colleagues need no separate Intel install. Set `LLAMACPP_SYCL_BUILD_DIR`
+to a directory containing `llama-server.exe` + DLLs to override the
+prebuilt; without it `build_bundle.sh` falls back to the upstream
+`win-sycl-x64` release asset.
 
-Upstream paused the `win-sycl-x64` prebuilt on 2026-05-26 (PR #23705: SYCL
-and CANN builds alone ate over a third of the 10 GB CI cache). The pause is
-temporary, to return once dedicated runners land. Until then
-`build_bundle.sh`'s `llama_asset` walks the release list newest-first and
-pins windows-arc to the newest release still shipping the asset (b9334, the
-2026-05-26 build); mac-m1 and linux-cuda stay on the absolute latest. When
-upstream re-enables SYCL the same walk picks the latest again with no edit.
-Force a specific build with `LLAMACPP_TAG` if a later SYCL release
-regresses on Arc.
+SYCL prefill on Arc is 4-12x faster than Vulkan depending on model size.
+FP16 compute adds ~2.9x on dense models; on 35B-A3B MoE the gain is
+marginal (~2%) because expert layers dominate. MTP is disabled on SYCL
+(ggml-org/llama.cpp#23203: memory growth + severe decode regression,
+6 t/s with MTP vs 13 t/s without on the same hardware).
+
+Vulkan (`llama.cpp/`) ships as a fallback for non-Intel GPUs, SYCL driver
+issues, or machines without Level Zero support. CUDA ships for NVIDIA
+laptop GPUs (RTX A2000 8 GB profile).
 
 ### Prerequisites before install.bat
 
@@ -110,11 +113,12 @@ All three are in the bundle's `windows-arc/README.md` under "PREREQUISITES".
 
 | Launcher                   | Backend | Model   | Notes                          |
 | -------------------------- | ------- | ------- | ------------------------------ |
-| `run-llamacpp.bat`         | Vulkan  | Q4_K_XL | Default (Intel Arc)            |
-| `run-llamacpp-q4ks.bat`    | Vulkan  | Q4_K_S  | Smaller quant (~21.4 GB)       |
+| `run-llamacpp.bat`         | SYCL    | Q4_K_XL | Default (Intel Arc, FP16)      |
+| `run-llamacpp-q4ks.bat`    | SYCL    | Q4_K_S  | Smaller quant (~21.4 GB)       |
+| `run-llamacpp-vulkan.bat`  | Vulkan  | Q4_K_XL | Fallback for non-Intel GPUs    |
 | `run-llamacpp-cuda.bat`    | CUDA    | Q4_K_XL | NVIDIA 8 GB (RTX A2000)        |
 | `run-llamacpp-cpu.bat`     | CPU     | Q4_K_XL | Guaranteed correct, ~10 t/s    |
-| `run-gpt-oss.bat`          | Vulkan  | gpt-oss | 16 GB machines                 |
+| `run-gpt-oss.bat`          | SYCL    | gpt-oss | 16 GB machines                 |
 | `keepalive.bat`            | --      | --      | Pings server every 30 s        |
 | `fix-tdr.reg`              | --      | --      | TDR timeout 60 s (admin)       |
 

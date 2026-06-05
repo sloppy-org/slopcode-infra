@@ -1331,20 +1331,22 @@ write_windows() {
   mkdir -p "${t}/llama.cpp" "${t}/llama.cpp-sycl" "${t}/llama.cpp-cuda" "${t}/opencode" "${t}/whisper.cpp"
   local tag url sycl_tag sycl_url cuda_tag cuda_url oc_tag oc_url wh_tag wh_url
   # SYCL: default for Intel Arc. ~4-12x faster prefill than Vulkan on Arc
-  # 140V. Upstream paused win-sycl-x64 prebuilts (PR #23705); llama_asset
-  # walks releases newest-first and pins to the last build that ships the
-  # asset. When upstream re-enables SYCL the walk picks latest automatically.
-  # The prebuilt zip ships oneAPI runtime DLLs so colleagues need no separate
-  # Intel install.
-  read -r sycl_tag sycl_url <<<"$(llama_asset win-sycl-x64)"
-  echo "windows-arc llama.cpp ${sycl_tag} (SYCL)"
-  fetch_archive "${sycl_url}" "${t}/llama.cpp-sycl" llama-server.exe
+  # 140V. LLAMACPP_SYCL_BUILD_DIR overrides the upstream prebuilt with a
+  # custom SYCL FP16 build (llama-server.exe + oneAPI DLLs in one flat dir).
+  if [[ -n "${LLAMACPP_SYCL_BUILD_DIR:-}" && -d "${LLAMACPP_SYCL_BUILD_DIR}" ]]; then
+    echo "windows-arc llama.cpp SYCL from ${LLAMACPP_SYCL_BUILD_DIR} (custom FP16 build)"
+    cp "${LLAMACPP_SYCL_BUILD_DIR}"/*.exe "${LLAMACPP_SYCL_BUILD_DIR}"/*.dll "${t}/llama.cpp-sycl/"
+  else
+    read -r sycl_tag sycl_url <<<"$(llama_asset win-sycl-x64)"
+    echo "windows-arc llama.cpp ${sycl_tag} (SYCL)"
+    fetch_archive "${sycl_url}" "${t}/llama.cpp-sycl" llama-server.exe
+  fi
   # Vulkan: fallback for non-Intel GPUs or if SYCL misbehaves.
   read -r tag url <<<"$(llama_asset win-vulkan-x64)"
   echo "windows-arc llama.cpp ${tag} (Vulkan)"
   fetch_archive "${url}" "${t}/llama.cpp" llama-server.exe
   # CUDA: for NVIDIA laptop GPUs (RTX A2000 8 GB profile).
-  read -r cuda_tag cuda_url <<<"$(llama_asset win-cuda-cu12.2.0-x64)"
+  read -r cuda_tag cuda_url <<<"$(llama_asset win-cuda-12.4-x64)"
   echo "windows-arc llama.cpp ${cuda_tag} (CUDA)"
   fetch_archive "${cuda_url}" "${t}/llama.cpp-cuda" llama-server.exe
   read -r oc_tag oc_url <<<"$(github_asset sst/opencode "${OPENCODE_TAG}" opencode-windows-x64.zip)"
