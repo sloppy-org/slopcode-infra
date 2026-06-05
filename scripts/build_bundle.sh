@@ -1328,10 +1328,18 @@ EOF
 
 write_windows() {
   local t="${OUT}/windows-arc"
-  mkdir -p "${t}/llama.cpp" "${t}/llama.cpp-cuda" "${t}/opencode" "${t}/whisper.cpp"
-  local tag url cuda_tag cuda_url oc_tag oc_url wh_tag wh_url
-  # Vulkan: always on the latest release. Upstream paused win-sycl-x64
-  # builds (PR #23705); Vulkan is universally available and tracks latest.
+  mkdir -p "${t}/llama.cpp" "${t}/llama.cpp-sycl" "${t}/llama.cpp-cuda" "${t}/opencode" "${t}/whisper.cpp"
+  local tag url sycl_tag sycl_url cuda_tag cuda_url oc_tag oc_url wh_tag wh_url
+  # SYCL: default for Intel Arc. ~4-12x faster prefill than Vulkan on Arc
+  # 140V. Upstream paused win-sycl-x64 prebuilts (PR #23705); llama_asset
+  # walks releases newest-first and pins to the last build that ships the
+  # asset. When upstream re-enables SYCL the walk picks latest automatically.
+  # The prebuilt zip ships oneAPI runtime DLLs so colleagues need no separate
+  # Intel install.
+  read -r sycl_tag sycl_url <<<"$(llama_asset win-sycl-x64)"
+  echo "windows-arc llama.cpp ${sycl_tag} (SYCL)"
+  fetch_archive "${sycl_url}" "${t}/llama.cpp-sycl" llama-server.exe
+  # Vulkan: fallback for non-Intel GPUs or if SYCL misbehaves.
   read -r tag url <<<"$(llama_asset win-vulkan-x64)"
   echo "windows-arc llama.cpp ${tag} (Vulkan)"
   fetch_archive "${url}" "${t}/llama.cpp" llama-server.exe
@@ -1400,20 +1408,22 @@ BAT
   printf 'Windows Registry Editor Version 5.00\r\n\r\n[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers]\r\n"TdrDelay"=dword:0000003c\r\n"TdrDdiDelay"=dword:0000003c\r\n' >"${t}/fix-tdr.reg"
 
   cat >"${t}/README.md" <<'EOF'
-slopcode for Windows (Intel Arc, Vulkan)
-========================================
+slopcode for Windows (Intel Arc, SYCL)
+======================================
 
 A local AI coding assistant. Everything runs on your machine: no cloud,
 no account, no data leaves the computer.
 
   http://127.0.0.1:8080/v1   llama.cpp   (the LLM, alias "qwen")
 
-Backend: Vulkan. Works on Intel Arc, AMD, and NVIDIA GPUs.
+Backend: Intel SYCL (default). SYCL prefill is ~4-12x faster than Vulkan
+on Intel Arc iGPUs. The bundled llama-server.exe ships its oneAPI runtime
+DLLs; no separate Intel install needed. A Vulkan fallback is included for
+non-Intel GPUs or if SYCL misbehaves.
 
-Model: Qwen3.6-35B-A3B UD-Q4_K_XL (~22.9 GB) with the MTP head, served at
-128K context. All 40 MoE expert layers run on the GPU (zero CPU offload);
-MTP speculative decoding gives the decode speedup. If Q4_K_S (~21.4 GB)
-was shipped, run-llamacpp-q4ks.bat uses it instead.
+Model: Qwen3.6-35B-A3B UD-Q4_K_XL (~22.9 GB), served at 128K context.
+All 40 MoE expert layers on the GPU. MTP is disabled (known SYCL
+regression, github.com/ggml-org/llama.cpp/issues/23203).
 
 
 PREREQUISITES (do these ONCE, BEFORE install.bat)
@@ -1478,8 +1488,9 @@ TROUBLESHOOTING
 The llama.cpp service runs as a visible Command Prompt window. Stop it
 by closing its window or via Task Manager (Ctrl-Shift-Esc).
 
-run-llamacpp.bat         GPU (Vulkan, Q4_K_XL). Default for Intel Arc.
-run-llamacpp-q4ks.bat    GPU (Vulkan, Q4_K_S ~21.4 GB). Smaller quant.
+run-llamacpp.bat         GPU (SYCL, Q4_K_XL). Default for Intel Arc.
+run-llamacpp-vulkan.bat  GPU (Vulkan, Q4_K_XL). Fallback if SYCL crashes.
+run-llamacpp-q4ks.bat    GPU (SYCL, Q4_K_S ~21.4 GB). Smaller quant.
 run-llamacpp-cuda.bat    NVIDIA CUDA (Q4_K_XL, 8 GB profile). For RTX
                          A2000 / laptop GPUs with heavy CPU offload.
                          Tune -ngl upward while watching nvidia-smi.
@@ -1491,23 +1502,19 @@ keepalive.bat            Pings the server every 30 s to prevent GPU
 run-whisper.bat          whisper.cpp on 127.0.0.1:8427 (after install-whisper).
 
 GPU STABILITY
-All Vulkan launchers set GGML_VK_DISABLE_COOPMAT=1, COOPMAT2=1, and
-DISABLE_F16=1 to avoid known Intel driver TDR and NaN bugs. Batch size
-is 512 (not 2048) to keep prefill dispatches under the TDR threshold.
-Flash attention stays on (needed for 128K context memory efficiency).
-Every launcher auto-restarts after 5 seconds if llama-server exits,
-so a TDR crash recovers without manual intervention.
+The default SYCL launcher avoids the Vulkan cooperative-matrix TDR bugs
+entirely. Every launcher auto-restarts after 5 seconds if llama-server
+exits. The Vulkan fallback (run-llamacpp-vulkan.bat) sets
+GGML_VK_DISABLE_COOPMAT=1, COOPMAT2=1, and DISABLE_F16=1.
 
-If the server still dies repeatedly:
+If the SYCL server dies repeatedly:
 1. Confirm you ran fix-tdr.reg (prerequisite C above).
-2. Run keepalive.bat alongside the server (prevents GPU power-off).
-3. If it still crashes, fall back to run-llamacpp-cpu.bat.
+2. Try run-llamacpp-vulkan.bat (Vulkan fallback).
+3. If that also crashes, fall back to run-llamacpp-cpu.bat.
 
-If opencode shows repeated slashes ("/////") or garbled output, or
-Windows BSODs with VIDEO_TDR_FAILURE:
+If opencode shows repeated slashes ("/////") or garbled output:
 1. End the slopcode-llamacpp window (or llama-server.exe) in Task Manager.
-2. Double-click run-llamacpp-cpu.bat and update the Startup shortcut to
-   point at it.
+2. Double-click run-llamacpp-cpu.bat and update the Startup shortcut.
 
 If you hit "ErrorOutOfDeviceMemory" on a smaller Arc host, edit
 run-llamacpp.bat and add "--n-cpu-moe 20" (raise toward 40 to push more
@@ -1532,6 +1539,7 @@ del /Q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-whisper
 echo Removing old launchers and opencode config...
 del /Q "%DEST%\run-llamacpp.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-q4ks.bat" 2>nul
+del /Q "%DEST%\run-llamacpp-sycl.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-vulkan.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-iq4xs.bat" 2>nul
 del /Q "%DEST%\run-llamacpp-xl.bat" 2>nul
@@ -1554,6 +1562,7 @@ del /Q "%DEST%\bin\meeting-process.bat" 2>nul
 del /Q "%USERPROFILE%\.config\opencode\opencode.json" 2>nul
 echo Removing old llama.cpp + opencode dirs...
 rmdir /S /Q "%DEST%\llama.cpp" 2>nul
+rmdir /S /Q "%DEST%\llama.cpp-sycl" 2>nul
 rmdir /S /Q "%DEST%\llama.cpp-cuda" 2>nul
 rmdir /S /Q "%DEST%\opencode" 2>nul
 rmdir /S /Q "%DEST%\whisper.cpp" 2>nul
@@ -1578,6 +1587,7 @@ if not defined HERE set "HERE=%~dp0"
 if not defined ROOT for %%I in ("%HERE%\..") do set "ROOT=%%~fI"
 mkdir "%DEST%\models" "%DEST%\llama.cpp" "%DEST%\meeting" "%DEST%\bin" "%DEST%\cache" 2>nul
 xcopy /E /I /Y "%HERE%\llama.cpp" "%DEST%\llama.cpp" >nul
+if exist "%HERE%\llama.cpp-sycl" xcopy /E /I /Y "%HERE%\llama.cpp-sycl" "%DEST%\llama.cpp-sycl" >nul
 if exist "%HERE%\llama.cpp-cuda" xcopy /E /I /Y "%HERE%\llama.cpp-cuda" "%DEST%\llama.cpp-cuda" >nul
 xcopy /E /I /Y "%HERE%\meeting" "%DEST%\meeting" >nul
 if exist "%HERE%\bin" xcopy /E /I /Y "%HERE%\bin" "%DEST%\bin" >nul
@@ -1585,35 +1595,41 @@ copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
 copy /Y "%ROOT%\models\*.sha256" "%DEST%\models\" >nul
 set "MODEL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
 set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
-REM Vulkan GPU launcher (default): Q4_K_XL, MTP draft, --no-mmap, auto-restart.
-REM Vulkan stability: disable coopmat (TDR on Intel Arc) and F16 accumulators (NaN on Xe2).
+REM SYCL GPU launcher (default): Q4_K_XL, no MTP (buggy on SYCL), -fa off, auto-restart.
+REM SYCL prefill is ~4-12x faster than Vulkan on Intel Arc iGPUs.
 >"%DEST%\run-llamacpp.bat" echo @echo off
->>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
->>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
->>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
->>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+>>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp-sycl;%%PATH%%"
 >>"%DEST%\run-llamacpp.bat" echo :start
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp-sycl\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
 >>"%DEST%\run-llamacpp.bat" echo echo llama-server exited, restarting in 5 seconds...
 >>"%DEST%\run-llamacpp.bat" echo timeout /t 5 /nobreak ^>nul
 >>"%DEST%\run-llamacpp.bat" echo goto start
+REM Vulkan GPU fallback: Q4_K_XL, no MTP, Vulkan stability vars, auto-restart.
+REM Use if SYCL crashes or for non-Intel GPUs (AMD, NVIDIA without CUDA toolkit).
+>"%DEST%\run-llamacpp-vulkan.bat" echo @echo off
+>>"%DEST%\run-llamacpp-vulkan.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
+>>"%DEST%\run-llamacpp-vulkan.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
+>>"%DEST%\run-llamacpp-vulkan.bat" echo set "GGML_VK_DISABLE_F16=1"
+>>"%DEST%\run-llamacpp-vulkan.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+>>"%DEST%\run-llamacpp-vulkan.bat" echo :start
+>>"%DEST%\run-llamacpp-vulkan.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa off -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-vulkan.bat" echo echo llama-server exited, restarting in 5 seconds...
+>>"%DEST%\run-llamacpp-vulkan.bat" echo timeout /t 5 /nobreak ^>nul
+>>"%DEST%\run-llamacpp-vulkan.bat" echo goto start
 REM CPU fallback (-ngl 0); always correct but ~10 tok/s, auto-restart.
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
 >>"%DEST%\run-llamacpp-cpu.bat" echo :start
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
 >>"%DEST%\run-llamacpp-cpu.bat" echo echo llama-server exited, restarting in 5 seconds...
 >>"%DEST%\run-llamacpp-cpu.bat" echo timeout /t 5 /nobreak ^>nul
 >>"%DEST%\run-llamacpp-cpu.bat" echo goto start
-REM Q4_K_S alternative (smaller quant, ~21.4 GB). Only if shipped on USB.
+REM Q4_K_S alternative (smaller non-MTP quant, ~21.4 GB). Only if shipped on USB.
 if exist "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" (
   >"%DEST%\run-llamacpp-q4ks.bat" echo @echo off
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "GGML_VK_DISABLE_F16=1"
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "PATH=%DEST%\llama.cpp-sycl;%%PATH%%"
   >>"%DEST%\run-llamacpp-q4ks.bat" echo :start
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp-sycl\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
   >>"%DEST%\run-llamacpp-q4ks.bat" echo echo llama-server exited, restarting in 5 seconds...
   >>"%DEST%\run-llamacpp-q4ks.bat" echo timeout /t 5 /nobreak ^>nul
   >>"%DEST%\run-llamacpp-q4ks.bat" echo goto start
@@ -1621,12 +1637,9 @@ if exist "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" (
 REM gpt-oss-20b chat-only profile for 16 GB machines. Only if shipped on USB.
 if exist "%DEST%\models\gpt-oss-20b-mxfp4.gguf" (
   >"%DEST%\run-gpt-oss.bat" echo @echo off
-  >>"%DEST%\run-gpt-oss.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
-  >>"%DEST%\run-gpt-oss.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
-  >>"%DEST%\run-gpt-oss.bat" echo set "GGML_VK_DISABLE_F16=1"
-  >>"%DEST%\run-gpt-oss.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
+  >>"%DEST%\run-gpt-oss.bat" echo set "PATH=%DEST%\llama.cpp-sycl;%%PATH%%"
   >>"%DEST%\run-gpt-oss.bat" echo :start
-  >>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+  >>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp-sycl\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -np 1 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
   >>"%DEST%\run-gpt-oss.bat" echo echo llama-server exited, restarting in 5 seconds...
   >>"%DEST%\run-gpt-oss.bat" echo timeout /t 5 /nobreak ^>nul
   >>"%DEST%\run-gpt-oss.bat" echo goto start
@@ -1771,7 +1784,7 @@ for target in "${TARGETS[@]}"; do
       # driver + Shared-GPU-Memory prerequisites, so we do NOT overwrite it
       # with the generic write_simple_platform_readme used by linux/mac.
       write_windows
-      prune_dir_entries "${OUT}/windows-arc" llama.cpp llama.cpp-cuda opencode whisper.cpp bin meeting verify-models.bat fix-tdr.reg README.md AGENTS.md install.bat install-cleanup.bat install-llama.bat install-opencode.bat install-whisper.bat
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp llama.cpp-sycl llama.cpp-cuda opencode whisper.cpp bin meeting verify-models.bat fix-tdr.reg README.md AGENTS.md install.bat install-cleanup.bat install-llama.bat install-opencode.bat install-whisper.bat
       ;;
   esac
 done
