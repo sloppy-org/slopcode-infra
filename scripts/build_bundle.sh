@@ -662,7 +662,7 @@ exec "${HERE}/llama.cpp/llama-server" \
   -m "${HERE}/../models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" \
   --mmproj "${HERE}/../models/mmproj-BF16.gguf" \
   -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 \
-  -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 \
+  -ngl 99 -fa on --n-cpu-moe 35 -np 1 \
   --alias qwen --jinja \
   --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
   --presence-penalty 0.0 --repeat-penalty 1.0 \
@@ -782,7 +782,7 @@ Prerequisite: cmake and ninja must be installed.
          --mmproj "$HOME/.local/slopcode/models/mmproj-BF16.gguf" \
          -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 \
          -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 \
-         -np 1 --threads 4 --threads-http 4 \
+         -np 1 \
          --alias qwen --jinja \
          --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
          --presence-penalty 0.0 --repeat-penalty 1.0 \
@@ -921,7 +921,7 @@ cat >"${DEST}/run-llamacpp.sh" <<RUN
 # decode speed).
 export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
-exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --mmproj "${DEST}/models/mmproj-BF16.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on --n-cpu-moe 35 -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --host 127.0.0.1 --port 8080
 RUN
 # Optional chat-only profile for 16 GB machines: OpenAI gpt-oss-20b (MXFP4,
 # ~11.3 GB), GPU-only (no --n-cpu-moe), harmony sampler, no MTP, no FIM, no
@@ -931,7 +931,7 @@ cat >"${DEST}/run-gpt-oss.sh" <<RUN
 #!/usr/bin/env bash
 export PATH="${DEST}/opencode:${HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${DEST}/llama.cpp\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
-exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa on -np 1 --threads 4 --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --host 127.0.0.1 --port 8080
+exec "${DEST}/llama.cpp/llama-server" -m "${DEST}/models/gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --host 127.0.0.1 --port 8080
 RUN
 cat >"${DEST}/stop-llamacpp.sh" <<RUN
 #!/usr/bin/env bash
@@ -1386,6 +1386,9 @@ if "%OK%"=="0" exit /b 1
 exit /b 0
 BAT
 
+  # fix-tdr.reg: raise GPU TDR timeout to 60 s (requires admin + reboot)
+  printf 'Windows Registry Editor Version 5.00\r\n\r\n[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers]\r\n"TdrDelay"=dword:0000003c\r\n"TdrDdiDelay"=dword:0000003c\r\n' >"${t}/fix-tdr.reg"
+
   cat >"${t}/README.md" <<'EOF'
 slopcode for Windows (Intel Arc, Vulkan)
 ========================================
@@ -1419,6 +1422,16 @@ Skipping either is the most likely reason the bundle OOMs or BSODs.
     Memory Override", set 32 GB, Apply, reboot. By default the Arc driver
     exposes only ~16 GB to apps even on a 64 GB machine; the ~22 GB model
     plus KV needs the higher cap. Half of system RAM is the safe maximum.
+
+(C) RAISE THE GPU TDR TIMEOUT (requires one-time admin).
+    Intel drivers sometimes exceed Windows' 2-second TDR limit on large
+    compute dispatches. The GPU driver resets and llama-server dies silently.
+    Double-click fix-tdr.reg (shipped on this USB), approve the admin
+    prompt, and reboot. This sets TdrDelay and TdrDdiDelay to 60 seconds.
+    Intel's own oneAPI documentation recommends this for GPU compute.
+    Without admin: ask IT to import fix-tdr.reg or set TdrDelay=60 and
+    TdrDdiDelay=60 (DWORD) under
+    HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers.
 
 
 INSTALL
@@ -1462,7 +1475,22 @@ run-llamacpp-cpu.bat     Pure-CPU fallback (-ngl 0). ~10 t/s.
 run-gpt-oss.bat          OpenAI gpt-oss-20b (~11.3 GB) for 16 GB machines.
                          Only present if the gpt-oss GGUF was shipped.
 stop-llamacpp.bat        Kill all llama-server.exe processes.
+keepalive.bat            Pings the server every 30 s to prevent Intel GPU
+                         power-off on idle. Run alongside the server if it
+                         dies after periods of no activity.
 run-whisper.bat          whisper.cpp on 127.0.0.1:8427 (after install-whisper).
+
+GPU STABILITY
+All Vulkan launchers set GGML_VK_DISABLE_COOPMAT=1, COOPMAT2=1, and
+DISABLE_F16=1 to avoid known Intel driver TDR and NaN bugs. Flash
+attention is off and batch size is 512 (not 2048) to reduce GPU dispatch
+time. Every launcher auto-restarts after 5 seconds if llama-server
+exits, so a TDR crash recovers without manual intervention.
+
+If the server still dies repeatedly:
+1. Confirm you ran fix-tdr.reg (prerequisite C above).
+2. Run keepalive.bat alongside the server (prevents GPU power-off).
+3. If it still crashes, fall back to run-llamacpp-cpu.bat.
 
 If opencode shows repeated slashes ("/////") or garbled output, or
 Windows BSODs with VIDEO_TDR_FAILURE:
@@ -1474,10 +1502,6 @@ If you hit "ErrorOutOfDeviceMemory" on a smaller Arc host, edit
 run-llamacpp.bat and add "--n-cpu-moe 20" (raise toward 40 to push more
 expert layers onto the CPU). On the 64 GB / 32 GB-override Arc 140V target
 this is not needed.
-
-Optional TDR safety net: set DWORD TdrDelay=60 and TdrDdiDelay=60 under
-HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers, then reboot. This
-only gives long GPU dispatches more time; it does not fix hangs.
 EOF
 
   # --- install-cleanup.bat: remove any prior slopcode install ---
@@ -1507,6 +1531,7 @@ del /Q "%DEST%\switch-quant.bat" 2>nul
 del /Q "%DEST%\start-slopcode.bat" 2>nul
 del /Q "%DEST%\run-whisper.bat" 2>nul
 del /Q "%DEST%\stop-llamacpp.bat" 2>nul
+del /Q "%DEST%\keepalive.bat" 2>nul
 del /Q "%DEST%\llama-chat.bat" 2>nul
 del /Q "%DEST%\llama-coder.bat" 2>nul
 del /Q "%DEST%\bin\prewarm-opencode.bat" 2>nul
@@ -1546,36 +1571,62 @@ copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
 copy /Y "%ROOT%\models\*.sha256" "%DEST%\models\" >nul
 set "MODEL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
 set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
-REM Detect physical cores; --threads = physical - 2 (min 2).
-set "PHYS="
-for /f "skip=1 tokens=*" %%C in ('wmic cpu get NumberOfCores 2^>nul') do (
-  if not defined PHYS for /f "tokens=1" %%N in ("%%C") do set "PHYS=%%N"
-)
-if defined PHYS (set /a THREADS=%PHYS% - 2) else (set /a THREADS=%NUMBER_OF_PROCESSORS%/2 - 1)
-if !THREADS! LSS 2 set THREADS=2
-REM Vulkan GPU launcher (default): Q4_K_XL, MTP draft, --no-mmap.
+REM Vulkan GPU launcher (default): Q4_K_XL, MTP draft, --no-mmap, auto-restart.
+REM Vulkan stability: disable coopmat (TDR on Intel Arc) and F16 accumulators (NaN on Xe2).
 >"%DEST%\run-llamacpp.bat" echo @echo off
+>>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
+>>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
+>>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
-REM CPU fallback (-ngl 0); always correct but ~10 tok/s.
+>>"%DEST%\run-llamacpp.bat" echo :start
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa off -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo echo llama-server exited, restarting in 5 seconds...
+>>"%DEST%\run-llamacpp.bat" echo timeout /t 5 /nobreak ^>nul
+>>"%DEST%\run-llamacpp.bat" echo goto start
+REM CPU fallback (-ngl 0); always correct but ~10 tok/s, auto-restart.
 >"%DEST%\run-llamacpp-cpu.bat" echo @echo off
 >>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --threads !THREADS! --threads-http 2 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo :start
+>>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp-cpu.bat" echo echo llama-server exited, restarting in 5 seconds...
+>>"%DEST%\run-llamacpp-cpu.bat" echo timeout /t 5 /nobreak ^>nul
+>>"%DEST%\run-llamacpp-cpu.bat" echo goto start
 REM Q4_K_S alternative (smaller quant, ~21.4 GB). Only if shipped on USB.
 if exist "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" (
   >"%DEST%\run-llamacpp-q4ks.bat" echo @echo off
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "GGML_VK_DISABLE_F16=1"
   >>"%DEST%\run-llamacpp-q4ks.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 1024 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo :start
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa off -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo echo llama-server exited, restarting in 5 seconds...
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo timeout /t 5 /nobreak ^>nul
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo goto start
 )
 REM gpt-oss-20b chat-only profile for 16 GB machines. Only if shipped on USB.
 if exist "%DEST%\models\gpt-oss-20b-mxfp4.gguf" (
   >"%DEST%\run-gpt-oss.bat" echo @echo off
+  >>"%DEST%\run-gpt-oss.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
+  >>"%DEST%\run-gpt-oss.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
+  >>"%DEST%\run-gpt-oss.bat" echo set "GGML_VK_DISABLE_F16=1"
   >>"%DEST%\run-gpt-oss.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
-  >>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa on -np 1 --threads !THREADS! --threads-http 4 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+  >>"%DEST%\run-gpt-oss.bat" echo :start
+  >>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa off -np 1 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+  >>"%DEST%\run-gpt-oss.bat" echo echo llama-server exited, restarting in 5 seconds...
+  >>"%DEST%\run-gpt-oss.bat" echo timeout /t 5 /nobreak ^>nul
+  >>"%DEST%\run-gpt-oss.bat" echo goto start
 )
 >"%DEST%\stop-llamacpp.bat" echo @echo off
 >>"%DEST%\stop-llamacpp.bat" echo taskkill /F /IM llama-server.exe /T ^>nul 2^>^&1
 >>"%DEST%\stop-llamacpp.bat" echo echo stopped
+REM Keepalive: pings the server every 30 s to prevent Intel GPU power-off.
+>"%DEST%\keepalive.bat" echo @echo off
+>>"%DEST%\keepalive.bat" echo echo Pinging llama-server every 30 s to keep GPU alive. Ctrl-C to stop.
+>>"%DEST%\keepalive.bat" echo :loop
+>>"%DEST%\keepalive.bat" echo curl -s -o nul http://127.0.0.1:8080/health
+>>"%DEST%\keepalive.bat" echo timeout /t 30 /nobreak ^>nul
+>>"%DEST%\keepalive.bat" echo goto loop
 >"%DEST%\bin\record-meeting.bat" echo @echo off
 >>"%DEST%\bin\record-meeting.bat" echo start "" "%DEST%\meeting\record-meeting.html"
 >"%DEST%\bin\meeting-transcribe.bat" echo @echo off
@@ -1590,7 +1641,7 @@ if exist "%DEST%\models\gpt-oss-20b-mxfp4.gguf" (
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
 start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
-echo Installed llama.cpp (Vulkan), models, launchers, meeting scripts (--threads !THREADS!).
+echo Installed llama.cpp (Vulkan), models, launchers, meeting scripts.
 EOF
 
   # --- install-opencode.bat: opencode binary, env vars, config, PATH ---
@@ -1697,7 +1748,7 @@ for target in "${TARGETS[@]}"; do
       # driver + Shared-GPU-Memory prerequisites, so we do NOT overwrite it
       # with the generic write_simple_platform_readme used by linux/mac.
       write_windows
-      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp bin meeting verify-models.bat README.md AGENTS.md install.bat install-cleanup.bat install-llama.bat install-opencode.bat install-whisper.bat
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp opencode whisper.cpp bin meeting verify-models.bat fix-tdr.reg README.md AGENTS.md install.bat install-cleanup.bat install-llama.bat install-opencode.bat install-whisper.bat
       ;;
   esac
 done

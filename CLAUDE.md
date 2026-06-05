@@ -153,13 +153,18 @@ in `docs/tuning.md`.
   on GPU). `LLAMACPP_CPU_MOE=true` forces `--n-cpu-moe 99` for crowded GPUs.
 - **Dual-GPU CUDA (~32 GB)**: `LLAMACPP_N_CPU_MOE=0`, GPU-only, layers split
   across both cards (pipeline-parallel; MoE has no `-sm row` path).
-- **Windows-arc (Intel Arc, SYCL)**: no `--cpu-moe`, all 40 experts on the
-  iGPU; needs Shared GPU Memory Override at 32 GB. See `docs/usb-bundle.md`.
+- **Windows-arc (Intel Arc, Vulkan)**: no `--cpu-moe`, all 40 experts on the
+  iGPU; needs Shared GPU Memory Override at 32 GB. Bundle launchers set
+  `GGML_VK_DISABLE_COOPMAT=1`, `GGML_VK_DISABLE_COOPMAT2=1`,
+  `GGML_VK_DISABLE_F16=1`, use `-b 512 -fa off` for TDR stability, and
+  auto-restart on exit. A `fix-tdr.reg` ships on the USB (admin + reboot).
+  See `docs/usb-bundle.md`.
 - **macOS**: unified memory, no MoE split.
 
-Linux and Windows also pass `--threads <physical_cores - 2> --threads-http 4`
-(floor 2) to keep the host responsive; macOS is untouched. Rationale in
-`docs/tuning.md`. Override with `LLAMACPP_THREADS` / `LLAMACPP_THREADS_HTTP`.
+The `server_start_llamacpp.sh` launcher passes `--threads <physical_cores - 2>
+--threads-http 4` (floor 2) to keep the host responsive; bundle installers
+let llama.cpp auto-detect. Override with `LLAMACPP_THREADS` /
+`LLAMACPP_THREADS_HTTP`.
 
 ## Dual-GPU model switch (serve_switch.sh)
 

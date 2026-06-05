@@ -47,7 +47,15 @@ Whisper is not installed by default. Run `install-whisper.bat` manually
 for meeting transcription on `127.0.0.1:8427`.
 
 All generated Windows launchers pass `--no-mmap` to avoid mmap
-double-counting on UMA systems.
+double-counting on UMA systems. GPU launchers set
+`GGML_VK_DISABLE_COOPMAT=1`, `GGML_VK_DISABLE_COOPMAT2=1`, and
+`GGML_VK_DISABLE_F16=1` for Intel driver stability; use `-b 512` and
+`-fa off` to reduce GPU dispatch time below the TDR threshold. Every
+launcher auto-restarts llama-server after 5 seconds if it exits.
+
+A `fix-tdr.reg` file ships on the USB. It raises the Windows TDR timeout
+to 60 seconds (requires admin + reboot). Intel's oneAPI documentation
+recommends this for GPU compute workloads.
 
 Generated installers:
 
@@ -95,17 +103,20 @@ bundle OOMs.
    ~16 GB to applications by default even on a 64 GB host; the working set
    peaks at 17-20 GB and OOMs partway through warmup otherwise.
 
-Both are in the bundle's `windows-arc/README.md` under "PREREQUISITES".
+All three are in the bundle's `windows-arc/README.md` under "PREREQUISITES".
 
 ### Launchers
 
 | Launcher                   | Backend | Model   | Notes                          |
 | -------------------------- | ------- | ------- | ------------------------------ |
-| `run-llamacpp.bat`         | Vulkan  | Q4_K_XL | Default                        |
+| `run-llamacpp.bat`         | Vulkan  | Q4_K_XL | Default, auto-restart          |
 | `run-llamacpp-q4ks.bat`    | Vulkan  | Q4_K_S  | Smaller quant (~21.4 GB)       |
 | `run-llamacpp-cpu.bat`     | CPU     | Q4_K_XL | Guaranteed correct, ~10 t/s    |
 | `run-gpt-oss.bat`          | Vulkan  | gpt-oss | 16 GB machines                 |
+| `keepalive.bat`            | --      | --      | Pings server every 30 s        |
+| `fix-tdr.reg`              | --      | --      | TDR timeout 60 s (admin)       |
 
+All GPU launchers auto-restart after 5 seconds if llama-server exits.
 If the GPU path produces garbage or instability, fall back to
 `run-llamacpp-cpu.bat` and update the Startup shortcut.
 
