@@ -361,7 +361,7 @@ copy_models() {
   #   UD-Q4_K_S (~21.4 GB) — smaller K-quant for tighter VRAM budgets.
   #   gpt-oss-20b-mxfp4 (~11.3 GB) — chat-only for 16 GB machines.
   #   Ship with:
-  #     python3 scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-mtp-q4ks
+  #     python3 scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-q4ks
   #     python3 scripts/llamacpp_models.py prefetch gpt-oss-20b
   prune_dir_entries "${OUT}/models" \
     Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
@@ -376,8 +376,8 @@ copy_models() {
     ggml-large-v3-turbo.bin.partial
   copy_model_alias qwen3.6-35b-a3b-mtp-q4 true
   # Optional smaller quant: UD-Q4_K_S (~21.4 GB) for tighter VRAM budgets.
-  # Ship with: python3 scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-mtp-q4ks
-  copy_model_alias qwen3.6-35b-a3b-mtp-q4ks false
+  # Ship with: python3 scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-q4ks
+  copy_model_alias qwen3.6-35b-a3b-q4ks false
   copy_model_alias gpt-oss-20b false
   local model="${OUT}/models/ggml-large-v3-turbo.bin"
   if [[ ! -f "${model}" ]]; then
@@ -1607,7 +1607,7 @@ if exist "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" (
   >>"%DEST%\run-llamacpp-q4ks.bat" echo set "GGML_VK_DISABLE_F16=1"
   >>"%DEST%\run-llamacpp-q4ks.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
   >>"%DEST%\run-llamacpp-q4ks.bat" echo :start
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
   >>"%DEST%\run-llamacpp-q4ks.bat" echo echo llama-server exited, restarting in 5 seconds...
   >>"%DEST%\run-llamacpp-q4ks.bat" echo timeout /t 5 /nobreak ^>nul
   >>"%DEST%\run-llamacpp-q4ks.bat" echo goto start

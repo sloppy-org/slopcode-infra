@@ -17,8 +17,8 @@ The bundle includes:
   enables `--spec-type draft-mtp` for 1.4-2.2x decode; sampler is Qwen's
   "thinking + precise coding" preset.
 - Optional alternatives (soft-fail, only shipped if prefetched):
-  - **UD-Q4_K_S** (~21.4 GB): smaller K-quant for tighter VRAM. Ship with
-    `scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-mtp-q4ks`.
+  - **UD-Q4_K_S** (~21.4 GB): smaller non-MTP K-quant for tighter VRAM. Ship with
+    `scripts/llamacpp_models.py prefetch qwen3.6-35b-a3b-q4ks`.
   - **gpt-oss-20b-mxfp4** (~11.3 GB): chat-only for 16 GB machines.
     See [gpt-oss-20b.md](gpt-oss-20b.md). Ship with
     `scripts/llamacpp_models.py prefetch gpt-oss-20b`.

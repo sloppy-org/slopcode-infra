@@ -564,14 +564,14 @@ spec = importlib.util.spec_from_file_location("llamacpp_models", sys.argv[1])
 mod = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = mod
 spec.loader.exec_module(mod)
-model = mod.MODEL_BY_ALIAS["qwen3.6-35b-a3b-mtp-q4ks"]
-assert model.repo_id == "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"
+model = mod.MODEL_BY_ALIAS["qwen3.6-35b-a3b-q4ks"]
+assert model.repo_id == "unsloth/Qwen3.6-35B-A3B-GGUF"
 assert any("Q4_K_S" in p for p in model.include)
 PY
   then
-    echo "PASS: qwen3.6-35b-a3b-mtp-q4ks resolves to MTP repo Q4_K_S"
+    echo "PASS: qwen3.6-35b-a3b-q4ks resolves to non-MTP repo Q4_K_S"
   else
-    echo "FAIL: qwen3.6-35b-a3b-mtp-q4ks alias missing or wrong"
+    echo "FAIL: qwen3.6-35b-a3b-q4ks alias missing or wrong"
     return 1
   fi
 }

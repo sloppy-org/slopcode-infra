@@ -63,12 +63,6 @@ DEFAULT_SPEC = ModelSpec(
 
 OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec(
-        alias="qwen3.6-35b-a3b-mtp-q4ks",
-        repo_id="unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
-        include=("*UD-Q4_K_S*.gguf",),
-        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
-    ),
-    ModelSpec(
         alias="qwen3.6-35b-a3b-q4",
         repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
         include=("*UD-Q4_K_XL*.gguf",),
