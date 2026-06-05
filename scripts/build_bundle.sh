@@ -1336,6 +1336,8 @@ write_windows() {
   if [[ -n "${LLAMACPP_SYCL_BUILD_DIR:-}" && -d "${LLAMACPP_SYCL_BUILD_DIR}" ]]; then
     echo "windows-arc llama.cpp SYCL from ${LLAMACPP_SYCL_BUILD_DIR} (custom FP16 build)"
     cp "${LLAMACPP_SYCL_BUILD_DIR}"/*.exe "${LLAMACPP_SYCL_BUILD_DIR}"/*.dll "${t}/llama.cpp-sycl/"
+    # SPIR-V bfloat16 fallback files (upstream ships them; needed for some devices)
+    cp "${LLAMACPP_SYCL_BUILD_DIR}"/*.spv "${t}/llama.cpp-sycl/" 2>/dev/null || true
   else
     read -r sycl_tag sycl_url <<<"$(llama_asset win-sycl-x64)"
     echo "windows-arc llama.cpp ${sycl_tag} (SYCL)"
