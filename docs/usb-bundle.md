@@ -49,9 +49,10 @@ for meeting transcription on `127.0.0.1:8427`.
 All generated Windows launchers pass `--no-mmap` to avoid mmap
 double-counting on UMA systems. GPU launchers set
 `GGML_VK_DISABLE_COOPMAT=1`, `GGML_VK_DISABLE_COOPMAT2=1`, and
-`GGML_VK_DISABLE_F16=1` for Intel driver stability; use `-b 512` and
-`-fa off` to reduce GPU dispatch time below the TDR threshold. Every
-launcher auto-restarts llama-server after 5 seconds if it exits.
+`GGML_VK_DISABLE_F16=1` for Intel driver stability; use `-b 512` to
+keep prefill dispatches under the TDR threshold. Flash attention stays
+on (needed for 128K context memory). Every launcher auto-restarts
+llama-server after 5 seconds if it exits.
 
 A `fix-tdr.reg` file ships on the USB. It raises the Windows TDR timeout
 to 60 seconds (requires admin + reboot). Intel's oneAPI documentation

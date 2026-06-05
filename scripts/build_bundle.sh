@@ -1482,10 +1482,11 @@ run-whisper.bat          whisper.cpp on 127.0.0.1:8427 (after install-whisper).
 
 GPU STABILITY
 All Vulkan launchers set GGML_VK_DISABLE_COOPMAT=1, COOPMAT2=1, and
-DISABLE_F16=1 to avoid known Intel driver TDR and NaN bugs. Flash
-attention is off and batch size is 512 (not 2048) to reduce GPU dispatch
-time. Every launcher auto-restarts after 5 seconds if llama-server
-exits, so a TDR crash recovers without manual intervention.
+DISABLE_F16=1 to avoid known Intel driver TDR and NaN bugs. Batch size
+is 512 (not 2048) to keep prefill dispatches under the TDR threshold.
+Flash attention stays on (needed for 128K context memory efficiency).
+Every launcher auto-restarts after 5 seconds if llama-server exits,
+so a TDR crash recovers without manual intervention.
 
 If the server still dies repeatedly:
 1. Confirm you ran fix-tdr.reg (prerequisite C above).
@@ -1579,7 +1580,7 @@ REM Vulkan stability: disable coopmat (TDR on Intel Arc) and F16 accumulators (N
 >>"%DEST%\run-llamacpp.bat" echo set "GGML_VK_DISABLE_F16=1"
 >>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
 >>"%DEST%\run-llamacpp.bat" echo :start
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa off -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+>>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
 >>"%DEST%\run-llamacpp.bat" echo echo llama-server exited, restarting in 5 seconds...
 >>"%DEST%\run-llamacpp.bat" echo timeout /t 5 /nobreak ^>nul
 >>"%DEST%\run-llamacpp.bat" echo goto start
@@ -1599,7 +1600,7 @@ if exist "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" (
   >>"%DEST%\run-llamacpp-q4ks.bat" echo set "GGML_VK_DISABLE_F16=1"
   >>"%DEST%\run-llamacpp-q4ks.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
   >>"%DEST%\run-llamacpp-q4ks.bat" echo :start
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa off -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --spec-type draft-mtp --spec-draft-n-max 2 --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
   >>"%DEST%\run-llamacpp-q4ks.bat" echo echo llama-server exited, restarting in 5 seconds...
   >>"%DEST%\run-llamacpp-q4ks.bat" echo timeout /t 5 /nobreak ^>nul
   >>"%DEST%\run-llamacpp-q4ks.bat" echo goto start
@@ -1612,7 +1613,7 @@ if exist "%DEST%\models\gpt-oss-20b-mxfp4.gguf" (
   >>"%DEST%\run-gpt-oss.bat" echo set "GGML_VK_DISABLE_F16=1"
   >>"%DEST%\run-gpt-oss.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
   >>"%DEST%\run-gpt-oss.bat" echo :start
-  >>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa off -np 1 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
+  >>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 512 -ub 512 -ngl 99 -fa on -np 1 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
   >>"%DEST%\run-gpt-oss.bat" echo echo llama-server exited, restarting in 5 seconds...
   >>"%DEST%\run-gpt-oss.bat" echo timeout /t 5 /nobreak ^>nul
   >>"%DEST%\run-gpt-oss.bat" echo goto start

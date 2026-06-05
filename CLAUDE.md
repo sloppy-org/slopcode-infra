@@ -156,7 +156,7 @@ in `docs/tuning.md`.
 - **Windows-arc (Intel Arc, Vulkan)**: no `--cpu-moe`, all 40 experts on the
   iGPU; needs Shared GPU Memory Override at 32 GB. Bundle launchers set
   `GGML_VK_DISABLE_COOPMAT=1`, `GGML_VK_DISABLE_COOPMAT2=1`,
-  `GGML_VK_DISABLE_F16=1`, use `-b 512 -fa off` for TDR stability, and
+  `GGML_VK_DISABLE_F16=1`, use `-b 512` for TDR stability, and
   auto-restart on exit. A `fix-tdr.reg` ships on the USB (admin + reboot).
   See `docs/usb-bundle.md`.
 - **macOS**: unified memory, no MoE split.
