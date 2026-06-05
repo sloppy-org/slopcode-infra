@@ -1367,6 +1367,10 @@ write_windows() {
   write_bundle_agents_md "${t}"
   sync_dir "${SCRIPT_DIR}/../meeting" "${t}/meeting"
 
+  # Copy standalone bat launchers into the bundle. Editable in config/bundle/bat/.
+  cp "${SCRIPT_DIR}/../config/bundle/bat/"*.bat "${t}/"
+  cp "${SCRIPT_DIR}/../config/bundle/bat/bin/"*.bat "${t}/bin/"
+
   # verify-models.bat: SHA256 verification via PowerShell Get-FileHash.
   # We do NOT parse `certutil -hashfile` output: its hash line is uppercase
   # on some Windows builds and space-separated on others, so a lowercase
@@ -1595,87 +1599,16 @@ xcopy /E /I /Y "%HERE%\meeting" "%DEST%\meeting" >nul
 if exist "%HERE%\bin" xcopy /E /I /Y "%HERE%\bin" "%DEST%\bin" >nul
 copy /Y "%ROOT%\models\*.gguf" "%DEST%\models\" >nul
 copy /Y "%ROOT%\models\*.sha256" "%DEST%\models\" >nul
-set "MODEL=%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
-set "MMPROJ=%DEST%\models\mmproj-BF16.gguf"
-REM SYCL GPU launcher (default): Q4_K_XL, no MTP (buggy on SYCL), -fa off, auto-restart.
-REM SYCL prefill is ~4-12x faster than Vulkan on Intel Arc iGPUs.
->"%DEST%\run-llamacpp.bat" echo @echo off
->>"%DEST%\run-llamacpp.bat" echo set "PATH=%DEST%\llama.cpp-sycl;%%PATH%%"
->>"%DEST%\run-llamacpp.bat" echo :start
->>"%DEST%\run-llamacpp.bat" echo "%DEST%\llama.cpp-sycl\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
->>"%DEST%\run-llamacpp.bat" echo echo llama-server exited, restarting in 5 seconds...
->>"%DEST%\run-llamacpp.bat" echo timeout /t 5 /nobreak ^>nul
->>"%DEST%\run-llamacpp.bat" echo goto start
-REM Vulkan GPU fallback: Q4_K_XL, no MTP, Vulkan stability vars, auto-restart.
-REM Use if SYCL crashes or for non-Intel GPUs (AMD, NVIDIA without CUDA toolkit).
->"%DEST%\run-llamacpp-vulkan.bat" echo @echo off
->>"%DEST%\run-llamacpp-vulkan.bat" echo set "GGML_VK_DISABLE_COOPMAT=1"
->>"%DEST%\run-llamacpp-vulkan.bat" echo set "GGML_VK_DISABLE_COOPMAT2=1"
->>"%DEST%\run-llamacpp-vulkan.bat" echo set "GGML_VK_DISABLE_F16=1"
->>"%DEST%\run-llamacpp-vulkan.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-vulkan.bat" echo :start
->>"%DEST%\run-llamacpp-vulkan.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -fa off -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
->>"%DEST%\run-llamacpp-vulkan.bat" echo echo llama-server exited, restarting in 5 seconds...
->>"%DEST%\run-llamacpp-vulkan.bat" echo timeout /t 5 /nobreak ^>nul
->>"%DEST%\run-llamacpp-vulkan.bat" echo goto start
-REM CPU fallback (-ngl 0); always correct but ~10 tok/s, auto-restart.
->"%DEST%\run-llamacpp-cpu.bat" echo @echo off
->>"%DEST%\run-llamacpp-cpu.bat" echo set "PATH=%DEST%\llama.cpp;%%PATH%%"
->>"%DEST%\run-llamacpp-cpu.bat" echo :start
->>"%DEST%\run-llamacpp-cpu.bat" echo "%DEST%\llama.cpp\llama-server.exe" -m "%MODEL%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -ngl 0 -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
->>"%DEST%\run-llamacpp-cpu.bat" echo echo llama-server exited, restarting in 5 seconds...
->>"%DEST%\run-llamacpp-cpu.bat" echo timeout /t 5 /nobreak ^>nul
->>"%DEST%\run-llamacpp-cpu.bat" echo goto start
-REM Q4_K_S alternative (smaller non-MTP quant, ~21.4 GB). Only if shipped on USB.
-if exist "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" (
-  >"%DEST%\run-llamacpp-q4ks.bat" echo @echo off
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo set "PATH=%DEST%\llama.cpp-sycl;%%PATH%%"
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo :start
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo "%DEST%\llama.cpp-sycl\llama-server.exe" -m "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" --mmproj "%MMPROJ%" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo echo llama-server exited, restarting in 5 seconds...
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo timeout /t 5 /nobreak ^>nul
-  >>"%DEST%\run-llamacpp-q4ks.bat" echo goto start
-)
-REM gpt-oss-20b chat-only profile for 16 GB machines. Only if shipped on USB.
-if exist "%DEST%\models\gpt-oss-20b-mxfp4.gguf" (
-  >"%DEST%\run-gpt-oss.bat" echo @echo off
-  >>"%DEST%\run-gpt-oss.bat" echo set "PATH=%DEST%\llama.cpp-sycl;%%PATH%%"
-  >>"%DEST%\run-gpt-oss.bat" echo :start
-  >>"%DEST%\run-gpt-oss.bat" echo "%DEST%\llama.cpp-sycl\llama-server.exe" -m "%DEST%\models\gpt-oss-20b-mxfp4.gguf" -c 131072 --cache-type-k q8_0 --cache-type-v q8_0 -b 2048 -ub 2048 -ngl 99 -np 1 --alias qwen --jinja --temp 1.0 --top-p 1.0 --top-k 40 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format none --no-context-shift --no-mmap --host 127.0.0.1 --port 8080
-  >>"%DEST%\run-gpt-oss.bat" echo echo llama-server exited, restarting in 5 seconds...
-  >>"%DEST%\run-gpt-oss.bat" echo timeout /t 5 /nobreak ^>nul
-  >>"%DEST%\run-gpt-oss.bat" echo goto start
-)
-REM CUDA A2000 profile (8 GB NVIDIA, non-MTP Q4_K_XL, heavy CPU offload).
-REM No Vulkan env vars, no --no-mmap. Tune -ngl upward while watching nvidia-smi.
->"%DEST%\run-llamacpp-cuda.bat" echo @echo off
->>"%DEST%\run-llamacpp-cuda.bat" echo set "PATH=%DEST%\llama.cpp-cuda;%%PATH%%"
->>"%DEST%\run-llamacpp-cuda.bat" echo :start
->>"%DEST%\run-llamacpp-cuda.bat" echo "%DEST%\llama.cpp-cuda\llama-server.exe" -m "%MODEL%" --mmproj "%MMPROJ%" -c 16384 --cache-type-k q4_0 --cache-type-v q4_0 -b 1024 -ub 512 -ngl 20 --n-cpu-moe 35 -fa on -np 1 --alias qwen --jinja --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 0.0 --repeat-penalty 1.0 --reasoning-format deepseek --reasoning-budget 4096 --reasoning on --no-context-shift --host 127.0.0.1 --port 8080
->>"%DEST%\run-llamacpp-cuda.bat" echo echo llama-server exited, restarting in 5 seconds...
->>"%DEST%\run-llamacpp-cuda.bat" echo timeout /t 5 /nobreak ^>nul
->>"%DEST%\run-llamacpp-cuda.bat" echo goto start
->"%DEST%\stop-llamacpp.bat" echo @echo off
->>"%DEST%\stop-llamacpp.bat" echo taskkill /F /IM llama-server.exe /T ^>nul 2^>^&1
->>"%DEST%\stop-llamacpp.bat" echo echo stopped
-REM Keepalive: pings the server every 30 s to prevent Intel GPU power-off.
->"%DEST%\keepalive.bat" echo @echo off
->>"%DEST%\keepalive.bat" echo echo Pinging llama-server every 30 s to keep GPU alive. Ctrl-C to stop.
->>"%DEST%\keepalive.bat" echo :loop
->>"%DEST%\keepalive.bat" echo curl -s -o nul http://127.0.0.1:8080/health
->>"%DEST%\keepalive.bat" echo timeout /t 30 /nobreak ^>nul
->>"%DEST%\keepalive.bat" echo goto loop
->"%DEST%\bin\record-meeting.bat" echo @echo off
->>"%DEST%\bin\record-meeting.bat" echo start "" "%DEST%\meeting\record-meeting.html"
->"%DEST%\bin\meeting-transcribe.bat" echo @echo off
->>"%DEST%\bin\meeting-transcribe.bat" echo where pwsh ^>nul 2^>^&1 ^|^| ^(echo PowerShell 7 pwsh is required for meeting scripts. Install it from https://aka.ms/powershell ^& exit /b 1^)
->>"%DEST%\bin\meeting-transcribe.bat" echo pwsh -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-transcribe.ps1" %%*
->"%DEST%\bin\meeting-notes.bat" echo @echo off
->>"%DEST%\bin\meeting-notes.bat" echo where pwsh ^>nul 2^>^&1 ^|^| ^(echo PowerShell 7 pwsh is required for meeting scripts. Install it from https://aka.ms/powershell ^& exit /b 1^)
->>"%DEST%\bin\meeting-notes.bat" echo pwsh -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-notes.ps1" %%*
->"%DEST%\bin\meeting-process.bat" echo @echo off
->>"%DEST%\bin\meeting-process.bat" echo where pwsh ^>nul 2^>^&1 ^|^| ^(echo PowerShell 7 pwsh is required for meeting scripts. Install it from https://aka.ms/powershell ^& exit /b 1^)
->>"%DEST%\bin\meeting-process.bat" echo pwsh -NoProfile -ExecutionPolicy Bypass -File "%DEST%\meeting\meeting-process.ps1" %%*
+REM Copy launcher bat files from USB bundle.
+copy /Y "%HERE%\run-llamacpp.bat" "%DEST%\" >nul
+copy /Y "%HERE%\run-llamacpp-vulkan.bat" "%DEST%\" >nul
+copy /Y "%HERE%\run-llamacpp-cpu.bat" "%DEST%\" >nul
+copy /Y "%HERE%\run-llamacpp-cuda.bat" "%DEST%\" >nul
+copy /Y "%HERE%\stop-llamacpp.bat" "%DEST%\" >nul
+copy /Y "%HERE%\keepalive.bat" "%DEST%\" >nul
+if exist "%DEST%\models\Qwen3.6-35B-A3B-UD-Q4_K_S.gguf" copy /Y "%HERE%\run-llamacpp-q4ks.bat" "%DEST%\" >nul
+if exist "%DEST%\models\gpt-oss-20b-mxfp4.gguf" copy /Y "%HERE%\run-gpt-oss.bat" "%DEST%\" >nul
+copy /Y "%HERE%\bin\*.bat" "%DEST%\bin\" >nul
 mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup" 2>nul
 >"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\slopcode-llamacpp.bat" echo start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
 start "slopcode" /MIN "%DEST%\run-llamacpp.bat"
@@ -1786,7 +1719,7 @@ for target in "${TARGETS[@]}"; do
       # driver + Shared-GPU-Memory prerequisites, so we do NOT overwrite it
       # with the generic write_simple_platform_readme used by linux/mac.
       write_windows
-      prune_dir_entries "${OUT}/windows-arc" llama.cpp llama.cpp-sycl llama.cpp-cuda opencode whisper.cpp bin meeting verify-models.bat fix-tdr.reg README.md AGENTS.md install.bat install-cleanup.bat install-llama.bat install-opencode.bat install-whisper.bat
+      prune_dir_entries "${OUT}/windows-arc" llama.cpp llama.cpp-sycl llama.cpp-cuda opencode whisper.cpp bin meeting verify-models.bat fix-tdr.reg README.md AGENTS.md install.bat install-cleanup.bat install-llama.bat install-opencode.bat install-whisper.bat run-llamacpp.bat run-llamacpp-vulkan.bat run-llamacpp-cpu.bat run-llamacpp-cuda.bat run-llamacpp-q4ks.bat run-gpt-oss.bat stop-llamacpp.bat keepalive.bat
       ;;
   esac
 done

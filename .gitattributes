@@ -2,3 +2,4 @@
 # This is critical for WSL testing in CI
 *.sh text eol=lf
 *.py text eol=lf
+*.bat text eol=crlf
