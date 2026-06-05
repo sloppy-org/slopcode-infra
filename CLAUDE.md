@@ -226,16 +226,15 @@ share an alias without a config-mismatch badge. Full convention:
 
 | Canonical                        | Aliases                                         | Quants in service             |
 | -------------------------------- | ----------------------------------------------- | ----------------------------- |
-| `unsloth/qwen3.6:35b-a3b@128k`   | `qwen`, `35b`, `35b@128k`, `Q4`                 | `UD-Q4_K_XL-MTP`, `UD-IQ4_XS` |
+| `unsloth/qwen3.6:35b-a3b@128k`   | `qwen`, `35b`, `35b@128k`, `Q4`                 | `UD-Q4_K_XL-MTP`              |
 | `bartowski/qwen3.6:27b@128k`     | `qwen27b`, `qwen3.6-27b`, `qwen3.6-27b@128k`    | `Q4_K_M-MTP`                  |
 | `unsloth/qwen3.5:122b-a10b@128k` | `qwen122b`, `qwen3.5-122b`, `qwen3.5-122b@128k` | `UD-Q4_K_XL-MTP`              |
 
 The `-MTP` suffix marks peers loading the multi-token-prediction variant; the
 launcher branches on `*-mtp-*` only to append the draft-mtp flags. MTP is the
 default on the Mac Studio leader, MTP-capable Mac followers, and the USB
-bundle. Only tight-VRAM Linux/CUDA followers fall back to non-MTP GGUFs
-(`UD-IQ4_XS`), where the MTP head would eat the safety margin; per-host quant
-split detail in `docs/iq4_xs-rollout.md`. Reserved aliases (no live peer):
+bundle. Tight-VRAM followers use non-MTP `UD-Q4_K_XL` or `UD-Q4_K_S`
+(no MTP head saves ~1 GB). Reserved aliases (no live peer):
 `luna` (future gpt-oss-120b), `tuna` (future short-context chat pool).
 
 **Machine profiles.** `SLOPGATE_MACHINE_PROFILE` is a stable class shared by
