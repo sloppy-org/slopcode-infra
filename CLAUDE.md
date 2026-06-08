@@ -195,6 +195,27 @@ addresses, agent name, machine profile, and digest are untouched. It refuses
 a GGUF not on disk (`SERVE_SWITCH_FORCE=true` overrides);
 `SERVE_SWITCH_DRY_RUN=true` edits without restarting.
 
+### Host: mailuefterl
+
+The dual-GPU CUDA coding box (2x RTX 5060 Ti 16 GB, `10.77.0.10`) runs no
+slopgate agent and no whisper; whisper-server lives on faepmac1. It binds
+llama-server to `127.0.0.1:8080` through the `local.conf` drop-in, not
+`wg-only.conf`, so `serve_switch.sh` does not apply here. It swaps models by
+task with the host-local `llama-swap` helper, which copies a profile over
+`local.conf` and restarts:
+
+```bash
+llama-swap        # show active profile
+llama-swap 35b    # Qwen3.6-35B-A3B MoE, MTP OFF (stable default, ~101 t/s)
+llama-swap 27b    # Qwen3.6-27B dense, MTP ON (quality option, ~42 t/s)
+```
+
+35B runs MTP OFF on this host: the draft head leaves GPU1 below 2 GB free and
+crashes flash-attention VMM allocs even with whisper gone, so the profile uses
+the alias without `-mtp-`. Profiles live in
+`~/.config/slopcode/llama-profiles/{35b,27b}.conf` and the script in
+`~/.local/bin/llama-swap`; all three are host-local and untracked.
+
 ## Multi-host (slopgate)
 
 `sloppy-org/slopgate` (private fork of `distantmagic/paddler` v1.2.1-rc1,
