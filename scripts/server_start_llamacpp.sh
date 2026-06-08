@@ -50,6 +50,8 @@
 #                         for your hardware). Only used by *-mtp-* aliases.
 #   LLAMACPP_NO_MMAP      true to pass --no-mmap (useful when tensor overrides
 #                         place part of the model on CPU)
+#   LLAMACPP_TENSOR_SPLIT comma-separated GPU weight ratios, e.g. "0.55,0.45"
+#                         (passed to --tensor-split; default: unset = even split)
 #   LLAMACPP_FIT          explicit value passed to -fit (default: on; set to
 #                         "off" to disable VRAM-fit autosizer)
 #   LLAMACPP_CACHE_RAM    explicit value passed to --cache-ram; 0 disables the
@@ -503,6 +505,9 @@ CMD+=("${SAMPLER_ARGS[@]}")
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   CMD+=(--n-cpu-moe "${N_CPU_MOE}")
 fi
+if [[ -n "${LLAMACPP_TENSOR_SPLIT:-}" ]]; then
+  CMD+=(--tensor-split "${LLAMACPP_TENSOR_SPLIT}")
+fi
 if [[ -n "${THREADS}" ]]; then
   CMD+=(--threads "${THREADS}" --threads-http "${THREADS_HTTP}")
 fi
@@ -521,6 +526,7 @@ echo "- batch:   b=${BATCH} ub=${UBATCH}"
 echo "- KV:      ${CACHE_TYPE_K} / ${CACHE_TYPE_V}"
 [[ "${NO_MMAP}" == "true" ]] && echo "- mmap:    off"
 [[ -n "${FIT}" ]] && echo "- fit:     ${FIT}"
+[[ -n "${LLAMACPP_TENSOR_SPLIT:-}" ]] && echo "- tensor-split: ${LLAMACPP_TENSOR_SPLIT}"
 [[ -n "${CACHE_RAM}" ]] && echo "- cache-ram: ${CACHE_RAM}"
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   echo "- n-cpu-moe: ${N_CPU_MOE} (first N expert layers on CPU; rest on GPU)"

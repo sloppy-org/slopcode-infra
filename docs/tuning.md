@@ -98,18 +98,38 @@ Benchmarked on 2x RTX 5060 Ti 16 GB (llama-bench d403f00ec, 3 runs each,
 Flash attention makes no meaningful difference; pipeline-parallel
 inter-GPU handoffs dominate. Optimal ubatch is 256.
 
-MTP VRAM (128K context, ubatch 512):
+### MTP + tensor-split on 27B
 
-| config  | GPU0 used | GPU1 used | GPU1 free | stable? |
-| ------- | --------- | --------- | --------- | ------- |
-| MTP on  | 12003 MiB | 14115 MiB | 1775 MiB  | no      |
-| MTP off | 11845 MiB | 12083 MiB | 3807 MiB  | yes     |
+Without `--tensor-split`, the MTP draft context piles onto GPU1 (end of the
+pipeline-parallel split), leaving only 1775 MiB free: same FA VMM crash
+pattern as the 35B. `--tensor-split 0.55,0.45` shifts base weight pressure
+to GPU0, freeing GPU1 for the draft context.
 
-Same GPU1 VMM crash pattern as 35B MTP. MTP off is stable at 3807 MiB free.
+VRAM at 128K context, ubatch 256:
 
-Compared to 35B no-MTP: decode 22 vs 101 t/s (4.5x slower), pp4096
-1486 vs 4205 t/s (2.8x slower). Use 27B only when quality per parameter
-outweighs the throughput cost.
+| config                  | GPU0 free | GPU1 free | stable? |
+| ----------------------- | --------- | --------- | ------- |
+| MTP on,  no ts          | 3884 MiB  | 1775 MiB  | no      |
+| MTP on,  ts 0.55,0.45   | 3225 MiB  | 4349 MiB  | yes     |
+| MTP on,  ts 0.60,0.40   | 1575 MiB  | 3991 MiB  | no      |
+| MTP off, no ts          | 4042 MiB  | 3807 MiB  | yes     |
+
+Throughput cost of ts 0.55,0.45: pp512 0%, pp4096 -0.3%, decode -0.3%.
+
+Actual decode speed via API (5 requests, 300 tokens each, coding prompt):
+
+| config       | decode    |
+| ------------ | --------- |
+| MTP on       | 42.4 t/s  |
+| MTP off      | 21.8 t/s  |
+
++94% from MTP. The dense model's draft head has high acceptance; the gain
+is roughly 2x versus the 32% seen on the 35B MoE. `server_start_qwen27b.sh`
+defaults to MTP on + ts 0.55,0.45 + ubatch 256.
+
+Compared to 35B no-MTP: decode 42 vs 101 t/s (2.4x slower with MTP),
+pp4096 1486 vs 4205 t/s (2.8x slower). Use 27B for quality; use 35B for
+throughput.
 
 ## Thread reservation on Linux / Windows
 
