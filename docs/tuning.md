@@ -131,6 +131,28 @@ Compared to 35B no-MTP: decode 42 vs 101 t/s (2.4x slower with MTP),
 pp4096 1486 vs 4205 t/s (2.8x slower). Use 27B for quality; use 35B for
 throughput.
 
+### 27B context ceiling on 2x RTX 5060 Ti
+
+KV cache scales at ~23.3 MiB/K tokens on GPU0, ~22.6 MiB/K on GPU1
+(q8_0, K+V combined, MTP draft included). Measured by comparing 4K
+(weight-only baseline) vs 256K server VRAM snapshots.
+
+Model weights + MTP draft + compute (4K context, ts 0.55,0.45):
+  GPU0: 9326 MiB   GPU1: 8674 MiB
+
+Additional per 1K context tokens:
+  GPU0: 23.3 MiB   GPU1: 22.6 MiB
+
+GPU0 is the bottleneck. Need >2048 MiB free for FA VMM stability.
+Available for KV at 4K baseline: GPU0 6260 MiB, GPU1 7201 MiB.
+Max safe context (GPU0 limited): ~181K tokens.
+
+Note: mmproj BF16 offloaded to GPU adds ~889 MiB to GPU0. With mmproj
+on GPU, the safe ceiling drops to ~143K. Keep mmproj on CPU
+(`LLAMACPP_MMPROJ_OFFLOAD=false`) if running >128K context.
+
+Production context is 128K (GPU0 ~3225 MiB free, GPU1 ~4349 MiB free).
+
 ## Thread reservation on Linux / Windows
 
 Both pass `--threads <physical_cores - 2> --threads-http 4` (floor 2). MoE
