@@ -24,10 +24,10 @@
 #   MTP on,  whisper off   1433 MiB    2593     3743     133 t/s  CRASHES
 #   MTP off, whisper on    2749 MiB    2593     3743     101 t/s  stable
 #   MTP off, whisper off   3257 MiB    2593     3743     101 t/s  stable
-# ubatch=512 is the production value; ubatch=1024 peaks prefill (pp4096: 4205
-# vs 3743 t/s) but inflates CUDA graph compute buffers by ~2.3 GB, leaving
-# GPU0 with only ~160 MiB free alongside whisper. Decode is flat across all
-# ubatch values; changing ubatch only affects prefill.
+# ubatch=1024 peaks prefill (pp4096: 4205 vs 3743 t/s at 512) and is the
+# default here. Larger values inflate CUDA graph compute buffers by ~2.3 GB
+# vs 512, which crowds GPU0 to ~160 MiB free when whisper is co-resident;
+# drop to 512 in that case. Decode is flat across all ubatch values.
 [Service]
 # Cluster node: bind to WireGuard address so the slopgate-agent can register
 # with the leader. Standalone host: use 127.0.0.1 and drop the slopgate lines.
@@ -42,4 +42,5 @@ Environment=LLAMACPP_CACHE_ROOT=/mnt/storage/slopcode/models
 #Environment=LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-q4
 Environment=LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-mtp-q4
 Environment=LLAMACPP_N_CPU_MOE=0
-Environment=LLAMACPP_UBATCH=512
+# Use 512 if whisper-server runs on this host (co-resides on GPU0).
+Environment=LLAMACPP_UBATCH=1024
