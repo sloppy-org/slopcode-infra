@@ -193,12 +193,52 @@ The dual-GPU CUDA box wins prefill (2.2x on 35B, ~5x on 27B) and 35B
 decode. The M3 Ultra matches only on 27B decode, where both are
 memory-bandwidth-bound.
 
-MTP barely helps on faepmac1. Single 300-token API requests with
-draft-mtp on gave 35B 78 t/s (vs 77 raw) and 27B 29 t/s (vs 24 raw),
-against mailuefterl's 27B jump from 22 to 42 t/s. The leader plists still
-carry the retired temp 1.0 / presence 1.5 sampler, which lowers draft
-acceptance; the precise-coding preset (temp 0.6, presence 0.0) is the
-untested fix.
+### KV cache: f16, not q8_0
+
+On 256 GB unified memory there is no VRAM pressure, so the q8_0 KV that
+the tight-VRAM CUDA hosts need is pure overhead here: q8_0 dequantizes on
+every attention step, which on Metal costs more than the bandwidth it
+saves. llama-bench (b9581, ub1024, fa on, r3), f16 vs q8_0 KV, each pair
+back-to-back under matched load:
+
+| model     | pp4096 f16/q8 | decode f16/q8     |
+| --------- | ------------- | ----------------- |
+| 35B-A3B   | 1939 / 1882   | 57.9 / 56.5 (+2%) |
+| 27B dense | 307 / 304     | 22.9 / 20.5 (+12%) |
+| 122B      | 642 / 628     | 18.9 / 18.3 (+3%) |
+
+f16 wins everywhere, marginally for the MoE models and clearly for the
+dense 27B. All faepmac1 models serve with f16 K and V.
+
+### MTP needs the precise-coding sampler
+
+llama-bench does not exercise speculative decoding, so MTP shows up only
+in serving. API decode (f16 KV, c8192/np1, three 256-token coding
+requests averaged), MTP on vs off:
+
+| model     | sampler                   | MTP off | MTP on | gain |
+| --------- | ------------------------- | ------- | ------ | ---- |
+| 35B-A3B   | temp 0.6, presence 0.0    | 80.9    | 110.3  | +36% |
+| 27B dense | temp 0.6, presence 0.0    | 25.5    | 28.0   | +10% |
+| 122B      | temp 0.6, presence 0.0    | 37.0    | 50.0   | +35% |
+
+The gain only appears under Qwen's precise-coding preset. The faepmac1
+plists had run temp 1.0 / presence 1.5 (Qwen's general-thinking preset
+plus the instruct repetition penalty), where high temperature drops draft
+acceptance and MTP looks dead (35B 78 vs 77, 27B 29 vs 24). Switching to
+Qwen3.6's official agentic-coding preset (temp 0.6, top_p 0.95, top_k 20,
+min_p 0, presence 0.0, repeat 1.0) unlocks +35% on the MoE models. All
+faepmac1 chat models now run that preset with MTP on. The FIM model
+(Qwen3-Coder-Next) has no MTP head and is left as is.
+
+Absolute decode varies with load. The Mac's 819 GB/s unified memory is
+shared across resident models, so co-residency and sustained-bench
+thermals move the raw 35B figure between ~57 and ~77 t/s (MTP off). Each
+KV and MTP pair above was measured back-to-back under matched conditions,
+so the relative gains hold even as the absolute baseline drifts. Live
+512k/np4 serving (full four-slot 128K KV allocated) lands near the low
+end: 35B ~78, 27B ~27 t/s. This bandwidth sharing is a second reason, on
+top of RAM, to keep the 122B stopped while the chat models serve.
 
 ## Thread reservation on Linux / Windows
 
