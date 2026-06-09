@@ -206,9 +206,15 @@ task with the host-local `llama-swap` helper, which copies a profile over
 
 ```bash
 llama-swap        # show active profile
-llama-swap 35b    # Qwen3.6-35B-A3B MoE, MTP OFF (stable default, ~101 t/s)
-llama-swap 27b    # Qwen3.6-27B dense, MTP ON (quality option, ~42 t/s)
+llama-swap 27b    # Qwen3.6-27B dense, MTP ON (default, ~42 t/s, quality)
+llama-swap 35b    # Qwen3.6-35B-A3B MoE, MTP OFF (~101 t/s, throughput)
 ```
+
+27B is the default profile here: the dense model is the quality choice and
+its MTP draft head roughly doubles decode (22 to 42 t/s) where the 35B MoE
+gains little. The active `local.conf` persists across reboots, so the box
+comes up on 27B. Switch to 35B with `llama-swap 35b` when throughput beats
+quality.
 
 35B runs MTP OFF on this host: the draft head leaves GPU1 below 2 GB free and
 crashes flash-attention VMM allocs even with whisper gone, so the profile uses

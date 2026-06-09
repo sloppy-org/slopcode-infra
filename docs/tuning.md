@@ -153,6 +153,53 @@ on GPU, the safe ceiling drops to ~143K. Keep mmproj on CPU
 
 Production context is 128K (GPU0 ~3225 MiB free, GPU1 ~4349 MiB free).
 
+## macOS Metal (Apple M3 Ultra): faepmac1
+
+faepmac1 (Mac Studio M3 Ultra, 256 GB unified, slopgate leader) holds
+both Qwen3.6 sizes GPU-resident. Benched on llama.cpp b9581 (Metal),
+UD-Q4_K_XL MTP GGUF, q8_0 KV, `-fa 1`, `-b 2048`, `-ngl 99`, `-r 3`,
+with the idle 35B leader co-resident.
+
+35B-A3B MoE:
+
+| ubatch | pp512 | pp4096 | decode (tg128) |
+| ------ | ----- | ------ | -------------- |
+|    256 | 1374  | 1274   | 77             |
+|    512 | 1720  | 1623   | 77             |
+|   1024 | 1719  | 1889   | 77             |
+
+27B dense:
+
+| ubatch | pp512 | pp4096 | decode (tg128) |
+| ------ | ----- | ------ | -------------- |
+|    256 |  284  |  276   | 26             |
+|    512 |  302  |  294   | 24             |
+|   1024 |  302  |  304   | 24             |
+
+Prefill peaks at ubatch 1024 for both. 27B prefill is flat near 300 t/s:
+the dense model is compute-bound on Metal, where the MoE's 3 B active
+path is not.
+
+Cross-host, best ubatch, raw llama-bench (no speculation):
+
+| metric     | faepmac1 (M3 Ultra) | mailuefterl (2x 5060 Ti) |
+| ---------- | ------------------- | ------------------------ |
+| 35B pp4096 | 1889                | 4205                     |
+| 35B decode | 77                  | 101                      |
+| 27B pp4096 | 304                 | 1486                     |
+| 27B decode | 24                  | 22                       |
+
+The dual-GPU CUDA box wins prefill (2.2x on 35B, ~5x on 27B) and 35B
+decode. The M3 Ultra matches only on 27B decode, where both are
+memory-bandwidth-bound.
+
+MTP barely helps on faepmac1. Single 300-token API requests with
+draft-mtp on gave 35B 78 t/s (vs 77 raw) and 27B 29 t/s (vs 24 raw),
+against mailuefterl's 27B jump from 22 to 42 t/s. The leader plists still
+carry the retired temp 1.0 / presence 1.5 sampler, which lowers draft
+acceptance; the precise-coding preset (temp 0.6, presence 0.0) is the
+untested fix.
+
 ## Thread reservation on Linux / Windows
 
 Both pass `--threads <physical_cores - 2> --threads-http 4` (floor 2). MoE
