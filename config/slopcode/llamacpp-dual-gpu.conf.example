@@ -44,3 +44,8 @@ Environment=LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-mtp-q4
 Environment=LLAMACPP_N_CPU_MOE=0
 # Use 512 if whisper-server runs on this host (co-resides on GPU0).
 Environment=LLAMACPP_UBATCH=1024
+# Host-RAM prompt cache: saves idle-slot KV so repeated or shared prefixes
+# restore instead of re-prefilling (cold 30K prompt ~124 s -> warm ~0.5 s on
+# the Mac leader). Uses host RAM, not VRAM, so size it to system memory; the
+# binary default is 8192 MiB. 0 disables. mailuefterl (94 GB host) runs 16384.
+Environment=LLAMACPP_CACHE_RAM=16384

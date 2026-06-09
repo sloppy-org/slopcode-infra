@@ -240,6 +240,33 @@ so the relative gains hold even as the absolute baseline drifts. Live
 end: 35B ~78, 27B ~27 t/s. This bandwidth sharing is a second reason, on
 top of RAM, to keep the 122B stopped while the chat models serve.
 
+## Prompt caching: cache-reuse and cache-ram
+
+Cold prefill is a one-time cost per fresh context; repeated or shared prefixes
+should not pay it twice. Two mechanisms, both on by default in the launcher.
+
+`--cache-reuse 256` reuses the prefix already resident in a slot. Measured on
+the live 27B (faepmac1, 30K-token context):
+
+| request                       | tokens reprocessed | prefill |
+| ----------------------------- | ------------------ | ------- |
+| cold (new context)            | 30154              | 124 s   |
+| exact repeat                  | 4                  | 0.5 s   |
+| same context, new question    | 1030               | 5.6 s   |
+
+So a stable agent context (system prompt + codebase + history) pays the full
+prefill once, then each turn reprocesses only the new tokens. The partial case
+reprocesses the last ~ubatch chunk before the divergence, not just the changed
+tokens.
+
+`--cache-ram N` (MiB, host RAM not VRAM, binary default 8192) saves idle-slot
+KV to a host-memory pool so a context survives slot reassignment and restores
+instead of recomputing. This matters under concurrency: with `-np 4`, a second
+session reusing a slot would otherwise evict the first's cache. We raise it on
+hosts with spare memory: faepmac1 24576 per live instance (256 GB unified),
+mailuefterl 16384 (94 GB host). It does not speed up the cold first prefill,
+only repeated and shared contexts.
+
 ## Thread reservation on Linux / Windows
 
 Both pass `--threads <physical_cores - 2> --threads-http 4` (floor 2). MoE

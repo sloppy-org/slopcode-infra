@@ -144,6 +144,15 @@ The MTP branch additionally appends `--spec-type draft-mtp
 Offline default: single-slot 128K (`-np 1 -ub 1024 -c 131072`). Override
 with `LLAMACPP_PARALLEL` / `LLAMACPP_CONTEXT`.
 
+Prompt caching is on: the launcher always passes `--cache-reuse 256` (in-slot
+prefix reuse) and passes `--cache-ram` when `LLAMACPP_CACHE_RAM` is set. The
+binary default is 8192 MiB; our hosts raise it (mailuefterl 16384, faepmac1
+24576 per live instance) so idle-slot KV survives slot reassignment and
+repeated or shared prefixes restore instead of re-prefilling. `--cache-ram`
+uses host RAM, not VRAM, so size it to system memory. macOS note: a launchd
+plist edit needs `launchctl bootout` + `bootstrap` to take effect;
+`kickstart -k` restarts the old in-memory definition and ignores disk changes.
+
 ### Per-platform MoE policy
 
 Qwen3.6 35B-A3B is MoE; the expert-layer split diverges by platform. Benches
