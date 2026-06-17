@@ -29,6 +29,7 @@ SLOPGATE_LOCAL_LLAMACPP_ADDR=127.0.0.1:8081
 SLOPGATE_LLAMACPP_REQUEST_TIMEOUT=120
 SLOPGATE_LOCAL_MAX_CONTEXT=131072
 SLOPGATE_LOCAL_MODEL_ALIAS=qwen
+SLOPGATE_LOCAL_QUANT=UD-Q4_K_XL
 EOF
 }
 
@@ -42,6 +43,7 @@ SLOPGATE_EXTERNAL_LLAMACPP_ADDR=10.77.0.10:8080
 SLOPGATE_AGENT_NAME=follower-1
 SLOPGATE_MAX_CONTEXT=131072
 SLOPGATE_MODEL_ALIAS=qwen
+SLOPGATE_QUANT=UD-IQ4_XS
 EOF
 }
 
@@ -67,7 +69,7 @@ test_leader_install_dry_run() {
       if [[ -f "${b}" && -f "${a}" ]] \
         && grep -q '<string>balancer</string>' "${b}" \
         && grep -q '<key>ProcessType</key><string>Background</string>' "${b}" \
-        && grep -q '<key>LimitLoadToSessionType</key><string>Background</string>' "${b}" \
+        && ! grep -q '<key>LimitLoadToSessionType</key>' "${b}" \
         && grep -q '<string>0.0.0.0:8080</string>' "${b}" \
         && grep -q '<string>0.0.0.0:8085</string>' "${b}" \
         && ! grep -q '<string>--overbook-factor</string>' "${b}" \
@@ -79,7 +81,7 @@ test_leader_install_dry_run() {
         && grep -q '<string>--management-dashboard-enable</string>' "${b}" \
         && grep -q '<string>agent</string>' "${a}" \
         && grep -q '<key>ProcessType</key><string>Background</string>' "${a}" \
-        && grep -q '<key>LimitLoadToSessionType</key><string>Background</string>' "${a}" \
+        && ! grep -q '<key>LimitLoadToSessionType</key>' "${a}" \
         && grep -q '<string>127.0.0.1:8081</string>' "${a}" \
         && grep -q '<string>--llamacpp-request-timeout</string>' "${a}" \
         && grep -q '<string>120</string>' "${a}" \
