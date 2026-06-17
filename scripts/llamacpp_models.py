@@ -6,12 +6,14 @@ Default offline model:
 
 The MTP variant ships the multi-token prediction head Qwen3.6 was trained
 with; llama.cpp >= b9180 can drive it via `--spec-type draft-mtp` for a
-1.4-2.2x decode speedup at ~1 GB extra resident memory. MTP is the right
-default on hosts with the headroom (the Mac Studio cluster leader, MTP-
-capable followers). Hosts where the MTP head would eat the VRAM safety
-margin (Linux/CUDA tight-VRAM followers, Windows-arc, the USB bundle)
-should stay on the non-MTP `qwen3.6-35b-a3b-q4` / `qwen3.6-35b-a3b-iq4_xs`
-aliases.
+1.4-2.2x decode speedup at ~1 GB extra resident memory. MTP is the default
+on hosts with the headroom: the Mac Studio cluster leader and MTP-capable
+followers, the Windows-arc bundle target (Arc 140V with the 32 GB Shared-
+GPU-Memory-Override has room for the head), and the USB bundle generally
+(its Linux launcher runs partial-MoE `--n-cpu-moe 35` and macOS uses
+unified memory, so the head fits there too). Only genuinely tight-VRAM
+Linux/CUDA followers should fall back to the non-MTP
+`qwen3.6-35b-a3b-q4` / `qwen3.6-35b-a3b-iq4_xs` aliases.
 
 Optional aliases live in OPTIONAL_SPECS below. They are never downloaded
 automatically; `prefetch` only touches the default.
@@ -39,6 +41,14 @@ def cache_root() -> Path:
 
 CACHE_ROOT = cache_root()
 
+def extra_model_dirs() -> list[Path]:
+    raw = os.environ.get("LLAMACPP_EXTRA_MODEL_DIRS", "").strip()
+    if not raw:
+        return []
+    return [Path(p).expanduser() for p in raw.split(":") if p.strip()]
+
+EXTRA_MODEL_DIRS = extra_model_dirs()
+
 @dataclass(frozen=True)
 class ModelSpec:
     alias: str
@@ -61,21 +71,21 @@ DEFAULT_SPEC = ModelSpec(
 
 OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec(
-        alias="qwen3.6-35b-a3b-mtp-iq4_xs",
-        repo_id="unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
-        include=("*UD-IQ4_XS*.gguf",),
-        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
-    ),
-    ModelSpec(
         alias="qwen3.6-35b-a3b-q4",
         repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
         include=("*UD-Q4_K_XL*.gguf",),
         mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     ),
     ModelSpec(
-        alias="qwen3.6-35b-a3b-iq4_xs",
+        alias="qwen3.6-35b-a3b-q4ks",
         repo_id="unsloth/Qwen3.6-35B-A3B-GGUF",
-        include=("*UD-IQ4_XS*.gguf",),
+        include=("*UD-Q4_K_S*.gguf",),
+        mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
+    ),
+    ModelSpec(
+        alias="qwen3.6-35b-a3b-mtp-q4ks",
+        repo_id="unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+        include=("*UD-Q4_K_S*.gguf",),
         mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     ),
     ModelSpec(
@@ -96,6 +106,17 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         include=("UD-Q4_K_XL/*.gguf", "*UD-Q4_K_XL*.gguf"),
         mmproj_include=("mmproj-BF16.gguf", "mmproj-F16.gguf"),
     ),
+    # gpt-oss-20b: OpenAI's open MoE (20.9B total, ~3.6B active), native MXFP4
+    # (~11.3 GB). Optional chat-only profile for 16 GB-class machines that
+    # cannot hold the 35B-A3B: ~3.6B active decodes ~26-64 t/s GPU-only, well
+    # above a dense 8/9B. No FIM (no infill tokens; point hackl autocomplete at
+    # a separate Coder endpoint or leave it off), no MTP head. See
+    # docs/gpt-oss-20b.md. Reserved cluster alias `luna` is the future 120b.
+    ModelSpec(
+        alias="gpt-oss-20b",
+        repo_id="ggml-org/gpt-oss-20b-GGUF",
+        include=("*mxfp4*.gguf", "*MXFP4*.gguf"),
+    ),
     ModelSpec(
         alias="qwen3-coder-next-q4",
         repo_id="Qwen/Qwen3-Coder-Next-GGUF",
@@ -105,6 +126,26 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         alias="qwen3-coder-next-q5",
         repo_id="Qwen/Qwen3-Coder-Next-GGUF",
         include=("Qwen3-Coder-Next-Q5_K_M/*.gguf", "*Qwen3-Coder-Next-Q5_K_M*.gguf"),
+    ),
+    # Small dense Coder models for a dedicated FIM/autocomplete endpoint. The
+    # whole Qwen line ships the infill tokens (<|fim_prefix|> etc.), so a Qwen
+    # chat model can serve FIM itself; on a 32 GB host that is the default and
+    # these are unused. Prefetch one only when you want a separate low-latency
+    # FIM slot. See docs/fim-autocomplete.md.
+    ModelSpec(
+        alias="qwen2.5-coder-3b-q4",
+        repo_id="Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
+        include=("*q4_k_m*.gguf", "*Q4_K_M*.gguf"),
+    ),
+    ModelSpec(
+        alias="qwen2.5-coder-7b-q4",
+        repo_id="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+        include=("*q4_k_m*.gguf", "*Q4_K_M*.gguf"),
+    ),
+    ModelSpec(
+        alias="qwen2.5-coder-1.5b-q4",
+        repo_id="Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+        include=("*q4_k_m*.gguf", "*Q4_K_M*.gguf"),
     ),
     ModelSpec(
         alias="qwen3.6-35b-a3b-bartowski-q4",
@@ -270,6 +311,18 @@ def matching_paths(model: ModelSpec, patterns: tuple[str, ...]) -> list[Path]:
     for path in sorted(CACHE_ROOT.glob(f"{flat_prefix}*.gguf")):
         if any(fnmatch.fnmatch(path.name, f"{flat_prefix}{p}") or fnmatch.fnmatch(path.name, p) for p in patterns):
             files.append(path)
+    if not files:
+        subdir = model.repo_id.replace("/", "_")
+        for extra in EXTRA_MODEL_DIRS:
+            d = extra / subdir
+            if not d.exists():
+                continue
+            for path in sorted(d.rglob("*.gguf")):
+                rel = path.relative_to(d).as_posix()
+                if any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(path.name, p) for p in patterns):
+                    files.append(path)
+            if files:
+                break
     return files
 
 def record(model: ModelSpec) -> dict:

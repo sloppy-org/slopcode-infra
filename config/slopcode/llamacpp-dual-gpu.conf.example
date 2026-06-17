@@ -1,21 +1,51 @@
 # Dual-GPU GPU-only profile for slopcode-llamacpp.service.
 #
-# Copy to ~/.config/systemd/user/slopcode-llamacpp.service.d/wg-only.conf
+# Copy to ~/.config/systemd/user/slopcode-llamacpp.service.d/local.conf
 # (the directory and ".conf" name matter; any *.conf in the .d dir is a
-# drop-in), set the WG bind address for THIS host, then:
+# drop-in), adjust host/bind address, then:
 #   systemctl --user daemon-reload && systemctl --user restart slopcode-llamacpp
 #
-# This is the profile for a ~32 GB box (e.g. 2x RTX 5060 Ti 16 GB) that
-# serves the whole model GPU-only. LLAMACPP_N_CPU_MOE=0 drops --n-cpu-moe so
-# all MoE expert layers run on the GPUs (layer split; MoE has no tensor-
-# parallel path in llama.cpp). scripts/serve_switch.sh flips the model alias
-# and context here and re-stamps the slopgate follower identity to match.
+# Target hardware: ~32 GB VRAM (e.g. 2x RTX 5060 Ti 16 GB). LLAMACPP_N_CPU_MOE=0
+# drops --n-cpu-moe so all MoE expert layers run on the GPUs (pipeline-parallel
+# layer split; MoE has no tensor-parallel path in llama.cpp).
+# scripts/serve_switch.sh flips the model alias and context and re-stamps the
+# slopgate follower identity to match.
+#
+# MTP on cluster nodes (no co-resident whisper): use qwen3.6-35b-a3b-mtp-q4.
+# MTP gives +32% decode (133->101 t/s) but costs ~1.9 GB on the heavier GPU.
+# On a standalone host with co-resident whisper-server (~1.9 GB on GPU0), that
+# leaves GPU1 with only ~1.4 GB free, causing ggml_cuda_pool_vmm crashes in
+# flash attention. Fix: alias without -mtp- skips the --spec-type draft-mtp
+# block; LLAMACPP_MODEL overrides model resolution so the non-MTP GGUF (which
+# may not exist on disk) is not needed. GPU1 free goes from 1.4 GB to 2.75 GB.
+# Benchmarked on 2x RTX 5060 Ti 16 GB + whisper-server:
+#   config                  GPU1 free  pp512    pp4096   decode
+#   MTP on,  whisper on     921 MiB    2593     3743     133 t/s  CRASHES
+#   MTP on,  whisper off   1433 MiB    2593     3743     133 t/s  CRASHES
+#   MTP off, whisper on    2749 MiB    2593     3743     101 t/s  stable
+#   MTP off, whisper off   3257 MiB    2593     3743     101 t/s  stable
+# ubatch=1024 peaks prefill (pp4096: 4205 vs 3743 t/s at 512) and is the
+# default here. Larger values inflate CUDA graph compute buffers by ~2.3 GB
+# vs 512, which crowds GPU0 to ~160 MiB free when whisper is co-resident;
+# drop to 512 in that case. Decode is flat across all ubatch values.
 [Service]
-# Bind to this host's WireGuard address so the local slopgate-agent can
-# register it with the cluster leader. Replace 10.x.x.x with your WG IP.
+# Cluster node: bind to WireGuard address so the slopgate-agent can register
+# with the leader. Standalone host: use 127.0.0.1 and drop the slopgate lines.
 Environment=LLAMACPP_HOST=10.0.0.2
 Environment=LLAMACPP_PORT=8080
 Environment=LLAMACPP_CONTEXT=131072
 Environment=LLAMACPP_CACHE_ROOT=/mnt/storage/slopcode/models
+# MTP on (cluster, no whisper co-resident):
+#Environment=LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-mtp-q4
+# MTP off (standalone with whisper, or any host where GPU1 < 2 GB free):
+#Environment=LLAMACPP_MODEL=/mnt/storage/slopcode/models/unsloth_Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
+#Environment=LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-q4
 Environment=LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-mtp-q4
 Environment=LLAMACPP_N_CPU_MOE=0
+# Use 512 if whisper-server runs on this host (co-resides on GPU0).
+Environment=LLAMACPP_UBATCH=1024
+# Host-RAM prompt cache: saves idle-slot KV so repeated or shared prefixes
+# restore instead of re-prefilling (cold 30K prompt ~124 s -> warm ~0.5 s on
+# the Mac leader). Uses host RAM, not VRAM, so size it to system memory; the
+# binary default is 8192 MiB. 0 disables. mailuefterl (94 GB host) runs 16384.
+Environment=LLAMACPP_CACHE_RAM=16384

@@ -52,6 +52,7 @@ opencode                                      # go
 | Meeting workflow (record, transcribe, notes) | [docs/meeting.md](docs/meeting.md) |
 | Voxtype (push-to-talk dictation)             | [docs/voxtype.md](docs/voxtype.md) |
 | USB bundle and chat-vs-coder swap            | [docs/usb-bundle.md](docs/usb-bundle.md) |
+| FIM autocomplete endpoint (Coder, 2nd port)  | [docs/fim-autocomplete.md](docs/fim-autocomplete.md) |
 | AI model share (NFS from faepmac1)           | [docs/ai-share.md](docs/ai-share.md) |
 
 ## Tests

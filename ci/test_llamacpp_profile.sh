@@ -369,17 +369,17 @@ JSON
 
   local platform_ok=1
   local context_expected=131072
-  grep -q '"model": "slopgate/qwen"' "${config_path}" || platform_ok=0
-  grep -q '"small_model": "slopgate/qwen"' "${config_path}" || platform_ok=0
+  grep -q '"model": "llamacpp/qwen"' "${config_path}" || platform_ok=0
+  grep -q '"small_model": "llamacpp/qwen"' "${config_path}" || platform_ok=0
   grep -q "\"context\": ${context_expected}" "${config_path}" || platform_ok=0
   grep -q 'http://127.0.0.1:8080/v1' "${config_path}" || platform_ok=0
-  grep -q '"slopgate"' "${config_path}" || platform_ok=0
+  grep -q '"llamacpp"' "${config_path}" || platform_ok=0
   grep -q '"qwen122b"' "${config_path}" || platform_ok=0
   grep -q '"qwen"' "${config_path}" || platform_ok=0
   grep -q '"qwen27b"' "${config_path}" || platform_ok=0
-  grep -q '"model": "slopgate/qwen"' "${config_path}" || platform_ok=0
-  grep -q '"model": "slopgate/qwen"' "${config_path}" || platform_ok=0
-  [[ -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || platform_ok=0
+  # local default must not carry the slopgate balancer's sticky affinity wiring
+  ! grep -q '"x-session-affinity"' "${config_path}" || platform_ok=0
+  [[ ! -f "${home_dir}/.config/slopgate/opencode-session-id" ]] || platform_ok=0
 
   if [[ "${common_ok}" == "1" && "${platform_ok}" == "1" ]]; then
     echo "PASS: OpenCode config matches the blessed profile for $(uname -s)"
@@ -506,6 +506,72 @@ PY
     echo "PASS: qwen3-coder-next-q4 resolves to the Qwen3-Coder-Next GGUF split"
   else
     echo "FAIL: qwen3-coder-next-q4 alias missing or wrong"
+    return 1
+  fi
+}
+
+test_models_nonmtp_q4_alias() {
+  echo "TEST: llamacpp_models.py non-MTP Q4 alias (A2000 profile)"
+  if python3 - "${REPO_ROOT}/scripts/llamacpp_models.py" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("llamacpp_models", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+model = mod.MODEL_BY_ALIAS["qwen3.6-35b-a3b-q4"]
+assert model.repo_id == "unsloth/Qwen3.6-35B-A3B-GGUF"
+assert any("Q4_K_XL" in p for p in model.include)
+assert "MTP" not in model.repo_id
+PY
+  then
+    echo "PASS: qwen3.6-35b-a3b-q4 resolves to non-MTP repo Q4_K_XL"
+  else
+    echo "FAIL: qwen3.6-35b-a3b-q4 alias missing or wrong"
+    return 1
+  fi
+}
+
+test_models_no_iq4() {
+  echo "TEST: llamacpp_models.py has no IQ4 aliases"
+  if python3 - "${REPO_ROOT}/scripts/llamacpp_models.py" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("llamacpp_models", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+iq4 = [a for a in mod.MODEL_BY_ALIAS if "iq4" in a.lower()]
+assert not iq4, f"IQ4 aliases still present: {iq4}"
+PY
+  then
+    echo "PASS: no IQ4 aliases in the model registry"
+  else
+    echo "FAIL: IQ4 aliases still present"
+    return 1
+  fi
+}
+
+test_models_q4ks_alias() {
+  echo "TEST: llamacpp_models.py Q4_K_S alias"
+  if python3 - "${REPO_ROOT}/scripts/llamacpp_models.py" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("llamacpp_models", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+model = mod.MODEL_BY_ALIAS["qwen3.6-35b-a3b-q4ks"]
+assert model.repo_id == "unsloth/Qwen3.6-35B-A3B-GGUF"
+assert any("Q4_K_S" in p for p in model.include)
+PY
+  then
+    echo "PASS: qwen3.6-35b-a3b-q4ks resolves to non-MTP repo Q4_K_S"
+  else
+    echo "FAIL: qwen3.6-35b-a3b-q4ks alias missing or wrong"
     return 1
   fi
 }
@@ -785,6 +851,9 @@ test_opencode_config_slopgate || FAILED=$((FAILED + 1))
 test_pi_config || FAILED=$((FAILED + 1))
 test_models_default_alias || FAILED=$((FAILED + 1))
 test_models_fim_alias || FAILED=$((FAILED + 1))
+test_models_q4ks_alias || FAILED=$((FAILED + 1))
+test_models_nonmtp_q4_alias || FAILED=$((FAILED + 1))
+test_models_no_iq4 || FAILED=$((FAILED + 1))
 test_setup_backend_selection || FAILED=$((FAILED + 1))
 test_install_linux_systemd_dry_run || FAILED=$((FAILED + 1))
 

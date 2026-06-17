@@ -50,6 +50,8 @@
 #                         for your hardware). Only used by *-mtp-* aliases.
 #   LLAMACPP_NO_MMAP      true to pass --no-mmap (useful when tensor overrides
 #                         place part of the model on CPU)
+#   LLAMACPP_TENSOR_SPLIT comma-separated GPU weight ratios, e.g. "0.55,0.45"
+#                         (passed to --tensor-split; default: unset = even split)
 #   LLAMACPP_FIT          explicit value passed to -fit (default: on; set to
 #                         "off" to disable VRAM-fit autosizer)
 #   LLAMACPP_CACHE_RAM    explicit value passed to --cache-ram; 0 disables the
@@ -206,6 +208,12 @@ elif [[ -n "${LLAMACPP_THREADS:-}" ]]; then
   THREADS_HTTP="${LLAMACPP_THREADS_HTTP:-}"
 fi
 REASONING_BUDGET="${LLAMACPP_REASONING_BUDGET:-$(default_reasoning_budget)}"
+# Per-host presence-penalty override. The blessed per-model presets keep
+# presence_penalty 0.0 (Qwen "precise coding"). Qwen3.x thinking models loop
+# on open-ended prompts at 0.0; the model card recommends 0-2 to suppress
+# endless repetition. Set this on a chat/agent host to raise it without
+# changing the cluster default. Empty = keep the per-model preset value.
+PRESENCE_PENALTY_OVERRIDE="${LLAMACPP_PRESENCE_PENALTY:-}"
 NO_MMAP="${LLAMACPP_NO_MMAP:-false}"
 FIT="${LLAMACPP_FIT:-on}"
 
@@ -389,6 +397,26 @@ case "${MODEL_ALIAS}" in
       --no-context-shift
     )
     ;;
+  gpt-oss-*)
+    # OpenAI gpt-oss (harmony response format). Per the llama.cpp gpt-oss
+    # guide (discussion #15396): temp 1.0, top-p 1.0, and NO repetition
+    # penalties (repeat-penalty 1.0 is neutral). top-k 40 is kept: the guide
+    # warns that disabling top-k adds CPU overhead and a small chance of
+    # sampling low-probability tokens. Reasoning rides the harmony "analysis"
+    # channel, so --reasoning-format none (not deepseek) and no token budget.
+    # No MTP head, so no --spec-type. Served GPU-only: the alias does not match
+    # the *a3b* CPU-MoE rule above, so no --n-cpu-moe is emitted.
+    SAMPLER_ARGS+=(
+      --temp 1.0
+      --top-p 1.0
+      --top-k 40
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --reasoning-format none
+      --no-context-shift
+    )
+    ;;
   qwen*)
     # Qwen3.6-35B-A3B "Thinking + precise coding" sampler — Qwen's own
     # recommendation for code-heavy agent loops (model card "precise coding
@@ -460,9 +488,25 @@ if [[ -n "${MMPROJ_PATH}" ]]; then
     CMD+=(--mmproj-offload)
   fi
 fi
+# Apply the presence-penalty override by replacing the preset's pair, so the
+# emitted command carries exactly one --presence-penalty.
+if [[ -n "${PRESENCE_PENALTY_OVERRIDE}" ]]; then
+  filtered=()
+  skip_next=0
+  for arg in "${SAMPLER_ARGS[@]}"; do
+    if [[ "${skip_next}" == "1" ]]; then skip_next=0; continue; fi
+    if [[ "${arg}" == "--presence-penalty" ]]; then skip_next=1; continue; fi
+    filtered+=("${arg}")
+  done
+  filtered+=(--presence-penalty "${PRESENCE_PENALTY_OVERRIDE}")
+  SAMPLER_ARGS=("${filtered[@]}")
+fi
 CMD+=("${SAMPLER_ARGS[@]}")
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   CMD+=(--n-cpu-moe "${N_CPU_MOE}")
+fi
+if [[ -n "${LLAMACPP_TENSOR_SPLIT:-}" ]]; then
+  CMD+=(--tensor-split "${LLAMACPP_TENSOR_SPLIT}")
 fi
 if [[ -n "${THREADS}" ]]; then
   CMD+=(--threads "${THREADS}" --threads-http "${THREADS_HTTP}")
@@ -482,6 +526,7 @@ echo "- batch:   b=${BATCH} ub=${UBATCH}"
 echo "- KV:      ${CACHE_TYPE_K} / ${CACHE_TYPE_V}"
 [[ "${NO_MMAP}" == "true" ]] && echo "- mmap:    off"
 [[ -n "${FIT}" ]] && echo "- fit:     ${FIT}"
+[[ -n "${LLAMACPP_TENSOR_SPLIT:-}" ]] && echo "- tensor-split: ${LLAMACPP_TENSOR_SPLIT}"
 [[ -n "${CACHE_RAM}" ]] && echo "- cache-ram: ${CACHE_RAM}"
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   echo "- n-cpu-moe: ${N_CPU_MOE} (first N expert layers on CPU; rest on GPU)"
@@ -492,6 +537,7 @@ if [[ -n "${THREADS}" ]]; then
   echo "- threads: ${THREADS} compute / ${THREADS_HTTP} http"
 fi
 echo "- reasoning budget: ${REASONING_BUDGET}"
+[[ -n "${PRESENCE_PENALTY_OVERRIDE}" ]] && echo "- presence-penalty override: ${PRESENCE_PENALTY_OVERRIDE}"
 [[ -n "${INSTANCE}" ]] && echo "- instance: ${INSTANCE}"
 
 if [[ "${DRY_RUN}" == "true" ]]; then

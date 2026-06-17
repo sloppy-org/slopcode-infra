@@ -133,6 +133,15 @@ sys.exit(1)
   [[ -n "${binary_dir}" ]] || die "llama-server not found in downloaded archive"
   cp -R "${binary_dir}/." "${LLAMACPP_HOME}/"
 
+  # macOS SIGKILLs downloaded Mach-O binaries that carry no valid signature
+  # (the ggml-org release assets are unsigned). Strip quarantine xattrs and
+  # ad-hoc re-sign so llama-server and its dylibs run instead of dying with
+  # "Killed: 9".
+  if [[ "${PLATFORM}" == "mac" ]] && have codesign; then
+    xattr -c "${LLAMACPP_HOME}"/llama-* "${LLAMACPP_HOME}"/*.dylib 2>/dev/null || true
+    codesign --force --sign - "${LLAMACPP_HOME}"/llama-* "${LLAMACPP_HOME}"/*.dylib 2>/dev/null || true
+  fi
+
   printf '%s\n' "${TAG}" > "${LLAMACPP_HOME}/VERSION"
 }
 

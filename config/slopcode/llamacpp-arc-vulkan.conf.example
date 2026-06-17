@@ -1,0 +1,22 @@
+# Intel Arc iGPU profile (Vulkan, shared system RAM).
+#
+# Copy to ~/.config/systemd/user/slopcode-llamacpp.service.d/arc.conf
+# then:  systemctl --user daemon-reload && systemctl --user restart slopcode-llamacpp
+#
+# Targets: Lunar Lake (Arc 140V), Meteor Lake (Xe-LPG), discrete B-series.
+# Needs Shared GPU Memory Override at 32 GB on Windows (Intel Graphics
+# Software -> Performance).
+#
+# The GGML_VK_* vars disable cooperative matrix (TDR on Intel drivers)
+# and F16 accumulators (NaN on Xe2). -b 512 keeps prefill dispatches
+# under the TDR threshold. On Windows, also import fix-tdr.reg (admin).
+[Service]
+Environment=LLAMACPP_MODEL_ALIAS=qwen3.6-35b-a3b-q4
+Environment=LLAMACPP_CONTEXT=131072
+Environment=LLAMACPP_N_CPU_MOE=0
+Environment=LLAMACPP_UBATCH=512
+Environment=LLAMACPP_BATCH=512
+Environment=LLAMACPP_NO_MMAP=true
+Environment=GGML_VK_DISABLE_COOPMAT=1
+Environment=GGML_VK_DISABLE_COOPMAT2=1
+Environment=GGML_VK_DISABLE_F16=1
