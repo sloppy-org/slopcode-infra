@@ -1,2 +1,4 @@
 label	model	prompt_tokens	ttft_ms	prefill_tps	decode_tps
 M3 / MLX / mlx-lm	pipenetwork/MiniMax-M3-MLX-mixed-3_6bit	3847	14431	267	10.0
+DeepSeek-V4-Flash / GGUF / antirez-llama.cpp	deepseek-v4-flash	3675	20329	181	22.0
+M3 / MLX / Rapid-MLX	pipenetwork/MiniMax-M3-MLX-mixed-3_6bit	3881	14470	268	22.4

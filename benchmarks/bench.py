@@ -58,7 +58,10 @@ def run(text):
             prompt_tok = u.get("prompt_tokens", prompt_tok)
             comp_tok = u.get("completion_tokens", comp_tok)
         ch = (o.get("choices") or [{}])[0]
-        piece = ch.get("delta", {}).get("content") or ch.get("text")
+        dl = ch.get("delta", {})
+        # Count reasoning tokens too: thinking models (DeepSeek, MiniMax M3)
+        # stream into reasoning_content before/instead of content.
+        piece = dl.get("content") or dl.get("reasoning_content") or ch.get("text")
         if piece:
             if ttft is None:
                 ttft = time.time() - t0
