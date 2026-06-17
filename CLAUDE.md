@@ -414,16 +414,20 @@ see `scripts/pi_install.sh`), or anything that auto-downloads a model family
 beyond the manual alias list in `scripts/llamacpp_models.py`. If one becomes
 useful again, add it deliberately and update this file.
 
-LM Studio, vLLM, and the MLX engines (mlx-lm, vMLX, Rapid-MLX) are no longer on
-this list. On the single-model Mac the goal is the fastest runtime for one large
-model, so any backend is fair game to evaluate; `benchmarks/` records the
-numbers. They stay out of the USB bundle and off the followers, which remain
-llama.cpp-only. Note the hard constraint that drove these tests: the newest
-flagships ship novel attention (MiniMax M3 MSA, DeepSeek V4 CSA/HCA), so a given
-build only runs where its architecture is implemented — `minimax_m3` runs on
-mlx-lm (vendored model class) but not LM Studio/vLLM; `deepseek_v4` runs on
-vMLX/Rapid-MLX and antirez's llama.cpp fork but not stock mlx-lm, LM Studio, or
-mainline llama.cpp. See "MLX runtime" and `benchmarks/README.md`.
+On the single-model Mac the goal is the fastest runtime for one large model, so
+backends were benchmarked head to head; `benchmarks/` records the numbers. The
+USB bundle and the followers stay llama.cpp-only.
+
+Tested verdict (do not relitigate): **use `mlx-lm`, `Rapid-MLX`, or `llama.cpp`
+fork builds.** **Do not use vMLX, LM Studio, or vLLM** — none can load the
+current flagships. The newest models ship novel attention (MiniMax M3 MSA,
+DeepSeek V4 CSA/HCA), so a build only runs where its architecture is
+implemented: `minimax_m3` loads on mlx-lm and Rapid-MLX (vendored model class
+copied into their `mlx_lm/models/`) but not LM Studio / vLLM / vMLX (signed app,
+cannot patch); `deepseek_v4` loads on Rapid-MLX (`mlx-community/...-4bit`) and
+antirez's llama.cpp fork but not stock mlx-lm, LM Studio, vLLM, mainline
+llama.cpp, or vMLX (rejects every available build). vMLX was uninstalled after
+testing. See "MLX runtime" and `benchmarks/README.md`.
 
 ## Distribution model
 
