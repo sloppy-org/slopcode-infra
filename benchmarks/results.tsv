@@ -1,0 +1,2 @@
+label	model	prompt_tokens	ttft_ms	prefill_tps	decode_tps
+M3 / MLX / mlx-lm	pipenetwork/MiniMax-M3-MLX-mixed-3_6bit	3847	14431	267	10.0

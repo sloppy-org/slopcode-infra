@@ -401,8 +401,7 @@ binary.
 
 ## Don't reintroduce
 
-Never add: LM Studio, vLLM,
-`security_harden.sh`, dual local/fast instances, a separate FIM sidecar on a
+Never add: `security_harden.sh`, dual local/fast instances, a separate FIM sidecar on a
 second port, the Qwen3-Coder swap profile (removed 2026-05-22; chat is the
 only model served), the macOS Qwen 27B dense companion as a default install,
 intentee/paddler v2+ (the embedded-llama.cpp rewrite; slopgate stays on the
@@ -415,8 +414,16 @@ see `scripts/pi_install.sh`), or anything that auto-downloads a model family
 beyond the manual alias list in `scripts/llamacpp_models.py`. If one becomes
 useful again, add it deliberately and update this file.
 
-MLX-LM is no longer on this list: `mlx_lm.server` is an accepted alternative
-runtime for the single-model Mac. See "MLX runtime".
+LM Studio, vLLM, and the MLX engines (mlx-lm, vMLX, Rapid-MLX) are no longer on
+this list. On the single-model Mac the goal is the fastest runtime for one large
+model, so any backend is fair game to evaluate; `benchmarks/` records the
+numbers. They stay out of the USB bundle and off the followers, which remain
+llama.cpp-only. Note the hard constraint that drove these tests: the newest
+flagships ship novel attention (MiniMax M3 MSA, DeepSeek V4 CSA/HCA), so a given
+build only runs where its architecture is implemented — `minimax_m3` runs on
+mlx-lm (vendored model class) but not LM Studio/vLLM; `deepseek_v4` runs on
+vMLX/Rapid-MLX and antirez's llama.cpp fork but not stock mlx-lm, LM Studio, or
+mainline llama.cpp. See "MLX runtime" and `benchmarks/README.md`.
 
 ## Distribution model
 
