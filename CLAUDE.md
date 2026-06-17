@@ -17,6 +17,13 @@ One blessed local coding stack, nothing else:
 - **Harness**: `opencode` CLI, title generation disabled, reasoning on.
 - **Optional load balancer**: `sloppy-org/slopgate` (fork of distantmagic/
   paddler v1.x) for multi-host deployments. See "Multi-host (slopgate)" below.
+- **Alternative runtime (MLX, Apple silicon)**: on a Mac dedicated to one large
+  model, `mlx_lm.server` (`ml-explore/mlx-lm`) is an accepted substitute for
+  `llama-server`. MLX serves MoE builds llama.cpp cannot yet run well (MiniMax
+  M3, DeepSeek V4-Flash) and fronts slopgate as a static-slot peer, so the
+  proxy and followers are unchanged. Set up with `setup_mlx.sh`, launch with
+  `server_start_mlx.sh`, models in `mlx_models.py`. Single exclusive model per
+  host, not part of the USB bundle. See "MLX runtime" below.
 
 The launcher binds `0.0.0.0:8080` by default. When a slopgate balancer or
 agent unit is locally installed, the launcher flips to `127.0.0.1:8081` so the
@@ -638,6 +645,81 @@ node's local slopgate-agent reads `/slots` from its own loopback/WG-bound
 llama-server and reports headroom up via `/status_update` — nothing
 content-bearing crosses the wire.
 
+## MLX runtime
+
+llama.cpp on Metal cannot yet run the newest sparse-MoE flagships (MiniMax M3,
+DeepSeek V4-Flash) well, so a Mac dedicated to one of them serves it through
+`mlx_lm.server` instead of `llama-server`. This is a single-model host: one
+large MLX model, one slot, fronted by slopgate. It replaces the multi-model
+Qwen layout on that one box; every other host stays on llama.cpp.
+
+**Why MLX, not GGUF.** These models either have no usable Metal GGUF or run far
+below their MLX speed there. mlx-lm carries the `minimax_m3` / DeepSeek model
+classes and runs them as native MLX. The cost is a Python venv and a model
+format that only Apple silicon uses — acceptable on a host whose whole job is
+this one model.
+
+**Topology.** `mlx_lm.server` binds `127.0.0.1:8090` with prompt and decode
+concurrency 1 (one active request). A slopgate agent with `--slots 1` fronts it
+as a static-slot peer — the same path that fronts the OpenAI-compatible
+academic-ai / duck.ai daemons (`TestEndToEnd_StaticSlotFrontsOpenAIDaemon`), so
+the balancer forwards completions to `--external-llamacpp-addr` without probing
+`/slots`. No slopgate code change, no balancer change, no follower change: the
+MLX box is just another peer advertising its alias.
+
+**Scripts (macOS, host-local — not in the USB bundle).**
+
+```
+scripts/
+  setup_mlx.sh                    uv venv ~/.venvs/mlx-lm + mlx-lm (git main) +
+                                  hf CLI; copies the minimax_m3 model class out
+                                  of the model snapshot if mlx-lm lacks it.
+  mlx_models.py                   MLX model registry (default minimax-m3-mixed,
+                                  optional minimax-m3-4bit, deepseek-v4-flash).
+                                  prefetch/resolve/inventory + agent-env/sampler
+                                  for the launcher and installer.
+  server_start_mlx.sh             single-slot mlx_lm.server launcher; MLX_EXEC=
+                                  true execs it in the foreground for launchd.
+  install_mac_mlx_launchagent.sh  writes com.slopcode.mlx (server) +
+                                  com.slopcode.slopgate-agent-mlx (static-slot
+                                  agent). MLX_EXCLUSIVE=true also boots out the
+                                  local llama.cpp + qwen agents (the cutover).
+  mlx_switch.sh                   flip the active model: minimax | deepseek.
+```
+
+**Default model: `pipenetwork/MiniMax-M3-MLX-mixed-3_6bit` (~178 GiB).** Experts
+at 3-bit, attention/router/embeddings higher — the best quality-per-GiB M3
+build. With a 128K KV cache (~15 GiB at one slot) and ~8-15 GiB MLX/Metal
+overhead the working set lands near 200-215 GiB, inside the 248 GiB wired
+limit. The plain 4-bit build (`minimax-m3-4bit`, ~240 GiB) does not leave that
+headroom and is kept only as a fallback alias. `deepseek-v4-flash`
+(`Deviad/DeepSeek-V4-Flash-MLX-Q4Q8`, ~173 GiB) is the switchable alternate;
+exactly one model is active at a time.
+
+**Wired-memory limit.** MLX holds weights in wired GPU memory, so the host
+raises `iogpu.wired_limit_mb` to `253952` (248 GiB, leaving ~8 GiB for macOS).
+That is a system-level (root) setting made permanent by the LaunchDaemon
+`/Library/LaunchDaemons/com.slopcode.iogpu-wired-limit.plist`, which re-applies
+it at every boot. It is separate from the user launchd agents above and is the
+only part of this stack that needs root.
+
+**KV cap caveat.** This mlx-lm has no `--max-kv-size`; the KV cache grows with
+context. One slot plus the wired limit keeps a 128K session in budget, but an
+unbounded session is the documented `mlx_lm.server` OOM/panic risk
+(ml-explore/mlx-lm#883). The launcher caps per-request output with
+`MLX_MAX_TOKENS` (default 32768); keep the agent harness context bounded.
+
+**Operate.**
+
+```bash
+scripts/setup_mlx.sh                       # venv + mlx-lm
+python3 scripts/mlx_models.py prefetch     # download the default model (~178 GiB)
+scripts/server_start_mlx.sh                # foreground smoke test
+scripts/install_mac_mlx_launchagent.sh     # install server + static-slot agent
+MLX_EXCLUSIVE=true scripts/install_mac_mlx_launchagent.sh   # cutover off Qwen
+scripts/mlx_switch.sh deepseek             # swap the active model
+```
+
 ## Whisper transcription server
 
 `whisper.cpp` runs alongside llama-server on the same box, exposing an
@@ -697,7 +779,7 @@ that isn't on PATH.
 
 ## Don't reintroduce
 
-Explicitly out of scope — do not add LM Studio, vLLM, vLLM-MLX, MLX-LM, oMLX,
+Explicitly out of scope — do not add LM Studio, vLLM,
 `security_harden.sh`, dual-instance local/fast servers, a separate FIM
 autocomplete sidecar on a second port, the dedicated Qwen3-Coder swap
 profile (chat is the only model the repo and bundle now serve; coder
