@@ -14,7 +14,7 @@ TTFT is the cold-prompt value (prompt-cache miss). See `README.md` for method.
 | MiniMax M3 | GGUF | llama.cpp (PR #24523) | UD-IQ4_XS | 18.3 s | 210 | 21.7 |
 | MiniMax M3 | MLX | mlx-lm | mixed-3/6bit | 14.4 s | 267 | 10.0 |
 
-### Crossed out — backend cannot run the model (do not use)
+### Crossed out: backend cannot run the model (do not use)
 
 | Model | Backend | Why |
 |-------|---------|-----|
@@ -37,10 +37,29 @@ TTFT is the cold-prompt value (prompt-cache miss). See `README.md` for method.
 - **llama.cpp ties Rapid-MLX on M3** (21.7 vs 22.4) and is the production pick:
   mature, integrates with slopgate as a normal probing agent, no quality
   caveat. **Wired as the opencode default** (MiniMax M3 `UD-IQ4_XS`).
-- **Stock mlx-lm is the slow outlier** (M3 10.0 tok/s) — its MoE decode loop
+- **Stock mlx-lm is the slow outlier** (M3 10.0 tok/s): its MoE decode loop
   leaves ~2.2x on the table vs Rapid-MLX / llama.cpp on the same weights.
 - DeepSeek V4-Flash (13B active) is faster than MiniMax M3 (23B active) on every
   shared backend; M3's dense-attention fallback also makes its prefill slower.
+
+## Why MLX is removed from this stack
+
+These wins are raw throughput. Two findings retire MLX serving here regardless:
+
+- **It panics the whole machine.** mlx-lm and Rapid-MLX hold weights in wired,
+  non-pageable memory. MiniMax M3 (178 GiB) sits within ~8 GiB of the 248 GiB
+  wired limit, so a growing prompt cache or a second model load crosses the
+  Apple Silicon AMCC threshold and kernel-panics the host, not just the process.
+  It took down faepmac1 in production while it served other work. llama.cpp
+  mmaps the GGUF, so the OS reclaims clean pages under pressure instead.
+- **It cannot drive an agent on DeepSeek V4-Flash.** The model emits tool calls
+  in its own DSML format. Neither mlx-lm nor Rapid-MLX parses it, so the server
+  drops the tools array and the coding agent makes zero edits. Only vLLM and
+  SGLang ship the `deepseek_v4` parser, and both need CUDA. On Apple silicon no
+  backend does DeepSeek V4-Flash tool calls today.
+
+Serve these flagships with llama.cpp, one model per host. The MLX engines,
+launchd services, and weights were removed from the leader.
 
 ## Reproduction gotchas
 
