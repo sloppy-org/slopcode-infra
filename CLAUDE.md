@@ -82,6 +82,11 @@ scripts/
   server_start_qwen27b.sh       27B dense special mode (slopgate / strong hardware)
   server_stop_llamacpp.sh
   serve_switch.sh               dual-GPU 35b<->27b model switch (see below)
+  server_start_glm_rpc.sh       GLM-5.2 main node: serve the UD-Q4_K_S split across
+                                two Macs via llama.cpp RPC (docs/glm-rpc-thunderbolt.md)
+  server_start_rpc_worker.sh    rpc-server worker (faepmac2), binds the TB5 bridge only
+  tb5_bridge_setup.sh           static IP on the macOS Thunderbolt Bridge (10.78.5.0/24)
+  install_mac_wired_limit.sh    raise+persist iogpu.wired_limit_mb LaunchDaemon (root)
   tts_swap.sh                   stop llama-server to free GPU for ad-hoc Qwen3-TTS, then restore
   install_linux_systemd.sh      write+enable the user service; enable-linger
   install_mac_launchagents.sh   macOS launchd user agent (single 35B-A3B)
@@ -115,6 +120,7 @@ ci/
   test_llamacpp_profile.sh      launcher dry-run + opencode config assertions
   test_slopgate_profile.sh      install_slopgate_{leader,follower} dry-run + gitignore
   test_serve_switch.sh          serve_switch.sh dry-run round-trips 35b<->27b
+  test_glm_rpc_profile.sh       glm_rpc / rpc_worker / tb5_bridge / wired_limit dry-runs
   test_server_health.sh         pure-stdlib mock server
   mock_server.py
 ```
@@ -237,6 +243,26 @@ crashes flash-attention VMM allocs even with whisper gone, so the profile uses
 the alias without `-mtp-`. Profiles live in
 `~/.config/slopcode/llama-profiles/{35b,27b}.conf` and the script in
 `~/.local/bin/llama-swap`; all three are host-local and untracked.
+
+## GLM-5.2 over Thunderbolt RPC (faepmac1 + faepmac2)
+
+GLM-5.2 (754B-A40B MoE, MIT, 1M ctx) does not fit one 256 GB Mac at Q4, so the
+two M3 Ultra Studios run it as one model with llama.cpp RPC: faepmac1 (main)
+owns the GGUF on `/Volumes/AI`, holds half the weights in Metal, and streams the
+other half to faepmac2 (`rpc-server`) over a direct Thunderbolt-5 bridge
+(`10.78.5.0/24`, distinct from the WG mesh). UD-Q4_K_S (~436 GB) is the largest
+Q4 that fits both the shared APFS container and the 2x248 GiB wired budget with a
+single 128K q8_0 KV slot; Q4_K_M/XL overrun it. The RPC protocol is
+unauthenticated, so the worker binds the point-to-point bridge address only.
+
+Manual, on-demand profile (alias `glm-5.2`, served as `glm`); not a service, not
+in the USB bundle, and mutually exclusive with the host's Qwen llama-servers
+(GLM needs nearly all wired memory). The wired-limit raise
+(`iogpu.wired_limit_mb=253952`) is the same LaunchDaemon the MLX host uses; it is
+the one root-level part of this profile. Bring-up, sizing, and the four scripts
+(`install_mac_wired_limit.sh`, `tb5_bridge_setup.sh`, `server_start_rpc_worker.sh`,
+`server_start_glm_rpc.sh`) are in `docs/glm-rpc-thunderbolt.md`. The generic
+launcher gained an `LLAMACPP_RPC` (`--rpc`) passthrough.
 
 ## Multi-host (slopgate)
 

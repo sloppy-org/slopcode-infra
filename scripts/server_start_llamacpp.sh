@@ -52,6 +52,14 @@
 #                         place part of the model on CPU)
 #   LLAMACPP_TENSOR_SPLIT comma-separated GPU weight ratios, e.g. "0.55,0.45"
 #                         (passed to --tensor-split; default: unset = even split)
+#   LLAMACPP_RPC          comma-separated RPC worker endpoints (host:port) to
+#                         offload part of the model to over the network, e.g.
+#                         "10.78.5.2:50052" (passed to --rpc; default: unset =
+#                         single-host). Used to span a model across two Macs
+#                         over a Thunderbolt-5 bridge. With one remote worker the
+#                         device order is local-Metal,remote, so a matching
+#                         --tensor-split has two entries (e.g. "0.5,0.5").
+#                         See docs/glm-rpc-thunderbolt.md.
 #   LLAMACPP_FIT          explicit value passed to -fit (default: on; set to
 #                         "off" to disable VRAM-fit autosizer)
 #   LLAMACPP_CACHE_RAM    explicit value passed to --cache-ram; 0 disables the
@@ -345,6 +353,20 @@ case "${MODEL_ALIAS}" in
       --no-context-shift
     )
     ;;
+  glm-5*)
+    # GLM-5.x (Z.ai): official guidance is temp 1.0, top-p 0.95, and to tune
+    # only one of the two. Terminal-Bench 2.1 run with Claude Code used temp
+    # 1.0 / top-p 0.95; that is the agentic-coding setting we serve. The older
+    # generic glm-* preset below uses temp 0.6, which is too cold for GLM-5.x.
+    SAMPLER_ARGS+=(
+      --temp 1.0
+      --top-p 0.95
+      --min-p 0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --no-context-shift
+    )
+    ;;
   kimi-*|mimo-*|glm-*|trinity-*)
     SAMPLER_ARGS+=(
       --temp 0.6
@@ -508,6 +530,9 @@ fi
 if [[ -n "${LLAMACPP_TENSOR_SPLIT:-}" ]]; then
   CMD+=(--tensor-split "${LLAMACPP_TENSOR_SPLIT}")
 fi
+if [[ -n "${LLAMACPP_RPC:-}" ]]; then
+  CMD+=(--rpc "${LLAMACPP_RPC}")
+fi
 if [[ -n "${THREADS}" ]]; then
   CMD+=(--threads "${THREADS}" --threads-http "${THREADS_HTTP}")
 fi
@@ -527,6 +552,7 @@ echo "- KV:      ${CACHE_TYPE_K} / ${CACHE_TYPE_V}"
 [[ "${NO_MMAP}" == "true" ]] && echo "- mmap:    off"
 [[ -n "${FIT}" ]] && echo "- fit:     ${FIT}"
 [[ -n "${LLAMACPP_TENSOR_SPLIT:-}" ]] && echo "- tensor-split: ${LLAMACPP_TENSOR_SPLIT}"
+[[ -n "${LLAMACPP_RPC:-}" ]] && echo "- rpc workers: ${LLAMACPP_RPC}"
 [[ -n "${CACHE_RAM}" ]] && echo "- cache-ram: ${CACHE_RAM}"
 if [[ -n "${N_CPU_MOE}" && "${N_CPU_MOE}" != "0" ]]; then
   echo "- n-cpu-moe: ${N_CPU_MOE} (first N expert layers on CPU; rest on GPU)"

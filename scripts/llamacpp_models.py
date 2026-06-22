@@ -235,6 +235,18 @@ OPTIONAL_SPECS: tuple[ModelSpec, ...] = (
         "unsloth/GLM-5.1-GGUF",
         ("UD-Q3_K_XL/*.gguf", "*UD-Q3_K_XL*.gguf"),
     ),
+    # GLM-5.2 (zai-org, 754B-A40B MoE, MIT, 1M ctx) served across two M3 Ultra
+    # 256 GB Mac Studios via llama.cpp RPC over a Thunderbolt-5 bridge. UD-Q4_K_S
+    # (~436 GB) is the largest Q4 that fits both the shared /Volumes/AI APFS
+    # container and the 2x248 GiB wired budget once a single 128K KV slot is
+    # added; Q4_K_M/XL (466/467 GB) overrun the runtime budget. The GGUF lives
+    # only on the main node (faepmac1); the RPC worker streams its tensor shard
+    # over the wire. See docs/glm-rpc-thunderbolt.md.
+    ModelSpec(
+        "glm-5.2",
+        "unsloth/GLM-5.2-GGUF",
+        ("UD-Q4_K_S/*.gguf", "*UD-Q4_K_S*.gguf"),
+    ),
     ModelSpec(
         "mistral-large-3-675b",
         "bartowski/mistralai_Mistral-Large-3-675B-Instruct-2512-GGUF",
