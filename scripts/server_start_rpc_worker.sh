@@ -13,6 +13,13 @@
 #   RPC_WORKER_PORT   port to bind (default 50052)
 #   RPC_WORKER_CACHE  true to pass -c (local tensor cache, skips re-transfer on
 #                     reconnect; default true)
+#   RPC_WORKER_DEVICE expose only these ggml devices (-d), comma-separated. A
+#                     bare rpc-server advertises BOTH its Metal and its 0-MiB
+#                     BLAS device; the main node then sees two RPC devices and a
+#                     two-value --tensor-split mismaps onto the 0-MiB one and
+#                     aborts ("Remote RPC server crashed or returned malformed
+#                     response"). Pin to the Metal device (e.g. MTL0) so the main
+#                     sees exactly one RPC GPU.
 #   RPC_WORKER_THREADS  CPU device threads (default: llama.cpp auto)
 #   RPC_WORKER_EXEC   true to exec in the foreground (for launchd ExecStart);
 #                     skips the pid/log/backgrounding path
@@ -46,6 +53,9 @@ if [[ "${RPC_WORKER_CACHE:-true}" == "true" ]]; then
 fi
 if [[ -n "${RPC_WORKER_THREADS:-}" ]]; then
   CMD+=(-t "${RPC_WORKER_THREADS}")
+fi
+if [[ -n "${RPC_WORKER_DEVICE:-}" ]]; then
+  CMD+=(-d "${RPC_WORKER_DEVICE}")
 fi
 
 echo "starting llama.cpp rpc-server worker"

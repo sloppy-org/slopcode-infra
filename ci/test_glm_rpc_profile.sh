@@ -158,6 +158,31 @@ PY
   fi
 }
 
+test_bench_rpc_dry_run() {
+  echo "TEST: bench_rpc_glm emits llama-bench with --rpc + split + pp/tg sweep"
+  local out
+  out="$(
+    BENCH_MODEL="${TMPDIR}/glm.gguf" \
+    BENCH_RPC="127.0.0.1:50052" \
+    LLAMACPP_HOME="${TMPDIR}/.local/llama.cpp" \
+    BENCH_RPC_DRY_RUN=true \
+    bash "${REPO_ROOT}/scripts/bench_rpc_glm.sh"
+  )"
+  if [[ "${out}" == *"/llama-bench "* && \
+        "${out}" == *"--rpc 127.0.0.1:50052"* && \
+        "${out}" == *"-ts 0.55"*"0.45"* && \
+        "${out}" == *"-p 512"*"4096"* && \
+        "${out}" == *"-n 128"* && \
+        "${out}" == *"-ctk q8_0"* ]]; then
+    echo "PASS: llama-bench RPC sweep command well-formed"
+  else
+    echo "FAIL: bench_rpc_glm dry-run output unexpected"
+    echo "${out}"
+    return 1
+  fi
+}
+
+bash -n "${REPO_ROOT}/scripts/bench_rpc_glm.sh"          || { echo "FAIL: bench_rpc_glm.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/server_start_glm_rpc.sh"   || { echo "FAIL: server_start_glm_rpc.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/server_start_rpc_worker.sh" || { echo "FAIL: server_start_rpc_worker.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/tb5_bridge_setup.sh"        || { echo "FAIL: tb5_bridge_setup.sh syntax"; exit 1; }
@@ -169,6 +194,7 @@ test_rpc_worker_dry_run || FAILED=$((FAILED + 1))
 test_tb5_bridge_addresses || FAILED=$((FAILED + 1))
 test_wired_limit_plist || FAILED=$((FAILED + 1))
 test_glm52_registry_alias || FAILED=$((FAILED + 1))
+test_bench_rpc_dry_run || FAILED=$((FAILED + 1))
 
 if [[ "${FAILED}" -gt 0 ]]; then
   echo "${FAILED} test(s) failed"
