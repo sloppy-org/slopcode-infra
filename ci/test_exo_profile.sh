@@ -9,8 +9,21 @@ source "${REPO_ROOT}/scripts/_common.sh"
 FAILED=0
 is_mac() { [[ "$(uname -s)" == "Darwin" ]]; }
 
-bash -n "${REPO_ROOT}/scripts/setup_exo.sh"        || { echo "FAIL: setup_exo.sh syntax"; exit 1; }
-bash -n "${REPO_ROOT}/scripts/server_start_exo.sh" || { echo "FAIL: server_start_exo.sh syntax"; exit 1; }
+bash -n "${REPO_ROOT}/scripts/setup_exo.sh"          || { echo "FAIL: setup_exo.sh syntax"; exit 1; }
+bash -n "${REPO_ROOT}/scripts/server_start_exo.sh"   || { echo "FAIL: server_start_exo.sh syntax"; exit 1; }
+bash -n "${REPO_ROOT}/scripts/bench_mlx_llamacpp.sh" || { echo "FAIL: bench_mlx_llamacpp.sh syntax"; exit 1; }
+
+test_bench_dry() {
+  echo "TEST: bench_mlx_llamacpp dry-run names both engines"
+  if ! is_mac; then echo "SKIP (macOS-only)"; return 0; fi
+  local out
+  out="$(BENCH_DRY_RUN=true bash "${REPO_ROOT}/scripts/bench_mlx_llamacpp.sh")"
+  if [[ "${out}" == *"mlx_lm.generate"* && "${out}" == *"llama-bench"* ]]; then
+    echo "PASS"
+  else
+    echo "FAIL"; echo "${out}"; return 1
+  fi
+}
 
 test_start_dry() {
   echo "TEST: server_start_exo dry-run emits 'uv run exo' on :52415"
@@ -38,6 +51,7 @@ test_setup_dry() {
 
 test_start_dry  || FAILED=$((FAILED + 1))
 test_setup_dry  || FAILED=$((FAILED + 1))
+test_bench_dry  || FAILED=$((FAILED + 1))
 
 if [[ "${FAILED}" -gt 0 ]]; then echo "${FAILED} test(s) failed"; exit 1; fi
 echo "all exo profile tests passed"

@@ -51,3 +51,35 @@ the safest smoke test. Point exo at already-downloaded models with
 - Wi-Fi works but is slow. Use wired Ethernet between the Macs.
 - A stale Thunderbolt-bridge or VPN interface can confuse discovery; remove it
   for the Ethernet test.
+
+## Known blocker: the MLX backend does not install (2026-06)
+
+mlx is an optional extra (`exo[mlx]`); a plain `uv sync` installs only exo core.
+Requesting the backend with `uv sync --extra mlx` fails on a current-Xcode host.
+exo pins `mlx==0.32.0`, which has no PyPI wheel for macOS arm64 (cp312 or
+cp313), so uv builds it from the sdist, and its Metal kernels fail to compile
+under Xcode 26.5 (hadamard, gather_axis, reduce_utils; cmake Error 2). exo core
+installs and `exo --help` runs, but inference does not. The path forward is an
+exo release that pins an mlx version with a macOS wheel; track exo before
+standing up the cluster.
+
+Provisioning note: Homebrew's `rustup` formula is keg-only and ships no
+`rustup-init`, so `setup_exo.sh` adds `$(brew --prefix rustup)/bin` to PATH
+before `rustup toolchain install nightly`.
+
+## Measured: Qwen3.6-27B, MLX vs llama.cpp (single faepmac1 GPU, cold)
+
+From `scripts/bench_mlx_llamacpp.sh`. MLX uses mlx_lm 0.31.3 (one minor below
+exo's pinned mlx, since 0.32.0 does not install here); llama.cpp uses UD-Q4_K_XL
+with flash attention and q8_0 KV, no MTP.
+
+| Engine | Prefill | Decode |
+| --- | --- | --- |
+| MLX (mlx_lm 0.31.3, 4-bit, f16 KV) | 242 tok/s | 39 tok/s |
+| llama.cpp (UD-Q4_K_XL, q8_0 KV) | 300 tok/s | 24 tok/s |
+
+For a 27B dense model on one GPU, llama.cpp prefill leads and MLX decode leads.
+The production llama.cpp profile adds MTP, which roughly doubles its decode to
+~42 tok/s and erases the MLX decode lead. The large MLX prefill advantage seen
+elsewhere belongs to the big sparse-MoE models (GLM-5.2), not a 27B dense model
+run single-node.

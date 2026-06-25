@@ -43,6 +43,9 @@ have brew || die "Homebrew not found or not on PATH. exo needs uv, node, and rus
 for pkg in uv node rustup; do
   if ! brew list "${pkg}" >/dev/null 2>&1; then run brew install "${pkg}"; fi
 done
+# Homebrew's rustup formula is keg-only and ships no rustup-init, so its bin is
+# not symlinked onto PATH; add it before bootstrapping the nightly toolchain.
+export PATH="$(brew --prefix rustup 2>/dev/null)/bin:${HOME}/.cargo/bin:${PATH}"
 run rustup toolchain install nightly
 
 # 3. Clone or update exo.
@@ -55,8 +58,17 @@ fi
 # 4. Dashboard build (README marks this required before running exo).
 run bash -c "cd '${EXO_DIR}/dashboard' && npm install && npm run build"
 
-# 5. Prime the uv env so the first launch does not stall resolving mlx wheels.
-run bash -c "cd '${EXO_DIR}' && uv sync"
+# 5. Python env + MLX backend. mlx is an OPTIONAL extra (exo[mlx]); a plain
+#    `uv sync` installs only exo core, so the backend must be requested. Pin
+#    Python to 3.13, where exo's other deps have wheels.
+#
+#    KNOWN BLOCKER (2026-06): exo pins mlx==0.32.0, which has no PyPI wheel for
+#    macOS arm64 (cp312 or cp313). uv falls back to the sdist, whose Metal
+#    kernels fail to compile under Xcode 26.5 (hadamard / gather_axis /
+#    reduce_utils, cmake Error 2). Until exo bumps its mlx pin to a wheel-having
+#    release, the backend does not install on a current-Xcode host: exo core
+#    installs, inference does not. See docs/exo-cluster.md.
+run bash -c "cd '${EXO_DIR}' && uv venv --python 3.13 && uv sync --extra mlx"
 
 echo
 echo "exo node provisioned at ${EXO_DIR}."
