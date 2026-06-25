@@ -32,11 +32,19 @@ DRY="${EXO_SETUP_DRY_RUN:-false}"
 
 run() { echo "+ $*"; [[ "${DRY}" == "true" ]] || "$@"; }
 
-# 1. Metal toolchain: warn only (mlx wheels usually run without `xcrun metal`).
-if ! xcrun -f metal >/dev/null 2>&1; then
-  warn "no Metal compiler (xcrun metal). exo lists Xcode/Metal toolchain as a prereq;"
-  warn "  if mlx fails to run on this host, install full Xcode from the App Store."
+# 1. Metal toolchain. On macOS exo[mlx] compiles a custom mlx git fork from
+#    source (the JACCL/RDMA fork), so the Metal compiler must actually run.
+#    Xcode 26 ships it as an on-demand component that is often not installed:
+#    `xcrun -f metal` finds the binary, but executing it then fails with
+#    "missing Metal Toolchain". Test compilation, not just presence.
+METAL_TMP="$(mktemp -t exo-metal-check).metal"
+printf 'kernel void _k() {}\n' > "${METAL_TMP}"
+if ! xcrun metal -c "${METAL_TMP}" -o /dev/null >/dev/null 2>&1; then
+  warn "Metal toolchain not installed; the mlx build will fail. Install it (admin):"
+  warn "    sudo xcodebuild -runFirstLaunch"
+  warn "    sudo xcodebuild -downloadComponent MetalToolchain"
 fi
+rm -f "${METAL_TMP}"
 
 # 2. Prereqs via Homebrew (native package manager; no curl|sh).
 have brew || die "Homebrew not found or not on PATH. exo needs uv, node, and rust."
@@ -59,15 +67,11 @@ fi
 run bash -c "cd '${EXO_DIR}/dashboard' && npm install && npm run build"
 
 # 5. Python env + MLX backend. mlx is an OPTIONAL extra (exo[mlx]); a plain
-#    `uv sync` installs only exo core, so the backend must be requested. Pin
-#    Python to 3.13, where exo's other deps have wheels.
-#
-#    KNOWN BLOCKER (2026-06): exo pins mlx==0.32.0, which has no PyPI wheel for
-#    macOS arm64 (cp312 or cp313). uv falls back to the sdist, whose Metal
-#    kernels fail to compile under Xcode 26.5 (hadamard / gather_axis /
-#    reduce_utils, cmake Error 2). Until exo bumps its mlx pin to a wheel-having
-#    release, the backend does not install on a current-Xcode host: exo core
-#    installs, inference does not. See docs/exo-cluster.md.
+#    `uv sync` installs only exo core, so the backend must be requested. exo
+#    requires Python 3.13 (requires-python == 3.13.*). On macOS exo builds mlx
+#    from the rltakashige/mlx-jaccl-fix-small-recv git fork (no PyPI wheel by
+#    design), so the Metal toolchain check in step 1 must pass first, or this
+#    step fails compiling the Metal kernels. See docs/exo-cluster.md.
 run bash -c "cd '${EXO_DIR}' && uv venv --python 3.13 && uv sync --extra mlx"
 
 echo

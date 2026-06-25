@@ -52,20 +52,28 @@ the safest smoke test. Point exo at already-downloaded models with
 - A stale Thunderbolt-bridge or VPN interface can confuse discovery; remove it
   for the Ethernet test.
 
-## Known blocker: the MLX backend does not install (2026-06)
+## Install notes
 
-mlx is an optional extra (`exo[mlx]`); a plain `uv sync` installs only exo core.
-Requesting the backend with `uv sync --extra mlx` fails on a current-Xcode host.
-exo pins `mlx==0.32.0`, which has no PyPI wheel for macOS arm64 (cp312 or
-cp313), so uv builds it from the sdist, and its Metal kernels fail to compile
-under Xcode 26.5 (hadamard, gather_axis, reduce_utils; cmake Error 2). exo core
-installs and `exo --help` runs, but inference does not. The path forward is an
-exo release that pins an mlx version with a macOS wheel; track exo before
-standing up the cluster.
+mlx is an optional extra (`exo[mlx]`); a plain `uv sync` installs only exo core,
+so the backend is requested with `uv sync --extra mlx`. exo requires Python 3.13
+(`requires-python == 3.13.*`).
 
-Provisioning note: Homebrew's `rustup` formula is keg-only and ships no
-`rustup-init`, so `setup_exo.sh` adds `$(brew --prefix rustup)/bin` to PATH
-before `rustup toolchain install nightly`.
+On macOS, exo builds mlx from a git fork (`rltakashige/mlx-jaccl-fix-small-recv`,
+the JACCL/RDMA fork) rather than a PyPI wheel, so the **Metal toolchain must be
+installed** or the build fails compiling the Metal kernels with "cannot execute
+tool 'metal' due to missing Metal Toolchain". Xcode 26 ships it as an on-demand
+component. Install it once, with admin:
+
+    sudo xcodebuild -runFirstLaunch
+    sudo xcodebuild -downloadComponent MetalToolchain
+
+`xcrun -f metal` finding the binary is not sufficient; the compiler must run.
+`setup_exo.sh` step 1 tests an actual compile and prints these commands if it
+fails.
+
+Homebrew's `rustup` formula is keg-only and ships no `rustup-init`, so
+`setup_exo.sh` adds `$(brew --prefix rustup)/bin` to PATH before
+`rustup toolchain install nightly`.
 
 ## Measured: Qwen3.6-27B, MLX vs llama.cpp (single faepmac1 GPU, cold)
 
