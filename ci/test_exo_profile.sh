@@ -12,6 +12,19 @@ is_mac() { [[ "$(uname -s)" == "Darwin" ]]; }
 bash -n "${REPO_ROOT}/scripts/setup_exo.sh"          || { echo "FAIL: setup_exo.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/server_start_exo.sh"   || { echo "FAIL: server_start_exo.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/bench_mlx_llamacpp.sh" || { echo "FAIL: bench_mlx_llamacpp.sh syntax"; exit 1; }
+bash -n "${REPO_ROOT}/scripts/provision_exo_peer.sh"  || { echo "FAIL: provision_exo_peer.sh syntax"; exit 1; }
+
+test_peer_dry() {
+  echo "TEST: provision_exo_peer dry-run prints the transfer plan"
+  if ! is_mac; then echo "SKIP (macOS-only)"; return 0; fi
+  local out
+  out="$(EXO_PEER_DRY_RUN=true bash "${REPO_ROOT}/scripts/provision_exo_peer.sh" peerhost 2>&1 || true)"
+  if [[ "${out}" == *"provision exo peer peerhost"* && "${out}" == *"rsync"* ]]; then
+    echo "PASS"
+  else
+    echo "FAIL"; echo "${out}"; return 1
+  fi
+}
 
 test_bench_dry() {
   echo "TEST: bench_mlx_llamacpp dry-run names both engines"
@@ -52,6 +65,7 @@ test_setup_dry() {
 test_start_dry  || FAILED=$((FAILED + 1))
 test_setup_dry  || FAILED=$((FAILED + 1))
 test_bench_dry  || FAILED=$((FAILED + 1))
+test_peer_dry   || FAILED=$((FAILED + 1))
 
 if [[ "${FAILED}" -gt 0 ]]; then echo "${FAILED} test(s) failed"; exit 1; fi
 echo "all exo profile tests passed"

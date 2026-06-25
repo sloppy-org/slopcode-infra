@@ -75,6 +75,29 @@ Homebrew's `rustup` formula is keg-only and ships no `rustup-init`, so
 `setup_exo.sh` adds `$(brew --prefix rustup)/bin` to PATH before
 `rustup toolchain install nightly`.
 
+## Adding a second node without Xcode
+
+mlx compiles only on the primary (the node with the Metal toolchain). A second
+Apple-silicon node on the same macOS major and Python 3.13 needs neither Xcode
+nor a working Homebrew: copy the prebuilt mlx wheel uv cached during the
+primary's build, plus the uv binary and the exo repo, then install the wheel.
+From the primary:
+
+    scripts/provision_exo_peer.sh <peer-ssh-host>
+
+Verified faepmac1 -> faepmac2: faepmac2 ran the exact mlx 0.32 fork with no
+Xcode, no Homebrew writes, and no compiling. The peer still builds the small
+`exo-rs` Rust extension during `uv sync`, so it needs a Rust toolchain.
+
+## Cluster discovery over the LAN
+
+On one /24 subnet the two nodes discovered each other on startup over zenoh, with
+no `--bootstrap-peers` and no macOS Local Network permission prompt: each ran
+`exo --api-port 52415`, and both `/state` topologies showed two nodes with a
+bidirectional connection and `MlxMetal` backends. The Local Network caveat above
+did not bite on this LAN; keep `--bootstrap-peers <primary-ip>` as the fallback
+where a switch drops multicast.
+
 ## Measured: Qwen3.6-27B, exo MLX stack vs llama.cpp (single GPU, cold)
 
 faepmac1, one M3 Ultra GPU. MLX is the exo stack itself (mlx 0.32.0.dev from the
