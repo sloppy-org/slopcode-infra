@@ -183,3 +183,19 @@ The model and the opencode default persist across reboot, but exo must be
 relaunched in a Terminal (the permission) and the instance recreated with the
 helper. A Login Item that opens that Terminal command at login is the route to
 hands-off boot; TB5 + RDMA is the route to faster decode.
+
+**Long context was gibberish until the DSA indexer fix.** exo pins mlx-lm to
+rltakashige/mlx-lm (branch leo/deepseek-v4), whose `glm_moe_dsa.py` is a stub
+that runs GLM-5.2 as plain DeepSeek-V3.2. The GLM sparse-attention indexer is
+then wrong past ~2K tokens: short prompts stay clean, but long context (agentic
+coding) degrades to random tokens. The fix is pcuenca's open PR
+ml-explore/mlx-lm#1410 (DSA cross-layer indexer sharing), ported onto the exo
+base in krystophny/mlx-lm @ glm-5.2-dsa-indexer. Apply it with
+`scripts/exo_repoint_mlx_lm.sh` on every node, then recreate the instance; the
+runners re-import from disk, so no exo restart or Local Network re-grant is
+needed. Generation then stays coherent at 11K context.
+
+Clients: pi (Pi Coding Agent, pointed at exo `:52415`) renders the reasoning
+cleanly. opencode's `@ai-sdk/openai-compatible` provider does not handle
+`reasoning_content` for custom endpoints (opencode #24114), so it garbles the
+thinking panel; run it against exo with reasoning hidden as the fallback.

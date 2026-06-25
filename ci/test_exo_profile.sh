@@ -14,6 +14,8 @@ bash -n "${REPO_ROOT}/scripts/server_start_exo.sh"   || { echo "FAIL: server_sta
 bash -n "${REPO_ROOT}/scripts/bench_mlx_llamacpp.sh" || { echo "FAIL: bench_mlx_llamacpp.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/provision_exo_peer.sh"  || { echo "FAIL: provision_exo_peer.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/install_mac_exo_launchagent.sh" || { echo "FAIL: install_mac_exo_launchagent.sh syntax"; exit 1; }
+bash -n "${REPO_ROOT}/scripts/exo_glm_instance.sh"    || { echo "FAIL: exo_glm_instance.sh syntax"; exit 1; }
+bash -n "${REPO_ROOT}/scripts/exo_repoint_mlx_lm.sh"  || { echo "FAIL: exo_repoint_mlx_lm.sh syntax"; exit 1; }
 
 test_launchagent_dry() {
   echo "TEST: install_mac_exo_launchagent dry-run writes a GUI LaunchAgent plist"
