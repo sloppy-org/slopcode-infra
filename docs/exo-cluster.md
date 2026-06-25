@@ -135,3 +135,51 @@ temp 0). A standalone runtime, youssofal/MTPLX, ships it today (Homebrew
 installable, claims up to ~2.2x on Qwen3.6-27B). mlx-lm's only built-in
 speculation is a separate draft model (`--draft-model`). For MoE models like
 GLM-5.2 a single MTP layer helps little either way.
+
+## GLM-5.2 mxfp4 across both Macs
+
+GLM-5.2 (754B-A40B, mxfp4, ~368 GB) runs as one model split across faepmac1 and
+faepmac2: a Tensor / MLX-Ring instance over the Thunderbolt-3 bridge. RDMA
+(Jaccl) needs TB5, so the Jaccl placements report no RDMA cycle and Ring (TCP)
+carries the collective. Load it with `scripts/exo_glm_instance.sh` once exo is
+up on both nodes.
+
+Measured (mxfp4, 2-node, Ring/TCP over TB3, 64 output tokens):
+
+| prompt tokens | prefill tok/s | decode tok/s |
+| --- | --- | --- |
+| 153 | 104 | 16.6 |
+| 563 | 181 | 16.3 |
+| 2213 | 199 | 12.9 |
+
+Decode is bound by the per-token all-reduce over TB3 TCP; TB5 + RDMA is the
+lever there. Prefill reaches ~200 tok/s.
+
+Three traps cost the most time:
+
+- **Local Network permission.** exo's discovery is IPv6 multicast, which macOS
+  gates per app behind Local Network privacy. macOS keeps that grant only for a
+  child of a granted GUI app. A LaunchAgent (launchd) or a detached SSH/`nohup`
+  exo still receives its own announces, but its outbound multicast is dropped,
+  so each node only sees itself and the cluster never forms. Run exo from a
+  Terminal you have granted Local Network, and leave the window open. A
+  standalone `python` sending to the group works while a LaunchAgent with the
+  identical binary does not: the grant attaches to the responsible process, not
+  the binary.
+- **Model directory layout.** exo resolves a model to
+  `EXO_DEFAULT_MODELS_DIR / id.normalize()`, and `normalize()` replaces `/` with
+  `--`. A flat `mlx-community/GLM-5.2-mxfp4` on disk is therefore not found; exo
+  treats the model as missing and tries to download 368 GB into `~/.exo/models`,
+  which fails on space. Symlink the real directory under the name exo expects on
+  every node: `~/.exo/models/mlx-community--GLM-5.2-mxfp4 ->
+  /Volumes/AI/.../GLM-5.2-mxfp4`.
+- **Shard integrity after a parallel rsync.** A multi-stream rsync can leave a
+  shard with the right size but corrupt bytes; the load then dies with
+  `[load_safetensors] Invalid json header length`. Verify each shard header (the
+  first 8 bytes are the header length, which must satisfy `0 < n < filesize`)
+  and re-copy any that fail.
+
+The model and the opencode default persist across reboot, but exo must be
+relaunched in a Terminal (the permission) and the instance recreated with the
+helper. A Login Item that opens that Terminal command at login is the route to
+hands-off boot; TB5 + RDMA is the route to faster decode.
