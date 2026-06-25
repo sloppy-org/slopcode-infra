@@ -75,19 +75,40 @@ Homebrew's `rustup` formula is keg-only and ships no `rustup-init`, so
 `setup_exo.sh` adds `$(brew --prefix rustup)/bin` to PATH before
 `rustup toolchain install nightly`.
 
-## Measured: Qwen3.6-27B, MLX vs llama.cpp (single faepmac1 GPU, cold)
+## Measured: Qwen3.6-27B, exo MLX stack vs llama.cpp (single GPU, cold)
 
-From `scripts/bench_mlx_llamacpp.sh`. MLX uses mlx_lm 0.31.3 (one minor below
-exo's pinned mlx, since 0.32.0 does not install here); llama.cpp uses UD-Q4_K_XL
-with flash attention and q8_0 KV, no MTP.
+faepmac1, one M3 Ultra GPU. MLX is the exo stack itself (mlx 0.32.0.dev from the
+JACCL fork, mlx_lm 0.31.3) on `mlx-community/Qwen3.6-27B-4bit`, f16 KV. llama.cpp
+is UD-Q4_K_XL with flash attention and q8_0 KV, no MTP. Prefill (pp) and decode
+(tg) in tok/s versus prompt length:
 
-| Engine | Prefill | Decode |
-| --- | --- | --- |
-| MLX (mlx_lm 0.31.3, 4-bit, f16 KV) | 242 tok/s | 39 tok/s |
-| llama.cpp (UD-Q4_K_XL, q8_0 KV) | 300 tok/s | 24 tok/s |
+| Context | exo/MLX pp | llama.cpp pp | exo/MLX tg | llama.cpp tg |
+| --- | --- | --- | --- | --- |
+| ~512 | 235 | 303 | 39.8 | 23.8 |
+| ~2K | 326 | 300 | 39.0 | -- |
+| ~8K | 320 | 286 | 37.1 | -- |
+| ~32K | 290 | 238 | 33.4 | -- |
 
-For a 27B dense model on one GPU, llama.cpp prefill leads and MLX decode leads.
-The production llama.cpp profile adds MTP, which roughly doubles its decode to
-~42 tok/s and erases the MLX decode lead. The large MLX prefill advantage seen
-elsewhere belongs to the big sparse-MoE models (GLM-5.2), not a 27B dense model
-run single-node.
+llama.cpp decode is the near-empty tg128 figure and is roughly flat with depth;
+MLX decode is measured at the real KV depth, the harder case, and still leads.
+
+Prefill: llama.cpp leads only at the shortest prompt. From ~2K up MLX leads and
+degrades less at long context, dropping ~11% from 2K to 32K against ~21% for
+llama.cpp, so at 32K MLX prefill is 290 vs 238. Decode: MLX leads ~40 vs ~24
+(~1.65x). The production llama.cpp profile adds MTP, which lifts its decode to
+~42 and passes MLX's no-MTP 39. Run it with `scripts/bench_mlx_llamacpp.sh`
+(it auto-detects the exo venv).
+
+Earlier drafts of this table used mlx 0.31.2 and reported ~242 prefill; the exo
+stack's mlx 0.32 fork prefills ~35% faster, which is why the real version matters.
+
+## MTP (multi-token prediction) in MLX
+
+mlx-lm does not use a model's built-in MTP/nextn head: its converter strips
+those weights, so a stock quant such as `mlx-community/Qwen3.6-27B-4bit` carries
+no MTP head and decode runs without self-speculation. Native MTP is an open,
+stalled PR (ml-explore/mlx-lm #990, Qwen3.5/3.6, ~1.57x decode on a 27B at
+temp 0). A standalone runtime, youssofal/MTPLX, ships it today (Homebrew
+installable, claims up to ~2.2x on Qwen3.6-27B). mlx-lm's only built-in
+speculation is a separate draft model (`--draft-model`). For MoE models like
+GLM-5.2 a single MTP layer helps little either way.
