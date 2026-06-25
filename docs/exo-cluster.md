@@ -100,7 +100,7 @@ llama.cpp, so at 32K MLX prefill is 290 vs 238. Decode: MLX leads ~40 vs ~24
 (it auto-detects the exo venv).
 
 Earlier drafts of this table used mlx 0.31.2 and reported ~242 prefill; the exo
-stack's mlx 0.32 fork prefills ~35% faster, which is why the real version matters.
+stack's mlx 0.32 fork prefills ~35% faster at 2K.
 
 ## MTP (multi-token prediction) in MLX
 
