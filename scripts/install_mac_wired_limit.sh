@@ -5,16 +5,18 @@
 # llama.cpp/MLX) may wire, well below physical RAM. A 256 GB Mac Studio serving
 # half of GLM-5.2 needs ~228 GB wired; the default cap is far too low.
 #
-# On a 256 GB host we raise it to 253952 MiB (248 GiB), leaving ~8 GiB for
-# macOS. This is the one part of the stack that needs root: it writes
+# On a 256 GB host we raise it to 258048 MiB (252 GiB), leaving 4 GiB for
+# macOS. GLM-5.2 (368 GB, ~187 GB resident/node) plus a 128K bf16 KV cache
+# (~14 GB) needs every GiB of wired headroom; 248 GiB OOMed the prefill at
+# ~80K context. This is the one part of the stack that needs root: it writes
 # /Library/LaunchDaemons/com.slopcode.iogpu-wired-limit.plist (RunAtLoad), which
 # re-applies the sysctl at every boot, and applies it immediately so no reboot
 # is required. faepmac1 already runs this; install it the same way on faepmac2.
 #
 # Usage:
-#   scripts/install_mac_wired_limit.sh           # 253952 MiB (248 GiB)
+#   scripts/install_mac_wired_limit.sh           # 258048 MiB (252 GiB)
 #   scripts/install_mac_wired_limit.sh 245760    # explicit MiB
-#   WIRED_LIMIT_MB=253952 scripts/install_mac_wired_limit.sh
+#   WIRED_LIMIT_MB=258048 scripts/install_mac_wired_limit.sh
 #
 # Verify afterwards: sysctl iogpu.wired_limit_mb
 #
@@ -30,7 +32,7 @@ source "${SCRIPT_DIR}/_common.sh"
 
 LABEL="com.slopcode.iogpu-wired-limit"
 PLIST="/Library/LaunchDaemons/${LABEL}.plist"
-LIMIT_MB="${1:-${WIRED_LIMIT_MB:-253952}}"
+LIMIT_MB="${1:-${WIRED_LIMIT_MB:-258048}}"
 [[ "${LIMIT_MB}" =~ ^[0-9]+$ ]] || die "wired limit must be an integer in MiB, got '${LIMIT_MB}'"
 
 # Guard: never wire more than physical RAM minus a 4 GiB floor for macOS.
