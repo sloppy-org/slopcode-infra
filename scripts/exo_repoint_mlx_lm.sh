@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/_common.sh"
 
-EXO_DIR="${EXO_DIR:-${HOME}/exo}"
+EXO_DIR="${EXO_DIR:-${HOME}/code/exo}"
 FORK_URL="https://github.com/krystophny/mlx-lm"
 FORK_BRANCH="glm-5.2-dsa-indexer"
 UV="${HOME}/.local/bin/uv"

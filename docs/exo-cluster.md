@@ -1,11 +1,14 @@
 # exo across two Mac Studios (MLX tensor-parallel)
 
-exo (github.com/exo-explore/exo) runs one model split across both Mac Studios
-with MLX. It wraps a pinned mlx-lm fork over mlx 0.32.0: mlx-lm holds the model
-implementations, including GLM-5.2 (`glm_moe_dsa`), and exo adds node discovery,
-sharding, the Ring or RDMA collective, and an OpenAI-compatible API. Each node
-loads its shard from local disk, so the model must be present on every node,
-unlike the llama.cpp RPC path where only the main node holds the GGUF.
+exo runs one model split across both Mac Studios with MLX. We run our fork
+github.com/krystophny/exo (latest upstream main plus the GLM-5.2 pipeline fix
+below), checked out at `~/code/exo` on both nodes and started by the
+`com.slopcode.exo` LaunchAgent. It wraps a pinned mlx-lm fork over mlx 0.32.0:
+mlx-lm holds the model implementations, including GLM-5.2 (`glm_moe_dsa`), and
+exo adds node discovery, sharding, the Ring or RDMA collective, and an
+OpenAI-compatible API. Each node loads its shard from local disk, so the model
+must be present on every node, unlike the llama.cpp RPC path where only the main
+node holds the GGUF.
 
 ## Backend: Ethernet now, Thunderbolt later
 
@@ -158,31 +161,36 @@ lever there. Prefill reaches ~200 tok/s.
 Three traps cost the most time:
 
 - **Local Network permission.** exo's discovery is IPv6 multicast, which macOS
-  gates per app behind Local Network privacy. macOS keeps that grant only for a
-  child of a granted GUI app. A LaunchAgent (launchd) or a detached SSH/`nohup`
-  exo still receives its own announces, but its outbound multicast is dropped,
-  so each node only sees itself and the cluster never forms. Run exo from a
-  Terminal you have granted Local Network, and leave the window open. A
-  standalone `python` sending to the group works while a LaunchAgent with the
-  identical binary does not: the grant attaches to the responsible process, not
-  the binary.
-- **Model directory layout.** exo resolves a model to
-  `EXO_DEFAULT_MODELS_DIR / id.normalize()`, and `normalize()` replaces `/` with
-  `--`. A flat `mlx-community/GLM-5.2-mxfp4` on disk is therefore not found; exo
-  treats the model as missing and tries to download 368 GB into `~/.exo/models`,
-  which fails on space. Symlink the real directory under the name exo expects on
-  every node: `~/.exo/models/mlx-community--GLM-5.2-mxfp4 ->
-  /Volumes/AI/.../GLM-5.2-mxfp4`.
+  gates per app behind Local Network privacy. The grant is keyed on the
+  interpreter binary and persists once given, so it survives reboot and applies
+  to the `com.slopcode.exo` LaunchAgent in the auto-login GUI session -- a
+  Terminal left open is not required. The catch is binary identity: the venv
+  must use the Homebrew python3.13 that holds the grant. A venv built against a
+  uv-managed CPython (a bare `uv venv --python 3.13` may pick one) is a
+  different binary with no grant, so that node only ever sees itself even under
+  launchd. Build the venv with `uv venv --python /opt/homebrew/bin/python3.13`
+  and verify with `readlink -f ~/code/exo/.venv/bin/python3.13`.
+- **Model directory layout.** exo resolves a model under each search dir
+  (`EXO_MODELS_READ_ONLY_DIRS` plus the writable dirs) as
+  `<dir>/<id.normalize()>`, and `normalize()` replaces `/` with `--`. The
+  read-only root is `/Volumes/AI/mlx`, but the weights sit at
+  `mlx-community/GLM-5.2-mxfp4` (org-subdir layout), so exo looks for
+  `mlx-community--GLM-5.2-mxfp4`, does not find it, treats the model as missing,
+  and tries to download 368 GB. Symlink the normalized name to the real
+  directory on every node:
+  `/Volumes/AI/mlx/mlx-community--GLM-5.2-mxfp4 -> mlx-community/GLM-5.2-mxfp4`.
 - **Shard integrity after a parallel rsync.** A multi-stream rsync can leave a
   shard with the right size but corrupt bytes; the load then dies with
   `[load_safetensors] Invalid json header length`. Verify each shard header (the
   first 8 bytes are the header length, which must satisfy `0 < n < filesize`)
   and re-copy any that fail.
 
-The model and the opencode default persist across reboot, but exo must be
-relaunched in a Terminal (the permission) and the instance recreated with the
-helper. A Login Item that opens that Terminal command at login is the route to
-hands-off boot; TB5 + RDMA is the route to faster decode.
+The model persists across reboot and the `com.slopcode.exo` LaunchAgent brings
+exo back up hands-off on both nodes (RunAtLoad, auto-login GUI session, the
+Local Network grant persisted on the Homebrew python3.13). Only the GLM instance
+must be recreated after boot -- POST `/place_instance` with Pipeline / MlxRing /
+`min_nodes` 2; the runners reload their shard from disk. TB5 + RDMA is the route
+to faster decode.
 
 **Long context was gibberish until the DSA indexer fix.** exo pins mlx-lm to
 rltakashige/mlx-lm (branch leo/deepseek-v4), whose `glm_moe_dsa.py` is a stub
@@ -190,10 +198,21 @@ that runs GLM-5.2 as plain DeepSeek-V3.2. The GLM sparse-attention indexer is
 then wrong past ~2K tokens: short prompts stay clean, but long context (agentic
 coding) degrades to random tokens. The fix is pcuenca's open PR
 ml-explore/mlx-lm#1410 (DSA cross-layer indexer sharing), ported onto the exo
-base in krystophny/mlx-lm @ glm-5.2-dsa-indexer. Apply it with
-`scripts/exo_repoint_mlx_lm.sh` on every node, then recreate the instance; the
-runners re-import from disk, so no exo restart or Local Network re-grant is
-needed. Generation then stays coherent at 11K context.
+base in krystophny/mlx-lm @ glm-5.2-dsa-indexer. The fork's pyproject already
+pins it, so a fresh `setup_exo.sh` needs no extra step; on an upstream checkout
+apply it with `scripts/exo_repoint_mlx_lm.sh` on every node and recreate the
+instance (runners re-import from disk, no exo restart or Local Network re-grant).
+Generation then stays coherent at 11K context.
+
+**Multi-node GLM-5.2 also needed an exo pipeline fix.** The DSA indexer-sharing
+decoder layer returns `(hidden_states, prev_topk_indices)`, and the model
+threads `prev_topk_indices` across consecutive layers. Upstream exo's
+`PipelineLastLayer` (`src/exo/worker/engines/mlx/auto_parallel.py`) assumed a
+bare `mx.array` and passed the tuple straight to `mx.distributed.send`, which
+raised `Invalid type tuple received in array initialization` during warmup, so a
+2-node placement never came up. The fork extracts the hidden state for the
+send/all_gather and re-attaches the extras on return; bare-array layers are
+unaffected. Committed in krystophny/exo (`80d12b4`).
 
 Clients: pi (Pi Coding Agent, pointed at exo `:52415`) renders the reasoning
 cleanly. opencode's `@ai-sdk/openai-compatible` provider does not handle

@@ -10,6 +10,13 @@
 # discovery announces and every node only ever sees itself. A LaunchAgent runs
 # in the GUI session, so the grant applies.
 #
+# The grant is keyed on the interpreter BINARY, not the launchd label or the
+# `exo` wrapper. The venv must therefore use the Homebrew python3.13 that holds
+# the grant (build it with `uv venv --python /opt/homebrew/bin/python3.13`). A
+# venv built against a uv-managed CPython (~/.local/share/uv/python/...) is a
+# different binary with no grant, so the node only ever sees itself even under
+# this LaunchAgent. setup_exo.sh / provision_exo_peer.sh pin the Homebrew python.
+#
 # To still come up at boot with no manual login, enable automatic login (only
 # possible with FileVault off). Then: boot -> auto-login -> agent starts exo ->
 # Local Network grant applies -> the cluster forms.
@@ -17,9 +24,10 @@
 # Two one-time actions per box (need the console / Screen Sharing, not SSH):
 #   1. System Settings > Users & Groups > Automatically log in as <user>.
 #   2. System Settings > Privacy & Security > Local Network: allow exo (python).
+#      Grant once for the Homebrew python3.13; it then persists across reboot.
 #
 # Env:
-#   EXO_DIR                    exo clone (default ~/exo)
+#   EXO_DIR                    exo clone (default ~/code/exo)
 #   EXO_API_PORT               API + discovery base port (default 52415)
 #   EXO_MODELS_READ_ONLY_DIRS  pre-downloaded model root (default /Volumes/AI/mlx)
 #   INSTALL_DRY_RUN            true to write the plist only, skip launchctl
@@ -31,7 +39,7 @@ source "${SCRIPT_DIR}/_common.sh"
 
 [[ "$(detect_platform)" == "mac" ]] || die "install_mac_exo_launchagent.sh is macOS only"
 
-EXO_DIR="${EXO_DIR:-${HOME}/exo}"
+EXO_DIR="${EXO_DIR:-${HOME}/code/exo}"
 EXO_BIN="${EXO_DIR}/.venv/bin/exo"
 API_PORT="${EXO_API_PORT:-52415}"
 RO_DIRS="${EXO_MODELS_READ_ONLY_DIRS:-/Volumes/AI/mlx}"

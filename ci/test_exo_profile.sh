@@ -69,11 +69,11 @@ test_start_dry() {
 }
 
 test_setup_dry() {
-  echo "TEST: setup_exo dry-run clones exo and builds the dashboard"
+  echo "TEST: setup_exo dry-run clones the exo fork and builds the dashboard"
   if ! is_mac; then echo "SKIP (macOS-only)"; return 0; fi
   local out
   out="$(EXO_DIR=/tmp/exo-x EXO_SETUP_DRY_RUN=true bash "${REPO_ROOT}/scripts/setup_exo.sh" 2>&1 || true)"
-  if [[ "${out}" == *"git clone https://github.com/exo-explore/exo"* && "${out}" == *"npm run build"* ]]; then
+  if [[ "${out}" == *"git clone git@github.com:krystophny/exo"* && "${out}" == *"npm run build"* ]]; then
     echo "PASS"
   else
     echo "FAIL"; echo "${out}"; return 1

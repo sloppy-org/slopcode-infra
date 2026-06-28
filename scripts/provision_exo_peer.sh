@@ -27,7 +27,7 @@ source "${SCRIPT_DIR}/_common.sh"
 
 PEER="${1:-}"
 [[ -n "${PEER}" ]] || die "usage: provision_exo_peer.sh <peer-ssh-host>"
-EXO_DIR="${EXO_DIR:-${HOME}/exo}"
+EXO_DIR="${EXO_DIR:-${HOME}/code/exo}"
 PEER_PY="${PEER_PYTHON:-/opt/homebrew/bin/python3.13}"
 DRY="${EXO_PEER_DRY_RUN:-false}"
 
@@ -50,18 +50,22 @@ fi
 [[ -f "${MLXLM_WHL}" ]] || die "mlx_lm wheel not in uv cache"
 [[ -d "${EXO_DIR}" ]] || die "exo not found at ${EXO_DIR}"
 
-ssh "${PEER}" 'mkdir -p ~/.local/bin ~/exo-wheels'
+ssh "${PEER}" 'mkdir -p ~/.local/bin ~/exo-wheels ~/code'
 rsync -a "${UV_BIN}" "${PEER}:.local/bin/uv"
 rsync -a "${MLX_WHL}" "${MLXLM_WHL}" "${PEER}:exo-wheels/"
-rsync -aH --exclude='.venv' --exclude='.git' "${EXO_DIR}/" "${PEER}:exo/"
+rsync -aH --exclude='.venv' --exclude='.git' "${EXO_DIR}/" "${PEER}:code/exo/"
 
+# PEER_PY must be the peer's Homebrew python3.13: exo's IPv6-multicast discovery
+# is gated by the macOS Local Network grant, which keys on the interpreter
+# binary. A uv-managed CPython in the venv is a different binary with no grant,
+# so the peer would only ever see itself. See docs/exo-cluster.md.
 ssh "${PEER}" "bash -lc '
-  cd ~/exo
+  cd ~/code/exo
   export PATH=\$HOME/.local/bin:\$PATH
   env -u VIRTUAL_ENV uv venv --python ${PEER_PY}
   env -u VIRTUAL_ENV uv sync
   env -u VIRTUAL_ENV uv pip install ~/exo-wheels/mlx-*.whl ~/exo-wheels/mlx_lm-*.whl
-  ~/exo/.venv/bin/python -c \"import mlx.core, mlx_lm, exo; print(\\\"peer exo stack OK\\\")\"
+  ~/code/exo/.venv/bin/python -c \"import mlx.core, mlx_lm, exo; print(\\\"peer exo stack OK\\\")\"
 '"
 
 echo "peer ${PEER} provisioned. Start exo on both nodes; same-subnet discovery forms the cluster."

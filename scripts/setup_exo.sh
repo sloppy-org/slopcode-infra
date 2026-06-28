@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Provision a Mac as an exo node (github.com/exo-explore/exo) for distributed
-# MLX inference across two Mac Studios. exo wraps a pinned mlx-lm fork over mlx;
-# this installs the prereqs, clones exo, builds the dashboard the README marks
-# required, and primes the uv environment. Run on each node.
+# Provision a Mac as an exo node for distributed MLX inference across two Mac
+# Studios. Clones our fork github.com/krystophny/exo (latest upstream main plus
+# the GLM-5.2 pipeline fix and the mlx-lm GLM-5.2 DSA-indexer pin); it wraps a
+# pinned mlx-lm fork over mlx. Installs the prereqs, clones the fork into
+# ~/code/exo, builds the dashboard the README marks required, and primes the uv
+# environment. The venv is pinned to the Homebrew python3.13 so the macOS Local
+# Network grant (keyed on the interpreter binary) applies. Run on each node.
 #
 # Over plain Ethernet (no Thunderbolt-5 cable) exo needs no network config: its
 # MLX layer falls back to the Ring (TCP) backend and discovers peers via mDNS on
@@ -27,7 +30,7 @@ source "${SCRIPT_DIR}/_common.sh"
 
 [[ "$(detect_platform)" == "mac" ]] || die "exo setup targets Apple silicon Macs"
 
-EXO_DIR="${EXO_DIR:-${HOME}/exo}"
+EXO_DIR="${EXO_DIR:-${HOME}/code/exo}"
 DRY="${EXO_SETUP_DRY_RUN:-false}"
 
 run() { echo "+ $*"; [[ "${DRY}" == "true" ]] || "$@"; }
@@ -60,7 +63,7 @@ run rustup toolchain install nightly
 if [[ -d "${EXO_DIR}/.git" ]]; then
   run git -C "${EXO_DIR}" pull --ff-only
 else
-  run git clone https://github.com/exo-explore/exo "${EXO_DIR}"
+  run git clone git@github.com:krystophny/exo "${EXO_DIR}"
 fi
 
 # 4. Dashboard build (README marks this required before running exo).
@@ -72,7 +75,7 @@ run bash -c "cd '${EXO_DIR}/dashboard' && npm install && npm run build"
 #    from the rltakashige/mlx-jaccl-fix-small-recv git fork (no PyPI wheel by
 #    design), so the Metal toolchain check in step 1 must pass first, or this
 #    step fails compiling the Metal kernels. See docs/exo-cluster.md.
-run bash -c "cd '${EXO_DIR}' && uv venv --python 3.13 && uv sync --extra mlx"
+run bash -c "cd '${EXO_DIR}' && uv venv --python /opt/homebrew/bin/python3.13 && uv sync --extra mlx"
 
 echo
 echo "exo node provisioned at ${EXO_DIR}."

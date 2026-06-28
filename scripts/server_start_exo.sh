@@ -21,7 +21,7 @@ source "${SCRIPT_DIR}/_common.sh"
 
 [[ "$(detect_platform)" == "mac" ]] || die "exo targets Apple silicon Macs"
 
-EXO_DIR="${EXO_DIR:-${HOME}/exo}"
+EXO_DIR="${EXO_DIR:-${HOME}/code/exo}"
 [[ "${EXO_DRY_RUN:-false}" == "true" || -d "${EXO_DIR}" ]] \
   || die "exo not found at ${EXO_DIR}; run scripts/setup_exo.sh first"
 
