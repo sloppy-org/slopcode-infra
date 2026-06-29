@@ -254,9 +254,9 @@ recovery; the first is automated, the rest are per-node prerequisites:
   faepmac2: System Settings -> Users & Groups -> "Automatically log in as: ert"
   (needs the login password; not scriptable without it). `launchctl bootstrap
   gui/$uid` cannot load the agent over SSH (no GUI audit session).
-- *Local Network discovery grant.* keyed on the venv's python binary; faepmac1
-  uses Homebrew python 3.13.13_1, faepmac2 uses 3.13.8 -- each node's grant is
-  per-binary, so a brew python upgrade on either node re-breaks discovery until
+- *Local Network discovery grant.* keyed on the venv's python binary; both
+  nodes now use Homebrew python 3.13.14. A brew python upgrade on either node
+  changes the binary path and re-breaks discovery until Local Network is
   re-granted. Verify with `readlink -f ~/code/exo/.venv/bin/python3.13`.
 
 **Multi-node GLM-5.2 also needed an exo pipeline fix.** The DSA indexer-sharing

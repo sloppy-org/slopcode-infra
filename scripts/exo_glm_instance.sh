@@ -6,8 +6,9 @@
 # nodes.
 #
 # Prereqs (host-local, not in this repo):
-#   - exo running on both Macs (Terminal-launched so the macOS Local Network
-#     grant applies; see docs/exo-cluster.md), API on :52415.
+#   - exo running on both Macs through the LaunchAgent using the Homebrew
+#     python3.13 binary with the persisted macOS Local Network grant; API on
+#     :52415.
 #   - The model present on every node, symlinked into exo's expected path:
 #       ~/.exo/models/avlp12--GLM-5.2-Alis-MLX-Dynamic-3.5bpw -> <model dir>
 #     exo resolves models as EXO_DEFAULT_MODELS_DIR/<id with "/" -> "--">, so a
@@ -36,7 +37,8 @@ curl -s -m6 "${API}/state" | python3 -c 'import sys,json;[print(i) for i in json
   | while read -r id; do [ -n "${id}" ] && curl -s -X DELETE "${API}/instance/${id}" >/dev/null; done
 curl -s -m10 -X POST "${API}/models/add" -H 'content-type: application/json' -d "{\"model_id\":\"${MODEL}\"}" >/dev/null
 
-# pick the Tensor / MLX-Ring placement (Jaccl/RDMA needs TB5) and create it
+# pick the Tensor / MLX-Ring placement and create it. Pipeline and JACCL/RDMA
+# are not the default path for GLM-5.2 on the current 2x256 GB cluster.
 PREV=$(curl -s -m20 "${API}/instance/previews?model_id=${MODEL}")
 echo "${PREV}" | python3 -c "
 import sys,json
