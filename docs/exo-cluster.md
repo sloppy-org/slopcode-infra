@@ -233,11 +233,11 @@ opencode exo block defaulted to temperature 0.6 with no repetition penalty, whic
 on long multi-turn agentic sessions looped into repeated-token garbage
 (`cat cat cat ...` inside a tool arg). The prompts repo now sets temperature 1.0,
 top_p 0.95, repetition_penalty 1.05 (`configs/mcp/install.sh` apply_exo_default).
-The local 2026-06-29 smoke passed through exo's OpenAI-compatible endpoint with
-`enable_thinking:false`: the two-node Tensor/MlxRing instance returned visible
-content `GLM_OK` with no error. Default thinking can spend a short completion
-budget in `reasoning_content`; use `enable_thinking:false` for command smokes.
-Long agentic tool loops are still unproven.
+The local 2026-06-29 smoke passed through exo's OpenAI-compatible endpoint on
+the two-node Tensor/MlxRing instance. Default thinking returned visible content
+`GLM_OK` plus `reasoning_content` and nonzero reasoning tokens. Use
+`enable_thinking:false` only for short marker smokes where reasoning cost would
+hide the marker. Long agentic tool loops are still unproven.
 
 **Reboot recovery (one node or both).** Three things must hold for hands-off
 recovery; the first is automated, the rest are per-node prerequisites:
