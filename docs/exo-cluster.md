@@ -234,12 +234,14 @@ are more sensitive: with Alis at temperature 1.0 and `reasoning_content`
 interleaved into the provider stream, GLM emitted a malformed tool call
 (`<tool_call>bash<arg_key>command`) and OpenCode aborted. The prompts repo now
 keeps reasoning enabled but hides `reasoning_content` from the OpenCode tool
-stream and uses temperature 0.6, top_p 0.95, top_k 40, and no repetition penalty
-for the GLM OpenCode lane. The local 2026-06-29 direct exo smoke passed through
-the two-node Tensor/MlxRing instance. Default thinking returned visible content
-`GLM_OK` plus `reasoning_content` and nonzero reasoning tokens. Use
+stream and uses temperature 0.6, top_p 0.95, top_k 40, and repetition penalty
+1.05 for the GLM OpenCode lane. Without that penalty, a local 2026-06-29 Alis
+run repeated the same `head -1 src/ffc_test_support.f90; cat fpm.toml` command
+20 times. The local 2026-06-29 direct exo smoke passed through the two-node
+Tensor/MlxRing instance. Default thinking returned visible content `GLM_OK` plus
+`reasoning_content` and nonzero reasoning tokens. Use
 `enable_thinking:false` only for short marker smokes where reasoning cost would
-hide the marker. Long Alis OpenCode tool loops are still unproven.
+hide the marker. Long Alis OpenCode tool loops still need per-task smoke tests.
 
 **Reboot recovery (one node or both).** Three things must hold for hands-off
 recovery; the first is automated, the rest are per-node prerequisites:
