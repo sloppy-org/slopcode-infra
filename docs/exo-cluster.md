@@ -236,11 +236,28 @@ top_p 0.95, repetition_penalty 1.05 (`configs/mcp/install.sh` apply_exo_default)
 The author only ever validated single-turn `mlx_lm.generate`/`server`, never an
 agentic tool loop, so treat long agentic GLM runs as still-unproven.
 
-**faepmac2 supervision gap.** `install_mac_exo_launchagent.sh` uses
-`launchctl bootstrap gui/$uid`, which only works from the node's own console
-session, not over SSH (no GUI domain). After a faepmac2 reboot, run it locally on
-faepmac2 -- a nohup start has no KeepAlive and dies on the next reboot, the cause
-of the original outage.
+**Reboot recovery (one node or both).** Three things must hold for hands-off
+recovery; the first is automated, the rest are per-node prerequisites:
+
+- *GLM instance re-placement.* exo brings the model weights back but does not
+  re-place the instance. `com.slopcode.exo-glm` (LaunchAgent, RunAtLoad +
+  StartInterval 120) runs `scripts/exo_glm_autoload.sh` on the leader: it waits
+  for both nodes, then places a Tensor/MlxRing instance only if none exists, and
+  no-ops on a healthy cluster. Install on faepmac1 with
+  `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.slopcode.exo-glm.plist`.
+- *exo process restart.* `~/Library/LaunchAgents/com.slopcode.exo.plist`
+  (RunAtLoad + KeepAlive) auto-loads at GUI login, so exo restarts on reboot --
+  but only if the node has **auto-login** enabled (the LaunchAgent loads in the
+  auto-login GUI session). faepmac1 has it; **faepmac2 does not** (no
+  `autoLoginUser`, no `/etc/kcpassword`), which is why the original outage
+  happened -- faepmac2 rebooted, never logged in, the agent never loaded. Fix on
+  faepmac2: System Settings -> Users & Groups -> "Automatically log in as: ert"
+  (needs the login password; not scriptable without it). `launchctl bootstrap
+  gui/$uid` cannot load the agent over SSH (no GUI audit session).
+- *Local Network discovery grant.* keyed on the venv's python binary; faepmac1
+  uses Homebrew python 3.13.13_1, faepmac2 uses 3.13.8 -- each node's grant is
+  per-binary, so a brew python upgrade on either node re-breaks discovery until
+  re-granted. Verify with `readlink -f ~/code/exo/.venv/bin/python3.13`.
 
 **Multi-node GLM-5.2 also needed an exo pipeline fix.** The DSA indexer-sharing
 decoder layer returns `(hidden_states, prev_topk_indices)`, and the model
