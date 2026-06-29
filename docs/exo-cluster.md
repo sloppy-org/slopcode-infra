@@ -139,15 +139,21 @@ installable, claims up to ~2.2x on Qwen3.6-27B). mlx-lm's only built-in
 speculation is a separate draft model (`--draft-model`). For MoE models like
 GLM-5.2 a single MTP layer helps little either way.
 
-## GLM-5.2 mxfp4 across both Macs
+## GLM-5.2 (Alis 3.5bpw) across both Macs
 
-GLM-5.2 (754B-A40B, mxfp4, ~368 GB) runs as one model split across faepmac1 and
-faepmac2: a Tensor / MLX-Ring instance over the Thunderbolt-3 bridge. RDMA
-(Jaccl) needs TB5, so the Jaccl placements report no RDMA cycle and Ring (TCP)
-carries the collective. Load it with `scripts/exo_glm_instance.sh` once exo is
-up on both nodes.
+GLM-5.2 (754B-A40B) runs as one model split across faepmac1 and faepmac2: a
+Tensor / MLX-Ring instance over the Thunderbolt-3 bridge. RDMA (Jaccl) needs
+TB5, so the Jaccl placements report no RDMA cycle and Ring (TCP) carries the
+collective. Load it with `scripts/exo_glm_instance.sh` once exo is up on both
+nodes.
 
-Measured (mxfp4, 2-node, Ring/TCP over TB3, 64 output tokens):
+The build is `avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw` (~306 GB, 3.5 bpw mixed:
+experts 3-bit, attention/shared 4-bit, embed/head 6-bit, router bf16, DSA
+indexer fp16; int8 MLA-KV for 1M context). It replaces `mlx-community/GLM-5.2-mxfp4`,
+which has unoptimized Apple-Silicon mxfp4 MoE kernels (~0.27 tok/s distributed,
+mlx#3402) and Metal-OOMs on long-context prefill.
+
+Measured (mxfp4, historical, 2-node, Ring/TCP over TB3, 64 output tokens):
 
 | prompt tokens | prefill tok/s | decode tok/s |
 | --- | --- | --- |
@@ -174,11 +180,14 @@ Three traps cost the most time:
   (`EXO_MODELS_READ_ONLY_DIRS` plus the writable dirs) as
   `<dir>/<id.normalize()>`, and `normalize()` replaces `/` with `--`. The
   read-only root is `/Volumes/AI/mlx`, but the weights sit at
-  `mlx-community/GLM-5.2-mxfp4` (org-subdir layout), so exo looks for
-  `mlx-community--GLM-5.2-mxfp4`, does not find it, treats the model as missing,
-  and tries to download 368 GB. Symlink the normalized name to the real
-  directory on every node:
-  `/Volumes/AI/mlx/mlx-community--GLM-5.2-mxfp4 -> mlx-community/GLM-5.2-mxfp4`.
+  `avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw` (org-subdir layout), so exo looks for
+  `avlp12--GLM-5.2-Alis-MLX-Dynamic-3.5bpw`, does not find it, treats the model
+  as missing, and tries to download. Symlink the normalized name (under
+  `~/.exo/models`) to the real directory on every node:
+  `avlp12--GLM-5.2-Alis-MLX-Dynamic-3.5bpw -> /Volumes/AI/mlx/avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw`.
+  Register the custom card first with `POST /models/add {"model_id": "..."}`, then
+  place a Tensor/MlxRing instance from `GET /instance/previews` (what
+  `exo_glm_instance.sh` does).
 - **Shard integrity after a parallel rsync.** A multi-stream rsync can leave a
   shard with the right size but corrupt bytes; the load then dies with
   `[load_safetensors] Invalid json header length`. Verify each shard header (the
@@ -203,6 +212,35 @@ pins it, so a fresh `setup_exo.sh` needs no extra step; on an upstream checkout
 apply it with `scripts/exo_repoint_mlx_lm.sh` on every node and recreate the
 instance (runners re-import from disk, no exo restart or Local Network re-grant).
 Generation then stays coherent at 11K context.
+
+**The Alis build needs three more fork patches (now on glm-5.2-dsa-indexer).**
+#1410 is a draft that leaves the DSA indexer RoPE interleaved (`traditional=True`)
+and has acknowledged quality bugs; GLM-5.2's indexer is actually non-interleaved
+with LayerNorm eps 1e-6, which the Alis author validated to ~1e-7 vs the HF
+reference. (1) The indexer now reads `indexer_rope_traditional` / `indexer_norm_eps`
+from config (Alis bakes `false` / `1e-6`), so output past index_topk=2048 is
+correct -- verified by a 3268-token needle recall. (2) int8 MLA-KV: `CacheList`
+gains `to_quantized` (quantize only the latent cache, keep the indexer cache
+fp16) plus dequant-on-read, so `--kv-bits 8` engages instead of being a silent
+no-op. (3) `CacheList.offset` is settable, which exo's prefill snapshot-restore
+requires (`c.offset = restore_pos`) -- otherwise long prompts that hit the
+trim/restore path crash the runner with `AttributeError: property 'offset' ... has
+no setter`. All three are green in the fork's tests.
+
+**Sampling, not the quant, drove the agentic degeneration.** GLM-5.2 ships
+`temperature 1.0, top_p 0.95` (generation_config.json; Z.ai/Unsloth concur). The
+opencode exo block defaulted to temperature 0.6 with no repetition penalty, which
+on long multi-turn agentic sessions looped into repeated-token garbage
+(`cat cat cat ...` inside a tool arg). The prompts repo now sets temperature 1.0,
+top_p 0.95, repetition_penalty 1.05 (`configs/mcp/install.sh` apply_exo_default).
+The author only ever validated single-turn `mlx_lm.generate`/`server`, never an
+agentic tool loop, so treat long agentic GLM runs as still-unproven.
+
+**faepmac2 supervision gap.** `install_mac_exo_launchagent.sh` uses
+`launchctl bootstrap gui/$uid`, which only works from the node's own console
+session, not over SSH (no GUI domain). After a faepmac2 reboot, run it locally on
+faepmac2 -- a nohup start has no KeepAlive and dies on the next reboot, the cause
+of the original outage.
 
 **Multi-node GLM-5.2 also needed an exo pipeline fix.** The DSA indexer-sharing
 decoder layer returns `(hidden_states, prev_topk_indices)`, and the model
