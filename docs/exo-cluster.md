@@ -227,17 +227,19 @@ requires (`c.offset = restore_pos`) -- otherwise long prompts that hit the
 trim/restore path crash the runner with `AttributeError: property 'offset' ... has
 no setter`. All three are green in the fork's tests.
 
-**Sampling, not the quant, drove the agentic degeneration.** GLM-5.2 ships
-`temperature 1.0, top_p 0.95` (generation_config.json; Z.ai/Unsloth concur). The
-opencode exo block defaulted to temperature 0.6 with no repetition penalty, which
-on long multi-turn agentic sessions looped into repeated-token garbage
-(`cat cat cat ...` inside a tool arg). The prompts repo now sets temperature 1.0,
-top_p 0.95, repetition_penalty 1.05 (`configs/mcp/install.sh` apply_exo_default).
-The local 2026-06-29 smoke passed through exo's OpenAI-compatible endpoint on
+**Direct exo reasoning and OpenCode tool use need separate settings.** GLM-5.2
+ships `temperature 1.0, top_p 0.95` (generation_config.json; Z.ai/Unsloth
+concur), and direct exo calls with default thinking work. OpenCode tool loops
+are more sensitive: with Alis at temperature 1.0 and `reasoning_content`
+interleaved into the provider stream, GLM emitted a malformed tool call
+(`<tool_call>bash<arg_key>command`) and OpenCode aborted. The prompts repo now
+keeps reasoning enabled but hides `reasoning_content` from the OpenCode tool
+stream and uses temperature 0.6, top_p 0.95, top_k 40, and no repetition penalty
+for the GLM OpenCode lane. The local 2026-06-29 direct exo smoke passed through
 the two-node Tensor/MlxRing instance. Default thinking returned visible content
 `GLM_OK` plus `reasoning_content` and nonzero reasoning tokens. Use
 `enable_thinking:false` only for short marker smokes where reasoning cost would
-hide the marker. Long agentic tool loops are still unproven.
+hide the marker. Long Alis OpenCode tool loops are still unproven.
 
 **Reboot recovery (one node or both).** Three things must hold for hands-off
 recovery; the first is automated, the rest are per-node prerequisites:
@@ -276,4 +278,6 @@ unaffected. Committed in krystophny/exo (`80d12b4`).
 Clients: pi (Pi Coding Agent, pointed at exo `:52415`) renders the reasoning
 cleanly. opencode's `@ai-sdk/openai-compatible` provider does not handle
 `reasoning_content` for custom endpoints (opencode #24114), so it garbles the
-thinking panel; run it against exo with reasoning hidden as the fallback.
+thinking panel and can leak tool-call text. Do not interleave `reasoning_content`
+into OpenCode's tool stream; run it against exo with reasoning hidden from
+OpenCode as the fallback.
