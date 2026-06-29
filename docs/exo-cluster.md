@@ -233,8 +233,11 @@ opencode exo block defaulted to temperature 0.6 with no repetition penalty, whic
 on long multi-turn agentic sessions looped into repeated-token garbage
 (`cat cat cat ...` inside a tool arg). The prompts repo now sets temperature 1.0,
 top_p 0.95, repetition_penalty 1.05 (`configs/mcp/install.sh` apply_exo_default).
-The author only ever validated single-turn `mlx_lm.generate`/`server`, never an
-agentic tool loop, so treat long agentic GLM runs as still-unproven.
+The local 2026-06-29 smoke passed through exo's OpenAI-compatible endpoint with
+`enable_thinking:false`: the two-node Tensor/MlxRing instance returned visible
+content `GLM_OK` with no error. Default thinking can spend a short completion
+budget in `reasoning_content`; use `enable_thinking:false` for command smokes.
+Long agentic tool loops are still unproven.
 
 **Reboot recovery (one node or both).** Three things must hold for hands-off
 recovery; the first is automated, the rest are per-node prerequisites:
@@ -257,7 +260,8 @@ recovery; the first is automated, the rest are per-node prerequisites:
 - *Local Network discovery grant.* keyed on the venv's python binary; both
   nodes now use Homebrew python 3.13.14. A brew python upgrade on either node
   changes the binary path and re-breaks discovery until Local Network is
-  re-granted. Verify with `readlink -f ~/code/exo/.venv/bin/python3.13`.
+  re-granted and both LaunchAgents are restarted. Verify with
+  `readlink -f ~/code/exo/.venv/bin/python3.13`.
 
 **Multi-node GLM-5.2 also needed an exo pipeline fix.** The DSA indexer-sharing
 decoder layer returns `(hidden_states, prev_topk_indices)`, and the model
