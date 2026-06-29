@@ -6,7 +6,7 @@
 #
 # Env:
 #   EXO_API        exo API base (default http://127.0.0.1:52415)
-#   GLM_MODEL_ID   model id (default avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw)
+#   GLM_MODEL_ID   model id (default pipenetwork/GLM-5.2-MLX-mixed-3_6bit)
 set -euo pipefail
 
 API="${EXO_API:-http://127.0.0.1:52415}"

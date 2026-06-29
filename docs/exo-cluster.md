@@ -139,7 +139,7 @@ installable, claims up to ~2.2x on Qwen3.6-27B). mlx-lm's only built-in
 speculation is a separate draft model (`--draft-model`). For MoE models like
 GLM-5.2 a single MTP layer helps little either way.
 
-## GLM-5.2 (Alis 3.5bpw) across both Macs
+## GLM-5.2 mixed 3/6-bit across both Macs
 
 GLM-5.2 (754B-A40B) runs as one model split across faepmac1 and faepmac2: a
 Tensor / MLX-Ring instance over the Thunderbolt-3 bridge. RDMA (Jaccl) needs
@@ -147,11 +147,13 @@ TB5, so the Jaccl placements report no RDMA cycle and Ring (TCP) carries the
 collective. Load it with `scripts/exo_glm_instance.sh` once exo is up on both
 nodes.
 
-The build is `avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw` (~306 GB, 3.5 bpw mixed:
-experts 3-bit, attention/shared 4-bit, embed/head 6-bit, router bf16, DSA
-indexer fp16; int8 MLA-KV for 1M context). It replaces `mlx-community/GLM-5.2-mxfp4`,
-which has unoptimized Apple-Silicon mxfp4 MoE kernels (~0.27 tok/s distributed,
-mlx#3402) and Metal-OOMs on long-context prefill.
+The build is `pipenetwork/GLM-5.2-MLX-mixed-3_6bit` (310G downloaded locally;
+the publisher describes it as a 512GB-friendly mixed build with experts at
+3-bit and non-experts at 6-bit). It replaces both
+`mlx-community/GLM-5.2-mxfp4`, which has unoptimized Apple-Silicon mxfp4 MoE
+kernels (~0.27 tok/s distributed, mlx#3402) and Metal-OOMs on long-context
+prefill, and `avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw`, which produced unstable
+OpenCode tool sessions locally.
 
 Measured (mxfp4, historical, 2-node, Ring/TCP over TB3, 64 output tokens):
 
@@ -180,11 +182,11 @@ Three traps cost the most time:
   (`EXO_MODELS_READ_ONLY_DIRS` plus the writable dirs) as
   `<dir>/<id.normalize()>`, and `normalize()` replaces `/` with `--`. The
   read-only root is `/Volumes/AI/mlx`, but the weights sit at
-  `avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw` (org-subdir layout), so exo looks for
-  `avlp12--GLM-5.2-Alis-MLX-Dynamic-3.5bpw`, does not find it, treats the model
+  `pipenetwork/GLM-5.2-MLX-mixed-3_6bit` (org-subdir layout), so exo looks for
+  `pipenetwork--GLM-5.2-MLX-mixed-3_6bit`, does not find it, treats the model
   as missing, and tries to download. Symlink the normalized name (under
   `~/.exo/models`) to the real directory on every node:
-  `avlp12--GLM-5.2-Alis-MLX-Dynamic-3.5bpw -> /Volumes/AI/mlx/avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw`.
+  `pipenetwork--GLM-5.2-MLX-mixed-3_6bit -> /Volumes/AI/mlx/pipenetwork/GLM-5.2-MLX-mixed-3_6bit`.
   Register the custom card first with `POST /models/add {"model_id": "..."}`, then
   place a Tensor/MlxRing instance from `GET /instance/previews` (what
   `exo_glm_instance.sh` does).
@@ -213,19 +215,14 @@ apply it with `scripts/exo_repoint_mlx_lm.sh` on every node and recreate the
 instance (runners re-import from disk, no exo restart or Local Network re-grant).
 Generation then stays coherent at 11K context.
 
-**The Alis build needs three more fork patches (now on glm-5.2-dsa-indexer).**
-#1410 is a draft that leaves the DSA indexer RoPE interleaved (`traditional=True`)
-and has acknowledged quality bugs; GLM-5.2's indexer is actually non-interleaved
-with LayerNorm eps 1e-6, which the Alis author validated to ~1e-7 vs the HF
-reference. (1) The indexer now reads `indexer_rope_traditional` / `indexer_norm_eps`
-from config (Alis bakes `false` / `1e-6`), so output past index_topk=2048 is
-correct -- verified by a 3268-token needle recall. (2) int8 MLA-KV: `CacheList`
-gains `to_quantized` (quantize only the latent cache, keep the indexer cache
-fp16) plus dequant-on-read, so `--kv-bits 8` engages instead of being a silent
-no-op. (3) `CacheList.offset` is settable, which exo's prefill snapshot-restore
-requires (`c.offset = restore_pos`) -- otherwise long prompts that hit the
-trim/restore path crash the runner with `AttributeError: property 'offset' ... has
-no setter`. All three are green in the fork's tests.
+**The mlx-lm fork still needs the post-#1419 patches.** #1410 is a draft that
+leaves the DSA indexer RoPE interleaved (`traditional=True`) and has acknowledged
+quality bugs. The current fork carries #1419 plus the local exo-only cache
+offset fixes: `CacheList.offset` / `MLACacheList.offset` setters for exo's
+prefill snapshot-restore path, an empty nested MLA cache offset guard for
+concurrent batch merging, and the exo parser fixes that stop malformed GLM tool
+calls cleanly instead of crashing OpenCode. Keep these patches until upstream
+mlx-lm and exo absorb equivalent fixes.
 
 **Direct exo reasoning and OpenCode tool use need separate settings.** GLM-5.2
 ships `temperature 1.0, top_p 0.95` (generation_config.json; Z.ai/Unsloth
@@ -241,7 +238,8 @@ run repeated the same `head -1 src/ffc_test_support.f90; cat fpm.toml` command
 Tensor/MlxRing instance. Default thinking returned visible content `GLM_OK` plus
 `reasoning_content` and nonzero reasoning tokens. Use
 `enable_thinking:false` only for short marker smokes where reasoning cost would
-hide the marker. Long Alis OpenCode tool loops still need per-task smoke tests.
+hide the marker. Long mixed-3/6-bit OpenCode tool loops still need per-task
+smoke tests.
 
 **Reboot recovery (one node or both).** Three things must hold for hands-off
 recovery; the first is automated, the rest are per-node prerequisites:

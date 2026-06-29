@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Load the GLM-5.2 Alis (3.5bpw) model as a 2-node tensor-parallel instance on a
-# running local exo (github.com/exo-explore/exo). Idempotent: clears any existing
-# instance for the model, then creates a fresh Tensor / MLX-Ring placement and
-# waits for the runners to load. Run on the exo leader after exo is up on both
-# nodes.
+# Load the GLM-5.2 mixed 3/6-bit model as a 2-node tensor-parallel instance on
+# a running local exo (github.com/exo-explore/exo). Idempotent: clears any
+# existing instance for the model, then creates a fresh Tensor / MLX-Ring
+# placement and waits for the runners to load. Run on the exo leader after exo
+# is up on both nodes.
 #
 # Prereqs (host-local, not in this repo):
 #   - exo running on both Macs through the LaunchAgent using the Homebrew
 #     python3.13 binary with the persisted macOS Local Network grant; API on
 #     :52415.
 #   - The model present on every node, symlinked into exo's expected path:
-#       ~/.exo/models/avlp12--GLM-5.2-Alis-MLX-Dynamic-3.5bpw -> <model dir>
+#       ~/.exo/models/pipenetwork--GLM-5.2-MLX-mixed-3_6bit -> <model dir>
 #     exo resolves models as EXO_DEFAULT_MODELS_DIR/<id with "/" -> "--">, so a
-#     flat avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw download must be linked there.
+#     flat pipenetwork/GLM-5.2-MLX-mixed-3_6bit download must be linked there.
 #
 # Env:
 #   EXO_API        exo API base (default http://127.0.0.1:52415)
-#   GLM_MODEL_ID   model id (default avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw)
+#   GLM_MODEL_ID   model id (default pipenetwork/GLM-5.2-MLX-mixed-3_6bit)
 #   GLM_SHARDING   Tensor (default) or Pipeline
 set -euo pipefail
 
 API="${EXO_API:-http://127.0.0.1:52415}"
-MODEL="${GLM_MODEL_ID:-avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw}"
+MODEL="${GLM_MODEL_ID:-pipenetwork/GLM-5.2-MLX-mixed-3_6bit}"
 SHARDING="${GLM_SHARDING:-Tensor}"
 
 command -v curl >/dev/null || { echo "curl required" >&2; exit 1; }
