@@ -139,21 +139,29 @@ installable, claims up to ~2.2x on Qwen3.6-27B). mlx-lm's only built-in
 speculation is a separate draft model (`--draft-model`). For MoE models like
 GLM-5.2 a single MTP layer helps little either way.
 
-## GLM-5.2 mixed 3/6-bit across both Macs
+## GLM-5.2 mxfp4 across both Macs
 
-GLM-5.2 (754B-A40B) runs as one model split across faepmac1 and faepmac2: a
-Tensor / MLX-Ring instance over the Thunderbolt-3 bridge. RDMA (Jaccl) needs
-TB5, so the Jaccl placements report no RDMA cycle and Ring (TCP) carries the
-collective. Load it with `scripts/exo_glm_instance.sh` once exo is up on both
-nodes.
+GLM-5.2 runs as one `mlx-community/GLM-5.2-mxfp4` model split across faepmac1
+and faepmac2: a Tensor / MLX-Ring instance over the Thunderbolt-3 bridge. RDMA
+(Jaccl) needs TB5, so Ring/TCP is the current path. The service wrapper handles
+the whole lifecycle:
 
-The build is `pipenetwork/GLM-5.2-MLX-mixed-3_6bit` (310G downloaded locally;
-the publisher describes it as a 512GB-friendly mixed build with experts at
-3-bit and non-experts at 6-bit). It replaces both
-`mlx-community/GLM-5.2-mxfp4`, which has unoptimized Apple-Silicon mxfp4 MoE
-kernels (~0.27 tok/s distributed, mlx#3402) and Metal-OOMs on long-context
-prefill, and `avlp12/GLM-5.2-Alis-MLX-Dynamic-3.5bpw`, which produced unstable
-OpenCode tool sessions locally.
+```bash
+scripts/glm_service.sh status
+scripts/glm_service.sh start
+scripts/glm_service.sh stop
+scripts/glm_service.sh free-ram
+```
+
+`start` kills GUI RAM hogs for user `ert` on both Macs (Chrome, Safari, Photos,
+Weather, media analysis helpers), preserves Nextcloud, starts the
+`com.slopcode.exo` LaunchAgent on both Macs, waits until exo reports two nodes,
+and places the mxfp4 GLM instance through the preview endpoint. `stop` disables
+and unloads `com.slopcode.exo` and `com.slopcode.exo-glm` on both Macs.
+
+Avoid `pipenetwork/GLM-5.2-MLX-mixed-3_6bit` and Alis 3.5 bpw variants for
+autonomous OpenCode editing. Both loaded locally, but produced unstable
+tool-heavy sessions.
 
 Measured (mxfp4, historical, 2-node, Ring/TCP over TB3, 64 output tokens):
 
@@ -182,11 +190,11 @@ Three traps cost the most time:
   (`EXO_MODELS_READ_ONLY_DIRS` plus the writable dirs) as
   `<dir>/<id.normalize()>`, and `normalize()` replaces `/` with `--`. The
   read-only root is `/Volumes/AI/mlx`, but the weights sit at
-  `pipenetwork/GLM-5.2-MLX-mixed-3_6bit` (org-subdir layout), so exo looks for
-  `pipenetwork--GLM-5.2-MLX-mixed-3_6bit`, does not find it, treats the model
-  as missing, and tries to download. Symlink the normalized name (under
+  `mlx-community/GLM-5.2-mxfp4` (org-subdir layout), so exo looks for
+  `mlx-community--GLM-5.2-mxfp4`, does not find it, treats the model as
+  missing, and tries to download. Symlink the normalized name (under
   `~/.exo/models`) to the real directory on every node:
-  `pipenetwork--GLM-5.2-MLX-mixed-3_6bit -> /Volumes/AI/mlx/pipenetwork/GLM-5.2-MLX-mixed-3_6bit`.
+  `mlx-community--GLM-5.2-mxfp4 -> /Volumes/AI/mlx/mlx-community/GLM-5.2-mxfp4`.
   Register the custom card first with `POST /models/add {"model_id": "..."}`, then
   place a Tensor/MlxRing instance from `GET /instance/previews` (what
   `exo_glm_instance.sh` does).

@@ -54,6 +54,22 @@ opencode                                      # go
 | USB bundle and chat-vs-coder swap            | [docs/usb-bundle.md](docs/usb-bundle.md) |
 | FIM autocomplete endpoint (Coder, 2nd port)  | [docs/fim-autocomplete.md](docs/fim-autocomplete.md) |
 | AI model share (NFS from faepmac1)           | [docs/ai-share.md](docs/ai-share.md) |
+| GLM 5.2 on exo across faepmac1/faepmac2      | [docs/exo-cluster.md](docs/exo-cluster.md) |
+
+## GLM service
+
+On faepmac1, manage the two-node GLM/exo service with:
+
+```bash
+scripts/glm_service.sh status
+scripts/glm_service.sh start
+scripts/glm_service.sh stop
+scripts/glm_service.sh free-ram
+```
+
+`start` frees GUI RAM on both Macs, starts the exo LaunchAgent on both Macs,
+waits for the two-node cluster, and places `mlx-community/GLM-5.2-mxfp4`.
+`stop` disables and unloads exo on both Macs.
 
 ## Tests
 

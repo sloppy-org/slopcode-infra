@@ -15,6 +15,7 @@ bash -n "${REPO_ROOT}/scripts/bench_mlx_llamacpp.sh" || { echo "FAIL: bench_mlx_
 bash -n "${REPO_ROOT}/scripts/provision_exo_peer.sh"  || { echo "FAIL: provision_exo_peer.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/install_mac_exo_launchagent.sh" || { echo "FAIL: install_mac_exo_launchagent.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/exo_glm_instance.sh"    || { echo "FAIL: exo_glm_instance.sh syntax"; exit 1; }
+bash -n "${REPO_ROOT}/scripts/glm_service.sh"         || { echo "FAIL: glm_service.sh syntax"; exit 1; }
 bash -n "${REPO_ROOT}/scripts/exo_repoint_mlx_lm.sh"  || { echo "FAIL: exo_repoint_mlx_lm.sh syntax"; exit 1; }
 
 test_launchagent_dry() {
@@ -29,6 +30,18 @@ test_launchagent_dry() {
     echo "PASS"; rm -rf "${tmp}"
   else
     echo "FAIL"; rm -rf "${tmp}"; return 1
+  fi
+}
+
+test_glm_service_dry() {
+  echo "TEST: glm_service dry-run starts and stops launchd labels"
+  if ! is_mac; then echo "SKIP (macOS-only)"; return 0; fi
+  local out
+  out="$(GLM_SERVICE_DRY_RUN=true GLM_SERVICE_REMOTE=false bash "${REPO_ROOT}/scripts/glm_service.sh" start 2>&1)"
+  if [[ "${out}" == *"com.slopcode.exo"* && "${out}" == *"kickstart"* ]]; then
+    echo "PASS"
+  else
+    echo "FAIL"; echo "${out}"; return 1
   fi
 }
 
@@ -85,6 +98,7 @@ test_setup_dry  || FAILED=$((FAILED + 1))
 test_bench_dry  || FAILED=$((FAILED + 1))
 test_peer_dry   || FAILED=$((FAILED + 1))
 test_launchagent_dry || FAILED=$((FAILED + 1))
+test_glm_service_dry || FAILED=$((FAILED + 1))
 
 if [[ "${FAILED}" -gt 0 ]]; then echo "${FAILED} test(s) failed"; exit 1; fi
 echo "all exo profile tests passed"
