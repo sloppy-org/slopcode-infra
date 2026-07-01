@@ -24,7 +24,9 @@ ACTION="${1:-check}"
 PEER="${GLM_PEER_HOST:-10.78.5.2}"
 REMOTE="${GLM_IDLE_REMOTE:-true}"
 IDLE_SECONDS="${IDLE_SECONDS:-1800}"
-BUSY_CPU="${GLM_IDLE_BUSY_CPU:-150}"
+# Non-GLM CPU (sum of %CPU, 100 == one core) above which the host is "busy".
+# ~4 cores: light agent interaction stays idle; a real build/sim trips it.
+BUSY_CPU="${GLM_IDLE_BUSY_CPU:-400}"
 SWAP_BUSY_MB="${GLM_IDLE_SWAP_MB:-4096}"
 SLOPGATE_METRICS="${SLOPGATE_METRICS:-http://127.0.0.1:8080/metrics}"
 SINCE_FILE="${RUN_DIR}/glm-idle-since"
