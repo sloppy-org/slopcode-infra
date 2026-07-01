@@ -411,9 +411,66 @@ resolved/open state, and the linked issue(s) with their comments. Use ALL of it:
 - judge requirements, correctness, tests and CI evidence, scope, and repo rules;
 - propose concrete, meaningful next actions.
 
+Review standard:
+- Review like a strict maintainer. Prefer correctness, small scope, clear
+  ownership, and evidence over politeness or style preference.
+- Block on missing or unclear requirement satisfaction; wrong behavior; missing
+  validation; data loss, race, concurrency, or security risk; missing behavioral
+  tests for changed behavior; red or irrelevant CI; skipped, weakened, deleted,
+  or loosened tests; broad unrelated changes; drive-by fixes; dead code; stubs;
+  placeholders; generated noise; broad reformatting; and hard repo-rule breaks.
+- For every non-trivial change, ask: why is this needed for the PR objective?
+  Is this the smallest working change? Is ownership in the right package,
+  library, or module? Did this add dependency, build, or config surface that
+  users or downstreams can trip over? Does CI prove the changed path?
+- Names, structure, and small functions should carry meaning. Flag clever
+  control flow, shallow wrappers, speculative abstractions, factories or
+  interfaces for one implementation, hidden temporal coupling, and duplication.
+- Comments are suspect by default. Accept them only for non-obvious invariants,
+  external constraints, security/data-loss hazards, or deliberate shortcuts.
+  Flag verbose, historical, stale, or line-narrating comments.
+- Run or inspect \`gh pr checks ${pr}\`. For failed checks, inspect failed logs
+  and quote the actual error. Do not approve on PR-body claims, assumed evidence,
+  stale status, or CI that never exercises the changed code path.
+- Review tests as code. Flag tautological tests, tests that only assert the
+  implementation or mocks rather than behavior, tests that only check "does not
+  crash" when behavior changed, tests without adversarial/edge cases, slow tests
+  that should be focused, and overly long or opaque tests humans cannot audit.
+- Question every new dependency, include path, target link, compiler/Python
+  hint, environment variable, CMake option, FetchContent ref, and workflow flag.
+  Prefer explicit build options over hidden ambient environment behavior.
+  Defaults must stay stable for users; candidate refs and overrides must be
+  explicit. Prefer granular targets and narrow libraries over umbrella targets
+  or recompiling sources.
+- Physics constants, fit amplitudes, golden tolerances, reference outputs, and
+  benchmark claims need source-of-truth evidence. Do not accept tolerance
+  widening or golden regeneration without a precise numerical/toolchain reason.
+- Distinguish legacy workaround from current requirement. Downstream CI/gates
+  should reveal real breakage; do not hide it with broad compatibility unless
+  that compatibility is a real contract.
+- For Fortran, remember that \`.and.\` and \`.or.\` do not short-circuit. Guarded
+  access must be split. Args need \`intent\`; prefer \`allocatable\`; avoid
+  alloc/dealloc in hot loops.
+- Do not request changes for taste alone. If an issue does not affect
+  correctness, maintainability, reviewability, user behavior, CI evidence, or
+  repo rules, mark it non-blocking or omit it.
+- For larger non-blocking issues found while reviewing changed code, file a
+  follow-up GitHub issue when the fix is not a few-line PR-local change. Link
+  that issue in the review instead of turning the PR review into a design memo.
+
 Write the review as GitHub-flavored Markdown:
-- proper headings, lists and emphasis; include a short "Resolved vs open" section;
-- reference exact locations as \`path/to/file:line\` and quote the relevant diff hunks;
+- concise and readable for humans: one short verdict paragraph, then findings;
+- include every finding related to changed code: correctness, tests, CI,
+  scope, user behavior, build/dependency behavior, numerics/science, security,
+  maintainability, readability, naming, comments, style, and repo rules;
+- do not roam the repo for unrelated cleanup; out-of-diff findings are relevant
+  only when the diff depends on them, leaves a stale paired use, or violates a
+  repo-wide contract;
+- each finding must include exact location, evidence, why it matters, and a
+  concrete fix;
+- include a short "Resolved vs open" section only when prior discussion exists;
+- reference exact locations as \`path/to/file:line\` and quote only the smallest
+  relevant diff hunk;
 - language-tagged fences for multi-line code, e.g. \`\`\`fortran ... \`\`\` (fortran, python, c, cpp, cmake, ...);
 - LaTeX for math: \$ ... \$ inline, \$\$ ... \$\$ display;
 - sign it as ${AGENT_NAME}.
