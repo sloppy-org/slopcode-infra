@@ -270,6 +270,30 @@ post_review() {
     || gh pr comment "$pr" --body-file "$md"
 }
 
+# Gather the full existing discussion as a markdown block: PR body, CI checks,
+# every top-level comment and review, the inline review threads WITH resolved
+# state, and the linked issues with their comments. Fed to the reviewer so it is
+# conversation-aware rather than reviewing the diff in isolation.
+pr_context() {
+  local repo="$1" pr="$2" owner name core gql
+  owner="${repo%%/*}"; name="${repo##*/}"
+  core=$(gh pr view "$pr" -R "$repo" --json title,body,state,author,baseRefName,headRefName,additions,deletions,changedFiles,mergeable,reviewDecision,comments,reviews,statusCheckRollup 2>/dev/null || echo '{}')
+  # shellcheck disable=SC2016
+  gql=$(gh api graphql -f owner="$owner" -f name="$name" -F number="$pr" -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved isOutdated path line comments(first:30){nodes{author{login} body}}}} closingIssuesReferences(first:20){nodes{number title body comments(first:50){nodes{author{login} body}}}}}}}' 2>/dev/null || echo '{}')
+  printf '## PR\n'
+  jq -r '"- \(.title // "?")  [\(.state // "?")]  reviewDecision=\(.reviewDecision // "n/a")  mergeable=\(.mergeable // "n/a")\n- @\(.author.login // "?"), +\(.additions // 0)/-\(.deletions // 0) across \(.changedFiles // 0) files\n\n\(.body // "")"' <<<"$core" 2>/dev/null
+  printf '\n\n## CI checks\n'
+  jq -r '(.statusCheckRollup // []) | if length==0 then "- (none)" else [.[] | "- \(.name // .context // "check"): \(.conclusion // .state // .status // "?")"] | join("\n") end' <<<"$core" 2>/dev/null
+  printf '\n\n## Top-level comments\n'
+  jq -r '(.comments // []) | if length==0 then "- (none)" else [.[] | "\n**@\(.author.login // "?")** (\(.createdAt // "")):\n\(.body // "")"] | join("\n") end' <<<"$core" 2>/dev/null
+  printf '\n\n## Reviews\n'
+  jq -r '(.reviews // []) | if length==0 then "- (none)" else [.[] | "\n**@\(.author.login // "?")** [\(.state // "?")] (\(.submittedAt // "")):\n\(.body // "")"] | join("\n") end' <<<"$core" 2>/dev/null
+  printf '\n\n## Inline review threads (resolved state)\n'
+  jq -r '((.data.repository.pullRequest.reviewThreads.nodes) // []) | if length==0 then "- (none)" else [.[] | "\n### `\(.path):\(.line // 0)` — \(if .isResolved then "RESOLVED" else "OPEN" end)\(if .isOutdated then " (outdated)" else "" end)\n" + ([.comments.nodes[] | "  - @\(.author.login // "?"): \(.body)"] | join("\n"))] | join("\n") end' <<<"$gql" 2>/dev/null
+  printf '\n\n## Linked issues\n'
+  jq -r '((.data.repository.pullRequest.closingIssuesReferences.nodes) // []) | if length==0 then "- (none)" else [.[] | "\n### Issue #\(.number): \(.title)\n\(.body // "")\n\nComments:\n" + ([.comments.nodes[] | "  - @\(.author.login // "?"): \(.body)"] | join("\n"))] | join("\n") end' <<<"$gql" 2>/dev/null
+}
+
 run_glm() {
   local dur="$1" prompt="$2" out="$3"
   # repo_root is the checkout opencode runs in; read by run_tool_with_timeout.
@@ -318,7 +342,7 @@ EOF
 }
 
 do_review() {
-  local repo="$1" pr="$2" dir prompt raw body status md rc
+  local repo="$1" pr="$2" dir prompt ctx raw body status md rc
   dir=$(prepare_checkout "$repo") || { warn "clone failed: $repo"; return 1; }
   # gh pr checkout resolves fork PRs correctly (raw fetch of the head ref name
   # would miss forks and review the wrong commit). Then block all pushes so the
@@ -327,25 +351,32 @@ do_review() {
     warn "review ${repo}#${pr}: gh pr checkout failed"; return 1
   fi
   disable_push "$dir"
+  ctx="$(pr_context "$repo" "$pr" 2>/dev/null | head -c "${GLM_CONTEXT_MAX:-120000}")"
   prompt=$(cat <<EOF
 You are ${AGENT_NAME}, an autonomous reviewer. Adversarially and critically
-review GitHub PR #${pr} in ${repo}. The branch is checked out and you may read
-the code and run \`gh pr diff ${pr}\`. Read-only: do NOT edit, stage, commit,
-push, or merge. Do not take it easy: assume bugs exist and hunt for them. Judge
-requirements, correctness, tests and CI evidence, scope, and hard repo rules.
+review GitHub PR #${pr} in ${repo}. The branch is checked out; read the code and
+run \`gh pr diff ${pr}\`. Read-only: do NOT edit, stage, commit, push, or merge.
+Do not take it easy: assume bugs exist and hunt for them.
+
+Below the markers you are given the full existing context: the PR body, CI
+checks, every top-level comment and review, the inline review threads WITH their
+resolved/open state, and the linked issue(s) with their comments. Use ALL of it:
+- triage what has already been raised and what is resolved vs still open;
+- explicitly engage the prior discussion: what has been addressed, where you
+  agree or disagree with earlier comments/reviewers, what remains open;
+- judge requirements, correctness, tests and CI evidence, scope, and repo rules;
+- propose concrete, meaningful next actions.
 
 Write the review as GitHub-flavored Markdown:
-- proper headings, lists and emphasis;
-- reference exact locations as \`path/to/file:line\` and quote the relevant diff
-  hunks;
-- put every multi-line code snippet in a fenced block tagged with the language
-  of that file, e.g. \`\`\`fortran ... \`\`\` (fortran, python, c, cpp, cmake, ...);
-- use LaTeX for any math: \$ ... \$ inline, \$\$ ... \$\$ display;
+- proper headings, lists and emphasis; include a short "Resolved vs open" section;
+- reference exact locations as \`path/to/file:line\` and quote the relevant diff hunks;
+- language-tagged fences for multi-line code, e.g. \`\`\`fortran ... \`\`\` (fortran, python, c, cpp, cmake, ...);
+- LaTeX for math: \$ ... \$ inline, \$\$ ... \$\$ display;
 - sign it as ${AGENT_NAME}.
 
 Use request_changes for any missing requirement, missing test for changed
-behavior, wrong behavior, unrelated broad changes, or rule violation. Approve
-only when requirements are met and evidence exists.
+behavior, wrong behavior, a still-open prior concern, unrelated broad changes,
+or rule violation. Approve only when requirements are met and evidence exists.
 
 Output ONLY the review between these exact markers, each on its own line, then a
 final status line and nothing after it:
@@ -355,6 +386,11 @@ final status line and nothing after it:
 STATUS: approve|request_changes|comment
 EOF
 )
+  prompt="${prompt}
+
+===== EXISTING PR/ISSUE CONTEXT (comments, reviews, inline threads with resolved state, linked issues) =====
+${ctx}
+===== END CONTEXT ====="
   raw=$(mktemp)
   echo "[glm] review ${repo}#${pr}" >&2
   GH_REPO="$repo" run_glm "$REVIEW_TIMEOUT" "$prompt" "$raw" "$dir"; rc=$?

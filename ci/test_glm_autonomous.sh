@@ -38,8 +38,11 @@ case "$1 $2" in
     elif [[ "$all" == *number,isDraft*          ]]; then cat "$FIX/propen_$(slug "$r").txt" 2>/dev/null; fi ;;
   "pr view")
     r="$(argval -R "$@")"
-    if   [[ "$all" == *commits,comments* ]]; then cat "$FIX/prview_$(slug "$r")_${3}.json" 2>/dev/null
-    elif [[ "$all" == *headRefName*      ]]; then echo "fix/issue-${3}"; fi ;;
+    if   [[ "$all" == *commits,comments,reviews* ]]; then cat "$FIX/prview_$(slug "$r")_${3}.json" 2>/dev/null
+    elif [[ "$all" == *headRefName*              ]]; then echo "fix/issue-${3}"
+    else echo '{}'; fi ;;
+  "pr checkout") : ;;
+  "api graphql") echo '{}' ;;
   "pr review")
     if [[ "${FAKE_REJECT_FORMAL:-}" == 1 && ( "$all" == *--approve* || "$all" == *--request-changes* ) ]]; then exit 1; fi
     echo "REVIEW $all" >>"$FIX/posted.log"; bf="$(argval --body-file "$@")"; [[ -n "$bf" ]] && cat "$bf" >>"$FIX/posted.log" ;;
