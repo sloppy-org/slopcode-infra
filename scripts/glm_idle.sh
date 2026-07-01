@@ -28,6 +28,9 @@ BUSY_CPU="${GLM_IDLE_BUSY_CPU:-150}"
 SWAP_BUSY_MB="${GLM_IDLE_SWAP_MB:-4096}"
 SLOPGATE_METRICS="${SLOPGATE_METRICS:-http://127.0.0.1:8080/metrics}"
 SINCE_FILE="${RUN_DIR}/glm-idle-since"
+# Apple's ssh honours the scoped (IFSCOPE) Thunderbolt route to faepmac2;
+# Homebrew's ssh returns "no route to host" for it. Force the system binary.
+SSH_BIN="${GLM_SSH_BIN:-/usr/bin/ssh}"
 
 # Processes that do NOT count as load: GLM (exo/mlx), this worker, and
 # kernel_task (spikes on thermal management, not user work).
@@ -50,7 +53,9 @@ remote_probe() {
   local out
   for _ in 1 2 3; do
     ping -c1 -t2 "${PEER}" >/dev/null 2>&1 || true
-    out="$(ssh -o BatchMode=yes -o ConnectTimeout="${GLM_SSH_TIMEOUT:-10}" "${PEER}" \
+    # The single-quoted command runs on faepmac2; local expansion is not wanted.
+    # shellcheck disable=SC2016
+    out="$("${SSH_BIN}" -o BatchMode=yes -o ConnectTimeout="${GLM_SSH_TIMEOUT:-10}" "${PEER}" \
       'cpu=$(ps -axo %cpu,command 2>/dev/null | awk "NR>1 && \$0 !~ /exo|mlx|GLM-5.2|glm_autonomous|glm_idle|kernel_task/ { s+=\$1 } END { printf \"%d\", s+0 }"); swap=$(sysctl -n vm.swapusage 2>/dev/null | sed -nE "s/.*used = ([0-9]+)\..*/\1/p"); echo "$cpu ${swap:-0}"' \
       2>/dev/null || true)"
     [[ "$out" =~ ^[0-9] ]] && { printf '%s' "$out"; return 0; }

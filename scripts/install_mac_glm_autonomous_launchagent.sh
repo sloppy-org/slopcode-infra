@@ -63,7 +63,7 @@ cat > "${PLIST}" <<PLIST
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key><string>${HOME}</string>
-    <key>PATH</key><string>${HOME}/.local/bin:${HOME}/.opencode/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin:${HOME}/.local/bin:${HOME}/.opencode/bin:/opt/homebrew/bin</string>
 ${ENV_BLOCK}  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><false/>

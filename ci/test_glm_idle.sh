@@ -43,7 +43,7 @@ SH
 
 run_check() {
   local rundir="$1"
-  PATH="${FIX}:${PATH}" RUN_DIR="${rundir}" bash "${IDLE}" check >/dev/null 2>&1
+  PATH="${FIX}:${PATH}" RUN_DIR="${rundir}" GLM_SSH_BIN="${FIX}/ssh" bash "${IDLE}" check >/dev/null 2>&1
   echo $?
 }
 
