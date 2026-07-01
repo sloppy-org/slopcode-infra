@@ -124,7 +124,7 @@ case "${ACTION}" in
         exit 0
       fi
       since="$(cat "${SINCE_FILE}" 2>/dev/null || echo "${now}")"
-      boot="$(sysctl -n kern.boottime 2>/dev/null | sed -nE 's/.*sec = ([0-9]+).*/\1/p')"
+      boot="$(sysctl -n kern.boottime 2>/dev/null | sed -nE 's/^[{ ]*sec = ([0-9]+).*/\1/p')"
       if [[ ! "${since}" =~ ^[0-9]+$ ]] || (( since > now )) \
          || { [[ -n "${boot}" ]] && (( since < boot )); }; then
         since="${now}"

@@ -124,14 +124,17 @@ group_repos() {
 # "#N" / "issue-N" token appears in the PR branch name or body. Erring toward
 # skipping avoids ever double-implementing an issue that already has a PR.
 unresolved_issues() {
-  local repo="$1" issues prlist text_ref closing referenced
+  local repo="$1" issues text_ref closing referenced
   issues=$(gh issue list -R "$repo" --state open --limit 200 --json number --jq '.[].number' 2>/dev/null || true)
   [[ -n "$issues" ]] || return 0
-  prlist=$(gh pr list -R "$repo" --state open --limit 200 \
-    --json headRefName,body,closingIssuesReferences 2>/dev/null || echo '[]')
-  text_ref=$(jq -r '.[] | (.headRefName), (.body // "")' <<<"$prlist" 2>/dev/null \
+  # Text refs from branch/body always work; native links are a separate
+  # best-effort call, so a gh that lacks the field cannot blank the whole dedup
+  # and cause duplicate PRs.
+  text_ref=$(gh pr list -R "$repo" --state open --limit 200 --json headRefName,body 2>/dev/null \
+    | jq -r '.[] | (.headRefName), (.body // "")' 2>/dev/null \
     | grep -oE '(issue-|#)[0-9]+' | grep -oE '[0-9]+')
-  closing=$(jq -r '.[].closingIssuesReferences[]?.number' <<<"$prlist" 2>/dev/null)
+  closing=$(gh pr list -R "$repo" --state open --limit 200 --json closingIssuesReferences 2>/dev/null \
+    | jq -r '.[].closingIssuesReferences[]?.number' 2>/dev/null)
   referenced=$(printf '%s\n%s\n' "$text_ref" "$closing" | grep -E '^[0-9]+$' | sort -u)
   comm -23 <(sort -u <<<"$issues") <(sort -u <<<"${referenced:-}")
 }
@@ -147,8 +150,8 @@ pr_needs_review() {
   last_commit=$(jq -r '.commits[-1].committedDate // .commits[-1].authoredDate // ""' <<<"$j")
   [[ -n "$last_commit" ]] || return 1
   last_review=$(jq -r '
-    [ (.comments[]? | select(.body|contains("ORCHESTRATE_REVIEW_STATUS:")) | .createdAt),
-      (.reviews[]?  | select(.body|contains("ORCHESTRATE_REVIEW_STATUS:")) | .submittedAt) ]
+    [ (.comments[]? | select((.body // "")|contains("ORCHESTRATE_REVIEW_STATUS:")) | .createdAt),
+      (.reviews[]?  | select((.body // "")|contains("ORCHESTRATE_REVIEW_STATUS:")) | .submittedAt) ]
     | map(select(. != null and . != "")) | sort | last // ""' <<<"$j")
   [[ -z "$last_review" ]] && return 0
   [[ "$last_commit" > "$last_review" ]]
@@ -215,7 +218,20 @@ prepare_checkout() {
   else
     gh repo clone "$repo" "$dir" -- --quiet || return 1
   fi
+  # Re-enable pushing to origin: a prior review checkout may have disabled it.
+  local ourl
+  ourl="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
+  [[ -n "$ourl" ]] && git -C "$dir" remote set-url --push origin "$ourl" 2>/dev/null || true
   echo "$dir"
+}
+
+# Make the checkout unable to push anywhere, so a review run can never overwrite
+# a PR branch even if the model ignores the read-only instruction.
+disable_push() {
+  local dir="$1" r
+  for r in $(git -C "$dir" remote 2>/dev/null); do
+    git -C "$dir" remote set-url --push "$r" no-push://blocked-by-sloppy-review 2>/dev/null || true
+  done
 }
 
 extract_json() {
@@ -284,12 +300,15 @@ EOF
 }
 
 do_review() {
-  local repo="$1" pr="$2" dir branch prompt raw json rc
+  local repo="$1" pr="$2" dir prompt raw json rc
   dir=$(prepare_checkout "$repo") || { warn "clone failed: $repo"; return 1; }
-  branch=$(gh pr view "$pr" -R "$repo" --json headRefName --jq '.headRefName' 2>/dev/null || true)
-  [[ -n "$branch" ]] || return 1
-  git -C "$dir" fetch --quiet origin "$branch" || true
-  git -C "$dir" checkout --quiet -B "$branch" FETCH_HEAD || return 1
+  # gh pr checkout resolves fork PRs correctly (raw fetch of the head ref name
+  # would miss forks and review the wrong commit). Then block all pushes so the
+  # read-only review can never modify the PR branch.
+  if ! ( cd "$dir" && GH_REPO="$repo" gh pr checkout "$pr" --force >/dev/null 2>&1 ); then
+    warn "review ${repo}#${pr}: gh pr checkout failed"; return 1
+  fi
+  disable_push "$dir"
   prompt=$(cat <<EOF
 You are ${AGENT_NAME}, an autonomous reviewer. Adversarially and critically
 review GitHub PR #${pr} in ${repo}. The branch is checked out. Read-only: do NOT
@@ -312,6 +331,11 @@ EOF
   raw=$(mktemp)
   echo "[glm] review ${repo}#${pr}" >&2
   GH_REPO="$repo" run_glm "$REVIEW_TIMEOUT" "$prompt" "$raw" "$dir"; rc=$?
+  if [[ -n "$(git -C "$dir" status --porcelain 2>/dev/null)" ]]; then
+    warn "review ${repo}#${pr}: reviewer left changes; discarding (not pushed)"
+    git -C "$dir" reset --hard --quiet 2>/dev/null || true
+    git -C "$dir" clean -qfdx 2>/dev/null || true
+  fi
   json=$(mktemp)
   if extract_json "$raw" >"$json" && validate_review_json "$json"; then
     if ( cd "$dir" && GH_REPO="$repo" post_review_json "$pr" "$json" ); then

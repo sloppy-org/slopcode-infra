@@ -34,6 +34,7 @@ case "$1 $2" in
   "pr list")
     r="$(argval -R "$@")"
     if   [[ "$all" == *closingIssuesReferences* ]]; then cat "$FIX/prjson_$(slug "$r").txt" 2>/dev/null || echo '[]'
+    elif [[ "$all" == *headRefName,body*        ]]; then cat "$FIX/prjson_$(slug "$r").txt" 2>/dev/null || echo '[]'
     elif [[ "$all" == *number,isDraft*          ]]; then cat "$FIX/propen_$(slug "$r").txt" 2>/dev/null; fi ;;
   "pr view")
     r="$(argval -R "$@")"

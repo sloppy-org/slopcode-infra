@@ -25,6 +25,7 @@ case "${2:-}" in
   vm.loadavg) echo "{ ${FAKE_LOAD:-0.10} 0.0 0.0 }" ;;
   hw.physicalcpu) echo "${FAKE_CORES:-10}" ;;
   hw.memsize) echo "0" ;;
+  kern.boottime) echo "{ sec = ${FAKE_BOOT:-1} , usec = 0 } fake" ;;
   *) echo "0" ;;
 esac
 SH
@@ -97,6 +98,15 @@ test_stale_since_reset() {
   if [[ "$rc" == 1 && "$since" != 9999999999 ]]; then pass; else fail "rc=$rc since=$since"; fi
 }
 
+test_preboot_since_reset() {
+  echo "TEST: an idle-since marker predating this boot is reset (boottime parse)"
+  local rd rc since; rd="$(mktemp -d)"
+  echo "1000" >"${rd}/glm-idle-since"   # long before a boot at sec=2000000000
+  rc="$(HID_NS=99000000000000 FAKE_LOAD=0.2 FAKE_CORES=10 FAKE_BOOT=2000000000 IDLE_SECONDS=0 GLM_IDLE_SETTLE=3600 run_check "$rd")"
+  since="$(cat "${rd}/glm-idle-since")"
+  if [[ "$rc" == 1 && "$since" != 1000 ]]; then pass; else fail "rc=$rc since=$since"; fi
+}
+
 make_fakes
 test_busy_when_active_input     || FAILED=$((FAILED + 1))
 test_busy_when_load_high        || FAILED=$((FAILED + 1))
@@ -105,6 +115,7 @@ test_idle_sustained             || FAILED=$((FAILED + 1))
 test_settle_window_holds        || FAILED=$((FAILED + 1))
 test_since_file_resets_on_busy  || FAILED=$((FAILED + 1))
 test_stale_since_reset          || FAILED=$((FAILED + 1))
+test_preboot_since_reset        || FAILED=$((FAILED + 1))
 rm -rf "${FIX}"
 
 if [[ "${FAILED}" -gt 0 ]]; then echo "${FAILED} glm_idle test(s) failed"; exit 1; fi
