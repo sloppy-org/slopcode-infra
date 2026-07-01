@@ -12,9 +12,11 @@
 # cluster not-ready, aborts, and retries at the next interval. KeepAlive is
 # false: this is a periodic tick, not a resident daemon.
 #
-# Env:
+# Env (injected into the agent when set at install time):
 #   GLM_TICK_INTERVAL   seconds between ticks (default 300)
 #   GLM_GROUPS          override the target GitHub groups/owners
+#   IDLE_SECONDS        idle threshold before work starts (default 1800)
+#   GLM_IDLE_SETTLE     extra sustained-idle seconds before acting (default 0)
 #   INSTALL_DRY_RUN     true to write the plist only, skip launchctl
 set -euo pipefail
 
@@ -35,11 +37,16 @@ PLIST="${AGENTS_DIR}/${LABEL}.plist"
 LOG_DIR="${RUN_DIR}"
 mkdir -p "${AGENTS_DIR}" "${LOG_DIR}"
 
-GROUPS_BLOCK=""
-if [[ -n "${GLM_GROUPS:-}" ]]; then
-  GROUPS_BLOCK="    <key>GLM_GROUPS</key><string>${GLM_GROUPS}</string>
+# Optional env passed through to the worker, injected only when set at install.
+ENV_BLOCK=""
+add_env() {
+  [[ -n "${2:-}" ]] || return 0
+  ENV_BLOCK+="    <key>${1}</key><string>${2}</string>
 "
-fi
+}
+add_env GLM_GROUPS "${GLM_GROUPS:-}"
+add_env IDLE_SECONDS "${IDLE_SECONDS:-}"
+add_env GLM_IDLE_SETTLE "${GLM_IDLE_SETTLE:-}"
 
 cat > "${PLIST}" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -57,7 +64,7 @@ cat > "${PLIST}" <<PLIST
   <dict>
     <key>HOME</key><string>${HOME}</string>
     <key>PATH</key><string>${HOME}/.local/bin:${HOME}/.opencode/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-${GROUPS_BLOCK}  </dict>
+${ENV_BLOCK}  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><false/>
   <key>StartInterval</key><integer>${INTERVAL}</integer>

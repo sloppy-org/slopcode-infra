@@ -244,6 +244,20 @@ test_installer_dry() {
   else rm -rf "$tmp"; fail "plist missing expected keys"; fi
 }
 
+test_installer_injects_idle() {
+  echo "TEST: installer injects IDLE_SECONDS when set (add_env set -e regression)"
+  if [[ "$(uname -s)" != Darwin ]]; then echo "SKIP (macOS-only)"; return 0; fi
+  local tmp p; tmp="$(mktemp -d)"
+  AGENTS_DIR="${tmp}/agents" INSTALL_DRY_RUN=true IDLE_SECONDS=300 GLM_TICK_INTERVAL=120 \
+    bash "${REPO_ROOT}/scripts/install_mac_glm_autonomous_launchagent.sh" >/dev/null 2>&1 || true
+  p="${tmp}/agents/com.slopcode.glm-autonomous.plist"
+  if grep -q '<key>IDLE_SECONDS</key><string>300</string>' "$p" 2>/dev/null \
+     && grep -q '<key>StartInterval</key><integer>120</integer>' "$p" 2>/dev/null; then
+    rm -rf "$tmp"; pass
+  else rm -rf "$tmp"; fail "IDLE_SECONDS/interval not injected"; fi
+}
+
+test_installer_injects_idle       || FAILED=$((FAILED + 1))
 test_priority_review_first        || FAILED=$((FAILED + 1))
 test_group_fallthrough            || FAILED=$((FAILED + 1))
 test_review_beats_new_work_across_groups || FAILED=$((FAILED + 1))
