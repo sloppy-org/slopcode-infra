@@ -38,6 +38,7 @@ WORK_ROOT="${GLM_WORK_ROOT:-${HOME}/.local/share/glm-autonomous/work}"
 LOCK="${RUN_DIR}/glm-autonomous.lock"
 IMPLEMENT_TIMEOUT="${GLM_IMPLEMENT_TIMEOUT:-3h}"
 REVIEW_TIMEOUT="${GLM_REVIEW_TIMEOUT:-45m}"
+REVIEW_FINALIZE_TIMEOUT="${GLM_REVIEW_FINALIZE_TIMEOUT:-10m}"
 MAX_JOBS="${GLM_MAX_JOBS_PER_RUN:-50}"
 EXO_API="${EXO_API:-http://127.0.0.1:52415}"
 
@@ -255,6 +256,49 @@ extract_review_status() {
     | tail -1 | sed -E 's/.*:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr '-' '_'
 }
 
+review_artifact_path() {
+  local repo="$1" pr="$2" reason="$3" safe ts
+  safe="${repo//[^A-Za-z0-9._-]/_}"
+  reason="${reason//[^A-Za-z0-9._-]/_}"
+  ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  printf '%s/glm-review-%s-%s-%s-%s.out\n' "$LOG_DIR" "$safe" "$pr" "$reason" "$ts"
+}
+
+save_review_artifact() {
+  local src="$1" repo="$2" pr="$3" reason="$4" dst
+  [[ -s "$src" ]] || return 0
+  mkdir -p "$LOG_DIR"
+  dst="$(review_artifact_path "$repo" "$pr" "$reason")"
+  cp "$src" "$dst"
+  warn "review ${repo}#${pr}: saved ${reason} output to ${dst}"
+}
+
+finalize_review_output() {
+  local repo="$1" pr="$2" dir="$3" raw="$4" out="$5" prompt transcript rc
+  transcript="$(head -c "${GLM_FINALIZE_CONTEXT_MAX:-60000}" "$raw")"
+  prompt=$(cat <<EOF
+You are ${AGENT_NAME}. Convert the transcript below into the final GitHub PR
+review for ${repo}#${pr}.
+
+Do not do more investigation. Do not use tools. Preserve only claims supported
+by the transcript. If the transcript contains no defensible review, output a
+short comment explaining that no review could be completed.
+
+Output ONLY this format:
+<<<SLOPPY_REVIEW>>>
+# markdown review body
+<<<END_REVIEW>>>
+STATUS: approve|request_changes|comment
+
+===== TRANSCRIPT =====
+${transcript}
+===== END TRANSCRIPT =====
+EOF
+)
+  GH_REPO="$repo" run_glm "$REVIEW_FINALIZE_TIMEOUT" "$prompt" "$out" "$dir"; rc=$?
+  return "$rc"
+}
+
 # Post the review, preferring a formal verdict. On the bot's own PR GitHub
 # rejects approve/request_changes, so fall back to a COMMENTED review, then a
 # plain comment. All carry the same rich-markdown body.
@@ -401,6 +445,23 @@ ${ctx}
   fi
   body="$(extract_review_body "$raw")"
   status="$(extract_review_status "$raw")"
+  if [[ -z "${body//[[:space:]]/}" && -s "$raw" ]]; then
+    local final_raw final_body final_status final_rc
+    final_raw=$(mktemp)
+    warn "review ${repo}#${pr}: no marked review body; running finalizer"
+    finalize_review_output "$repo" "$pr" "$dir" "$raw" "$final_raw"; final_rc=$?
+    final_body="$(extract_review_body "$final_raw")"
+    final_status="$(extract_review_status "$final_raw")"
+    if [[ -n "${final_body//[[:space:]]/}" ]]; then
+      body="$final_body"
+      status="$final_status"
+      rc="$final_rc"
+    else
+      save_review_artifact "$raw" "$repo" "$pr" "unmarked"
+      save_review_artifact "$final_raw" "$repo" "$pr" "finalizer-empty"
+    fi
+    rm -f "$final_raw"
+  fi
   [[ -n "$status" ]] || status=comment
   if [[ -n "${body//[[:space:]]/}" ]]; then
     md=$(mktemp)

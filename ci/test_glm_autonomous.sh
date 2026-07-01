@@ -61,7 +61,20 @@ printf '#!/usr/bin/env bash\nexit 0\n' >"${FAKEBIN}/opencode"
 chmod +x "${FAKEBIN}"/*
 
 cat >"${LIBDIR}/orchestrate_tools.sh" <<'SH'
-run_tool_with_timeout() { cat "${FAKE_MODEL_OUT:-/dev/null}"; return "${FAKE_MODEL_RC:-0}"; }
+run_tool_with_timeout() {
+  local count_file="${FAKE_MODEL_COUNT_FILE:-}" n=1 out_var rc_var out rc
+  if [[ -n "$count_file" ]]; then
+    n="$(cat "$count_file" 2>/dev/null || echo 0)"
+    n=$((n + 1))
+    echo "$n" >"$count_file"
+  fi
+  out_var="FAKE_MODEL_OUT_${n}"
+  rc_var="FAKE_MODEL_RC_${n}"
+  out="${!out_var:-${FAKE_MODEL_OUT:-/dev/null}}"
+  rc="${!rc_var:-${FAKE_MODEL_RC:-0}}"
+  cat "$out"
+  return "$rc"
+}
 wait_local_opencode_slot() { :; }
 release_local_opencode_slot() { :; }
 SH
@@ -236,6 +249,22 @@ test_do_review_rejects_garbage() {
   if [[ ! -s "${POSTED_LOG}" ]]; then pass; else fail "log=[$(cat "${POSTED_LOG}")]"; fi
 }
 
+test_do_review_finalizes_unmarked_output() {
+  echo "TEST: do_review finalizes and posts when the first pass omits markers"
+  reset_fixtures
+  printf 'I found a bug but forgot the exact envelope.\n' >"${ROOT}/mout1"
+  review_out comment >"${ROOT}/mout2"
+  local count="${ROOT}/model-count"; : >"${count}"
+  FAKE_MODEL_COUNT_FILE="${count}" \
+    FAKE_MODEL_OUT_1="${ROOT}/mout1" \
+    FAKE_MODEL_OUT_2="${ROOT}/mout2" \
+    do_review itpplasma/a 4 >/dev/null 2>&1
+  if grep -q -- 'REVIEW.*--comment' "${POSTED_LOG}" \
+     && grep -q 'ORCHESTRATE_REVIEW_STATUS: comment' "${POSTED_LOG}" \
+     && [[ "$(cat "${count}")" == 2 ]]; then pass
+  else fail "count=$(cat "${count}") log=[$(cat "${POSTED_LOG}")]"; fi
+}
+
 test_installer_dry() {
   echo "TEST: launchd installer dry-run writes a periodic, reboot-clean plist"
   if [[ "$(uname -s)" != Darwin ]]; then echo "SKIP (macOS-only)"; return 0; fi
@@ -282,6 +311,7 @@ test_attempted_skipped            || FAILED=$((FAILED + 1))
 test_do_review_formal_and_markdown || FAILED=$((FAILED + 1))
 test_do_review_own_pr_fallback    || FAILED=$((FAILED + 1))
 test_do_review_rejects_garbage    || FAILED=$((FAILED + 1))
+test_do_review_finalizes_unmarked_output || FAILED=$((FAILED + 1))
 test_installer_dry                || FAILED=$((FAILED + 1))
 
 rm -rf "${ROOT}"
