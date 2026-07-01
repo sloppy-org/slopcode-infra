@@ -40,8 +40,11 @@ case "$1 $2" in
     r="$(argval -R "$@")"
     if   [[ "$all" == *commits,comments* ]]; then cat "$FIX/prview_$(slug "$r")_${3}.json" 2>/dev/null
     elif [[ "$all" == *headRefName*      ]]; then echo "fix/issue-${3}"; fi ;;
-  "pr review")   echo "$all" >>"$FIX/posted.log" ;;
-  "pr comment")  echo "$all" >>"$FIX/posted.log" ;;
+  "pr review")
+    if [[ "${FAKE_REJECT_FORMAL:-}" == 1 && ( "$all" == *--approve* || "$all" == *--request-changes* ) ]]; then exit 1; fi
+    echo "REVIEW $all" >>"$FIX/posted.log"; bf="$(argval --body-file "$@")"; [[ -n "$bf" ]] && cat "$bf" >>"$FIX/posted.log" ;;
+  "pr comment")
+    echo "COMMENT $all" >>"$FIX/posted.log"; bf="$(argval --body-file "$@")"; [[ -n "$bf" ]] && cat "$bf" >>"$FIX/posted.log" ;;
   "api user")    echo "botuser" ;;
   "api rate_limit")
     if   [[ "$all" == *remaining* ]]; then echo "${GH_FAKE_REMAINING:-5000}"
@@ -58,14 +61,6 @@ cat >"${LIBDIR}/orchestrate_tools.sh" <<'SH'
 run_tool_with_timeout() { cat "${FAKE_MODEL_OUT:-/dev/null}"; return "${FAKE_MODEL_RC:-0}"; }
 wait_local_opencode_slot() { :; }
 release_local_opencode_slot() { :; }
-SH
-cat >"${LIBDIR}/orchestrate_review.sh" <<'SH'
-review_status_from_json() { jq -r '.review_status // "comment"' "$1" | tr '_' '-'; }
-validate_review_json() {
-  jq -e 'type=="object" and has("review_status") and has("findings")' "$1" >/dev/null 2>&1 \
-    && [[ "$(review_status_from_json "$1")" =~ ^(approve|request-changes|comment)$ ]]
-}
-post_review_json() { echo "POST pr=$1 status=$(review_status_from_json "$2")" >>"${POSTED_LOG:-/dev/null}"; }
 SH
 
 export PATH="${FAKEBIN}:${PATH}"
@@ -204,26 +199,36 @@ test_attempted_skipped() {
   if [[ -z "$out" ]]; then pass; else fail "expected no action, got [$out]"; fi
 }
 
-test_do_review_posts_status() {
-  echo "TEST: do_review extracts the JSON verdict and posts the mapped status"
-  reset_fixtures
-  printf 'reasoning line\n{"review_status":"request_changes","summary":"Sloppy: x","findings":[]}\ntrailer\n' >"${ROOT}/mout"
-  FAKE_MODEL_OUT="${ROOT}/mout" do_review itpplasma/a 1 >/dev/null 2>&1
-  if grep -q "POST pr=1 status=request-changes" "${POSTED_LOG}"; then pass; else fail "log=[$(cat "${POSTED_LOG}")]"; fi
+review_out() {  # $1=status ; emits opencode-style output with the review markers
+  # shellcheck disable=SC2016  # $m$ is literal LaTeX in the review body
+  printf 'tool noise: gh pr diff\n<<<SLOPPY_REVIEW>>>\n## Sloppy review\n\nBug at `src/x.f90:12`, mass $m$ wrong.\n\n```fortran\ndo i = 1, n\nend do\n```\n<<<END_REVIEW>>>\nSTATUS: %s\n' "$1"
 }
 
-test_do_review_approve() {
-  echo "TEST: do_review maps an approve verdict"
+test_do_review_formal_and_markdown() {
+  echo "TEST: do_review posts a formal review with language-tagged fences + marker"
   reset_fixtures
-  printf '{"review_status":"approve","summary":"Sloppy: ok","findings":[]}\n' >"${ROOT}/mout"
-  FAKE_MODEL_OUT="${ROOT}/mout" do_review itpplasma/a 2 >/dev/null 2>&1
-  if grep -q "POST pr=2 status=approve" "${POSTED_LOG}"; then pass; else fail "log=[$(cat "${POSTED_LOG}")]"; fi
+  review_out request_changes >"${ROOT}/mout"
+  FAKE_MODEL_OUT="${ROOT}/mout" do_review itpplasma/a 1 >/dev/null 2>&1
+  if grep -q -- 'REVIEW.*--request-changes' "${POSTED_LOG}" \
+     && grep -q '```fortran' "${POSTED_LOG}" \
+     && grep -q 'src/x.f90:12' "${POSTED_LOG}" \
+     && grep -q 'ORCHESTRATE_REVIEW_STATUS: request_changes' "${POSTED_LOG}"; then pass
+  else fail "log=[$(cat "${POSTED_LOG}")]"; fi
+}
+
+test_do_review_own_pr_fallback() {
+  echo "TEST: do_review falls back to a COMMENTED review when a formal one is rejected"
+  reset_fixtures
+  review_out approve >"${ROOT}/mout"
+  FAKE_REJECT_FORMAL=1 FAKE_MODEL_OUT="${ROOT}/mout" do_review itpplasma/a 2 >/dev/null 2>&1
+  if grep -q -- 'REVIEW.*--comment' "${POSTED_LOG}" && grep -q '```fortran' "${POSTED_LOG}"; then pass
+  else fail "log=[$(cat "${POSTED_LOG}")]"; fi
 }
 
 test_do_review_rejects_garbage() {
-  echo "TEST: do_review posts nothing when the model emits no valid verdict"
+  echo "TEST: do_review posts nothing when the model emits no review body"
   reset_fixtures
-  printf 'no json here at all\n' >"${ROOT}/mout"
+  printf 'no markers, just noise\n' >"${ROOT}/mout"
   FAKE_MODEL_OUT="${ROOT}/mout" do_review itpplasma/a 3 >/dev/null 2>&1
   if [[ ! -s "${POSTED_LOG}" ]]; then pass; else fail "log=[$(cat "${POSTED_LOG}")]"; fi
 }
@@ -271,8 +276,8 @@ test_rate_ok                      || FAILED=$((FAILED + 1))
 test_cooldown_waits               || FAILED=$((FAILED + 1))
 test_ensure_budget_high_no_sleep  || FAILED=$((FAILED + 1))
 test_attempted_skipped            || FAILED=$((FAILED + 1))
-test_do_review_posts_status       || FAILED=$((FAILED + 1))
-test_do_review_approve            || FAILED=$((FAILED + 1))
+test_do_review_formal_and_markdown || FAILED=$((FAILED + 1))
+test_do_review_own_pr_fallback    || FAILED=$((FAILED + 1))
 test_do_review_rejects_garbage    || FAILED=$((FAILED + 1))
 test_installer_dry                || FAILED=$((FAILED + 1))
 

@@ -25,8 +25,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 # shellcheck disable=SC1091
 source "${PROMPTS_LIB:-${HOME}/code/prompts/scripts/lib}/orchestrate_tools.sh"
-# shellcheck disable=SC1091
-source "${PROMPTS_LIB:-${HOME}/code/prompts/scripts/lib}/orchestrate_review.sh"
 
 ACTION="${1:-run}"
 AGENT_NAME="${GLM_AGENT_NAME:-Sloppy}"
@@ -247,22 +245,29 @@ disable_push() {
   done
 }
 
-extract_json() {
-  python3 - "$1" <<'PY'
-import json, sys
-text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-dec = json.JSONDecoder()
-i = text.find("{")
-while i != -1:
-    try:
-        obj, _ = dec.raw_decode(text[i:])
-    except json.JSONDecodeError:
-        i = text.find("{", i + 1); continue
-    if isinstance(obj, dict) and "review_status" in obj:
-        json.dump(obj, sys.stdout); sys.exit(0)
-    i = text.find("{", i + 1)
-sys.exit(1)
-PY
+# Extract the review markdown between the reviewer's markers (opencode streams
+# tool noise around it) and the trailing STATUS line.
+extract_review_body() {
+  awk '/^<<<SLOPPY_REVIEW>>>/{f=1;next} /^<<<END_REVIEW>>>/{f=0} f' "$1"
+}
+extract_review_status() {
+  grep -ioE 'STATUS:[[:space:]]*(approve|request_changes|request-changes|comment)' "$1" \
+    | tail -1 | sed -E 's/.*:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr '-' '_'
+}
+
+# Post the review, preferring a formal verdict. On the bot's own PR GitHub
+# rejects approve/request_changes, so fall back to a COMMENTED review, then a
+# plain comment. All carry the same rich-markdown body.
+post_review() {
+  local pr="$1" md="$2" status="$3" event
+  case "$status" in
+    approve) event=--approve ;;
+    request_changes) event=--request-changes ;;
+    *) event=--comment ;;
+  esac
+  gh pr review "$pr" "$event" --body-file "$md" 2>/dev/null \
+    || gh pr review "$pr" --comment --body-file "$md" 2>/dev/null \
+    || gh pr comment "$pr" --body-file "$md"
 }
 
 run_glm() {
@@ -313,7 +318,7 @@ EOF
 }
 
 do_review() {
-  local repo="$1" pr="$2" dir prompt raw json rc
+  local repo="$1" pr="$2" dir prompt raw body status md rc
   dir=$(prepare_checkout "$repo") || { warn "clone failed: $repo"; return 1; }
   # gh pr checkout resolves fork PRs correctly (raw fetch of the head ref name
   # would miss forks and review the wrong commit). Then block all pushes so the
@@ -324,21 +329,30 @@ do_review() {
   disable_push "$dir"
   prompt=$(cat <<EOF
 You are ${AGENT_NAME}, an autonomous reviewer. Adversarially and critically
-review GitHub PR #${pr} in ${repo}. The branch is checked out. Read-only: do NOT
-edit, stage, commit, push, or merge.
+review GitHub PR #${pr} in ${repo}. The branch is checked out and you may read
+the code and run \`gh pr diff ${pr}\`. Read-only: do NOT edit, stage, commit,
+push, or merge. Do not take it easy: assume bugs exist and hunt for them. Judge
+requirements, correctness, tests and CI evidence, scope, and hard repo rules.
 
-Assume bugs exist and hunt for them. Judge issue requirements, changed files,
-tests and CI evidence, correctness, scope, and hard repo rules. Use
-request_changes for any missing requirement, missing test for changed behavior,
-wrong behavior, unrelated broad changes, or rule violation. Approve only when
-requirements are met and evidence exists.
+Write the review as GitHub-flavored Markdown:
+- proper headings, lists and emphasis;
+- reference exact locations as \`path/to/file:line\` and quote the relevant diff
+  hunks;
+- put every multi-line code snippet in a fenced block tagged with the language
+  of that file, e.g. \`\`\`fortran ... \`\`\` (fortran, python, c, cpp, cmake, ...);
+- use LaTeX for any math: \$ ... \$ inline, \$\$ ... \$\$ display;
+- sign it as ${AGENT_NAME}.
 
-Output ONLY one JSON object, no prose and no code fences. Begin "summary" with
-"${AGENT_NAME}: " so the posted review identifies you.
-{"review_status":"approve|request_changes|comment","confidence":0.0,
- "summary":"${AGENT_NAME}: short","requirements":[{"id":"REQ-001","status":"satisfied|missing","evidence":"path or command"}],
- "findings":[{"id":"REQ-001-X","severity":"blocking|major|minor","category":"bug|test|scope|style","file":"path","line":1,"evidence":"fact","why_blocking":"reason","suggested_fix":"fix"}],
- "escalation_required":false,"escalation_reason":""}
+Use request_changes for any missing requirement, missing test for changed
+behavior, wrong behavior, unrelated broad changes, or rule violation. Approve
+only when requirements are met and evidence exists.
+
+Output ONLY the review between these exact markers, each on its own line, then a
+final status line and nothing after it:
+<<<SLOPPY_REVIEW>>>
+# your markdown review here
+<<<END_REVIEW>>>
+STATUS: approve|request_changes|comment
 EOF
 )
   raw=$(mktemp)
@@ -349,19 +363,24 @@ EOF
     git -C "$dir" reset --hard --quiet 2>/dev/null || true
     git -C "$dir" clean -qfdx 2>/dev/null || true
   fi
-  json=$(mktemp)
-  if extract_json "$raw" >"$json" && validate_review_json "$json"; then
-    if ( cd "$dir" && GH_REPO="$repo" post_review_json "$pr" "$json" ); then
+  body="$(extract_review_body "$raw")"
+  status="$(extract_review_status "$raw")"
+  [[ -n "$status" ]] || status=comment
+  if [[ -n "${body//[[:space:]]/}" ]]; then
+    md=$(mktemp)
+    { printf '%s\n' "$body"; printf '\n<!-- ORCHESTRATE_REVIEW_STATUS: %s -->\n' "$status"; } >"$md"
+    if ( cd "$dir" && GH_REPO="$repo" post_review "$pr" "$md" "$status" ); then
       rc=0
     else
       warn "review ${repo}#${pr}: posting the verdict failed"
       rc=1
     fi
+    rm -f "$md"
   else
-    warn "review ${repo}#${pr}: no valid JSON verdict (rc=$rc)"
+    warn "review ${repo}#${pr}: no review body produced (rc=$rc)"
     rc=1
   fi
-  rm -f "$raw" "$json"
+  rm -f "$raw"
   return "$rc"
 }
 
