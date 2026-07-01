@@ -41,7 +41,7 @@ LOCK="${RUN_DIR}/glm-autonomous.lock"
 IMPLEMENT_TIMEOUT="${GLM_IMPLEMENT_TIMEOUT:-3h}"
 REVIEW_TIMEOUT="${GLM_REVIEW_TIMEOUT:-45m}"
 MAX_JOBS="${GLM_MAX_JOBS_PER_RUN:-50}"
-STOP_ON_YIELD="${GLM_STOP_ON_YIELD:-false}"
+EXO_API="${EXO_API:-http://127.0.0.1:52415}"
 
 # GitHub API budget: skip a scan when core rate-limit remaining drops below this,
 # pause GH_SLEEP between repos, and reuse a cached repo list for REPO_CACHE_TTL.
@@ -102,6 +102,19 @@ ensure_gh_budget() {
 }
 
 idle_ready() { GLM_IDLE_REMOTE="${GLM_IDLE_REMOTE:-true}" bash "${SCRIPT_DIR}/glm_idle.sh" check; }
+
+# True when the exo cluster can serve GLM: >=2 nodes and a placed model
+# instance. exo itself is kept alive by its own LaunchAgent; the worker never
+# restarts it, it only places the model on demand (idempotent).
+glm_ready() {
+  local st
+  st="$(curl -s -m6 "${EXO_API}/state" 2>/dev/null)" || return 1
+  [[ -n "$st" ]] || return 1
+  printf '%s' "$st" | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+sys.exit(0 if len(d.get("topology",{}).get("nodes",[]))>=2 and len(d.get("instances",{}))>=1 else 1)'
+}
 
 # --- backlog discovery -------------------------------------------------------
 
@@ -388,17 +401,16 @@ case "$ACTION" in
       echo "[glm] cluster busy; nothing to do" >&2
       exit 0
     fi
-    echo "[glm] cluster idle; starting GLM" >&2
-    GLM_SERVICE_REMOTE="${GLM_SERVICE_REMOTE:-true}" bash "${SCRIPT_DIR}/glm_service.sh" start >>"${LOG_DIR}/glm-autonomous.log" 2>&1 \
-      || { warn "glm_service start failed (peer down?); retry next tick"; exit 0; }
+    echo "[glm] cluster idle; ensuring GLM model is placed" >&2
+    bash "${SCRIPT_DIR}/exo_glm_autoload.sh" >>"${LOG_DIR}/glm-autonomous.log" 2>&1 || true
+    if ! glm_ready; then
+      warn "GLM cluster not ready (need 2 exo nodes + a placed model); retry next tick"
+      exit 0
+    fi
     jobs=0
     while (( jobs < MAX_JOBS )); do
       if ! idle_ready; then
-        echo "[glm] cluster turned busy after ${jobs} job(s); yielding" >&2
-        if [[ "$STOP_ON_YIELD" == true ]]; then
-          echo "[glm] stopping GLM to return RAM to the human" >&2
-          GLM_SERVICE_REMOTE="${GLM_SERVICE_REMOTE:-true}" bash "${SCRIPT_DIR}/glm_service.sh" stop >>"${LOG_DIR}/glm-autonomous.log" 2>&1 || true
-        fi
+        echo "[glm] cluster turned busy after ${jobs} job(s); yielding (exo stays up)" >&2
         break
       fi
       if ! ensure_gh_budget; then
