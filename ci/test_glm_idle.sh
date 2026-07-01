@@ -71,21 +71,30 @@ test_idle_sustained() {
   if [[ "$rc" == 0 ]]; then pass; else fail "rc=$rc"; fi
 }
 
-test_idle_needs_to_settle() {
-  echo "TEST: instantaneous idle does not fire until it has been held IDLE_SECONDS"
+test_settle_window_holds() {
+  echo "TEST: with a settle window, instantaneous idle does not fire on the first tick"
   local rd rc; rd="$(mktemp -d)"
-  rc="$(HID_NS=99000000000000 FAKE_LOAD=0.2 FAKE_CORES=10 IDLE_SECONDS=3600 run_check "$rd")"
+  rc="$(HID_NS=99000000000000 FAKE_LOAD=0.2 FAKE_CORES=10 IDLE_SECONDS=0 GLM_IDLE_SETTLE=3600 run_check "$rd")"
   if [[ "$rc" == 1 ]]; then pass; else fail "rc=$rc"; fi
 }
 
 test_since_file_resets_on_busy() {
   echo "TEST: the idle-since marker is cleared as soon as the cluster is busy"
   local rd; rd="$(mktemp -d)"
-  HID_NS=99000000000000 FAKE_LOAD=0.2 FAKE_CORES=10 IDLE_SECONDS=3600 run_check "$rd" >/dev/null
+  HID_NS=99000000000000 FAKE_LOAD=0.2 FAKE_CORES=10 IDLE_SECONDS=1800 GLM_IDLE_SETTLE=3600 run_check "$rd" >/dev/null
   if [[ ! -f "${rd}/glm-idle-since" ]]; then fail "since-file not written while settling"; return; fi
-  HID_NS=1000000000 FAKE_LOAD=0.2 FAKE_CORES=10 IDLE_SECONDS=3600 run_check "$rd" >/dev/null
+  HID_NS=1000000000 FAKE_LOAD=0.2 FAKE_CORES=10 IDLE_SECONDS=1800 GLM_IDLE_SETTLE=3600 run_check "$rd" >/dev/null
   if [[ -f "${rd}/glm-idle-since" ]]; then fail "since-file survived a busy tick"; return; fi
   pass
+}
+
+test_stale_since_reset() {
+  echo "TEST: a future/stale idle-since marker is reset, not treated as long-settled"
+  local rd rc since; rd="$(mktemp -d)"
+  echo "9999999999" >"${rd}/glm-idle-since"   # far future -> stale
+  rc="$(HID_NS=99000000000000 FAKE_LOAD=0.2 FAKE_CORES=10 IDLE_SECONDS=0 GLM_IDLE_SETTLE=3600 run_check "$rd")"
+  since="$(cat "${rd}/glm-idle-since")"
+  if [[ "$rc" == 1 && "$since" != 9999999999 ]]; then pass; else fail "rc=$rc since=$since"; fi
 }
 
 make_fakes
@@ -93,8 +102,9 @@ test_busy_when_active_input     || FAILED=$((FAILED + 1))
 test_busy_when_load_high        || FAILED=$((FAILED + 1))
 test_busy_when_slopgate_serving || FAILED=$((FAILED + 1))
 test_idle_sustained             || FAILED=$((FAILED + 1))
-test_idle_needs_to_settle       || FAILED=$((FAILED + 1))
+test_settle_window_holds        || FAILED=$((FAILED + 1))
 test_since_file_resets_on_busy  || FAILED=$((FAILED + 1))
+test_stale_since_reset          || FAILED=$((FAILED + 1))
 rm -rf "${FIX}"
 
 if [[ "${FAILED}" -gt 0 ]]; then echo "${FAILED} glm_idle test(s) failed"; exit 1; fi
