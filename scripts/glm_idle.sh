@@ -38,22 +38,26 @@ hid_idle_local() {
     | awk '/HIDIdleTime/ {print int($NF/1000000000); exit}'
 }
 
-hid_idle_remote() {
-  ssh -o BatchMode=yes -o ConnectTimeout=6 "${PEER}" \
-    "ioreg -c IOHIDSystem 2>/dev/null | awk '/HIDIdleTime/ {print int(\$NF/1000000000); exit}'"
-}
-
 # 1-minute load average.
 load1_local() { sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}'; }
-load1_remote() {
-  ssh -o BatchMode=yes -o ConnectTimeout=6 "${PEER}" \
-    "sysctl -n vm.loadavg 2>/dev/null | awk '{print \$2}'"
-}
-
 cores_local() { detect_physical_cores; }
-cores_remote() {
-  ssh -o BatchMode=yes -o ConnectTimeout=6 "${PEER}" \
-    "sysctl -n hw.physicalcpu 2>/dev/null || echo 1"
+
+# Probe faepmac2 over the Thunderbolt link in one ssh: "hid load cores". The TB
+# link powers down while the cluster is idle (nothing keeps it busy until GLM
+# runs), so a cold single connection can hit "no route to host". Wake it with a
+# ping and retry before giving up. One connection, not three, to minimise cold
+# hits.
+remote_probe() {
+  local out
+  for _ in 1 2 3; do
+    ping -c1 -t2 "${PEER}" >/dev/null 2>&1 || true
+    out="$(ssh -o BatchMode=yes -o ConnectTimeout="${GLM_SSH_TIMEOUT:-10}" "${PEER}" \
+      'hid=$(ioreg -c IOHIDSystem 2>/dev/null | awk "/HIDIdleTime/{print int(\$NF/1000000000); exit}"); load=$(sysctl -n vm.loadavg 2>/dev/null | awk "{print \$2}"); cores=$(sysctl -n hw.physicalcpu 2>/dev/null || echo 1); echo "$hid $load $cores"' \
+      2>/dev/null || true)"
+    [[ "$out" =~ ^[0-9] ]] && { printf '%s' "$out"; return 0; }
+    sleep 1
+  done
+  printf '%s' "$out"
 }
 
 # True when slopgate reports any deferred request or a busy agent slot, i.e. a
@@ -95,9 +99,7 @@ gather() {
   L_LOAD="$(load1_local || true)"
   L_CORES="$(cores_local || true)"
   if [[ "${REMOTE}" == "true" ]]; then
-    R_HID="$(hid_idle_remote 2>/dev/null || true)"
-    R_LOAD="$(load1_remote 2>/dev/null || true)"
-    R_CORES="$(cores_remote 2>/dev/null || true)"
+    read -r R_HID R_LOAD R_CORES <<<"$(remote_probe)"
   else
     R_HID="${IDLE_SECONDS}"; R_LOAD="0.0"; R_CORES="1"
   fi
