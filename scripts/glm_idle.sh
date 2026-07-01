@@ -34,15 +34,43 @@ SINCE_FILE="${RUN_DIR}/glm-idle-since"
 # Homebrew's ssh returns "no route to host" for it. Force the system binary.
 SSH_BIN="${GLM_SSH_BIN:-/usr/bin/ssh}"
 
-# Processes that do NOT count as load: GLM (exo/mlx), this worker, and
-# kernel_task (spikes on thermal management, not user work).
-GLM_EXCLUDE_RE='exo|mlx|GLM-5.2|glm_autonomous|glm_idle|kernel_task'
+# Non-GLM CPU: sum of %CPU (100 == one core) over processes that are NOT part of
+# GLM (exo/mlx) or the autonomous worker's own subtree (opencode and any
+# subagents it spawns). Excluding the worker's WHOLE process tree — the matched
+# roots AND all their descendants — is what stops it from ever reading its own
+# load as "busy" and pausing/killing itself. Reads `ps` (pid ppid pcpu command)
+# on stdin; kernel_task is also dropped (thermal spikes, not user work).
+CPU_PY='import sys, re
+rows = []
+for line in sys.stdin.read().splitlines()[1:]:
+    p = line.split(None, 3)
+    if len(p) < 4:
+        continue
+    try:
+        pid = int(p[0]); ppid = int(p[1]); cpu = float(p[2])
+    except ValueError:
+        continue
+    rows.append((pid, ppid, cpu, p[3]))
+pat = re.compile("glm_autonomous|glm_idle|opencode|qwen|exo|mlx|GLM-5.2|multiprocessing.spawn")
+ex = set(pid for (pid, ppid, cpu, cmd) in rows if pat.search(cmd))
+ch = {}
+for (pid, ppid, cpu, cmd) in rows:
+    ch.setdefault(ppid, []).append(pid)
+st = list(ex)
+while st:
+    for c in ch.get(st.pop(), []):
+        if c not in ex:
+            ex.add(c); st.append(c)
+tot = 0.0
+for (pid, ppid, cpu, cmd) in rows:
+    if pid in ex or "kernel_task" in cmd:
+        continue
+    tot += cpu
+print(int(tot))'
+CPU_PY_B64="$(printf '%s' "$CPU_PY" | base64 | tr -d '\n')"
 
-# Sum of %CPU across processes other than GLM/worker/kernel. %CPU is per-core,
-# so 100 == one core fully busy.
 nonglm_cpu_local() {
-  ps -axo %cpu,command 2>/dev/null \
-    | awk -v re="${GLM_EXCLUDE_RE}" 'NR>1 && $0 !~ re { s+=$1 } END { printf "%d", s+0 }'
+  ps -axo pid,ppid,pcpu,command 2>/dev/null | python3 -c "$CPU_PY"
 }
 
 # Swap in use, MB.
@@ -51,15 +79,16 @@ swap_local() { sysctl -n vm.swapusage 2>/dev/null | sed -nE 's/.*used = ([0-9]+)
 # Probe faepmac2 over Thunderbolt in one ssh: "nonglm_cpu swap". The TB link
 # powers down while the cluster is idle, so wake it with a ping and retry a few
 # times before giving up (a cold single ssh can hit "no route to host").
+# Same non-GLM CPU computation on faepmac2, plus swap. The CPU script is shipped
+# base64-encoded so no quoting survives the ssh boundary; faepmac2 runs only exo
+# (GLM), never the worker, but the identical exclusion keeps mlx ring workers
+# from counting.
 remote_probe() {
-  local out
+  local out cmd
+  cmd="cpu=\$(ps -axo pid,ppid,pcpu,command 2>/dev/null | python3 -c \"\$(printf %s ${CPU_PY_B64} | base64 -d)\" 2>/dev/null); swap=\$(sysctl -n vm.swapusage 2>/dev/null | sed -nE 's/.*used = ([0-9]+)\\..*/\\1/p'); printf '%s %s\\n' \"\${cpu:-}\" \"\${swap:-0}\""
   for _ in 1 2 3; do
     ping -c1 -t2 "${PEER}" >/dev/null 2>&1 || true
-    # The single-quoted command runs on faepmac2; local expansion is not wanted.
-    # shellcheck disable=SC2016
-    out="$("${SSH_BIN}" -o BatchMode=yes -o ConnectTimeout="${GLM_SSH_TIMEOUT:-10}" "${PEER}" \
-      'cpu=$(ps -axo %cpu,command 2>/dev/null | awk "NR>1 && \$0 !~ /exo|mlx|GLM-5.2|glm_autonomous|glm_idle|kernel_task/ { s+=\$1 } END { printf \"%d\", s+0 }"); swap=$(sysctl -n vm.swapusage 2>/dev/null | sed -nE "s/.*used = ([0-9]+)\..*/\1/p"); echo "$cpu ${swap:-0}"' \
-      2>/dev/null || true)"
+    out="$("${SSH_BIN}" -o BatchMode=yes -o ConnectTimeout="${GLM_SSH_TIMEOUT:-10}" "${PEER}" "$cmd" 2>/dev/null || true)"
     [[ "$out" =~ ^[0-9] ]] && { printf '%s' "$out"; return 0; }
     sleep 1
   done
